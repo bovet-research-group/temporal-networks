@@ -1089,7 +1089,7 @@ class ContTempNetwork:
         return A + A.T
 
 
-    def _compute_time_grid(self, new=False):
+    def _compute_time_grid(self):
         """Create `self.time_grid`, a dataframe with ('times', 'id') as index,
         wre `id` is the index of the corresponding event in `events_table`,
         and column 'is_start' which is True is the ('times', 'id') 
@@ -1097,51 +1097,32 @@ class ContTempNetwork:
         Also creates `self.times`, an array with all the times values.
             
         """
-        if not new: 
-            self.time_grid = pd.DataFrame(
-                columns=["times", "id", "is_start"],
-                index=range(self.events_table.shape[0]*2)
-            )
-            self.time_grid.iloc[:self.events_table.shape[0],[0,1]] = \
-                        self.events_table.reset_index()[["starting_times","index"]]
-            self.time_grid["is_start"] = False
-            self.time_grid.loc[0:self.events_table.shape[0]-1,"is_start"] = True
+        # put starting time in a data frame
+        et = self.events_table.reset_index()
+        starts = pd.DataFrame({
+            "times":    et["starting_times"].values,
+            "id":       et["index"].values,
+            "is_start": True,
+        })
 
-            self.time_grid.iloc[self.events_table.shape[0]:,[0,1]] = \
-                        self.events_table.reset_index()[["ending_times","index"]]
 
-            self.time_grid.times = pd.to_numeric(self.time_grid.times)
+        #put ending times in a dataframe
+        ends = pd.DataFrame({
+            "times":    et["ending_times"].values,
+            "id":       et["index"].values,
+            "is_start": False,
+        })
+        #merge them
+        self.time_grid = (
+            pd.concat([starts, ends], ignore_index=True)
+            .assign(times=lambda df: pd.to_numeric(df["times"]))
+            .sort_values("times")
+            .set_index(["times", "id"])        # group events with same times
+            .sort_index()
+        )
 
-            self.time_grid.sort_values("times", inplace=True)
-
-            # group events with same times
-            self.time_grid.set_index(["times", "id"], inplace=True)
-
-            self.time_grid.sort_index(inplace=True)
-
-            self.times = self.time_grid.index.levels[0]
-        else: 
-            et = self.events_table.reset_index()
-            starts = pd.DataFrame({
-                "times":    et["starting_times"].values,
-                "id":       et["index"].values,
-                "is_start": True,
-            })
-
-            ends = pd.DataFrame({
-                "times":    et["ending_times"].values,
-                "id":       et["index"].values,
-                "is_start": False,
-            })
-
-            self.time_grid = (
-                pd.concat([starts, ends], ignore_index=True)
-                .assign(times=lambda df: pd.to_numeric(df["times"]))
-                .sort_values("times")
-                .set_index(["times", "id"])        # group events with same times
-                .sort_index()
-            )        
-            self.times = self.time_grid.index.get_level_values(0).unique().to_numpy()
+        del starts, ends        
+        self.times = self.time_grid.index.get_level_values(0).unique().to_numpy()
 
 
 
