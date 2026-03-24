@@ -1,7 +1,7 @@
 """#
-# flow stability
+# Temporal networks
 #
-# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+# Copyright (C) 2026 Alexandre Bovet research group <alexandre.bovet@uzh.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -24,6 +24,7 @@ import os
 import pickle
 import time
 from functools import partial
+from xxlimited import new
 
 import numpy as np
 import pandas as pd
@@ -49,7 +50,6 @@ from .logger import get_logger
 
 # get the logger
 logger = get_logger()
-
 class ContTempNetwork:
     """Continuous time temporal network
     
@@ -117,6 +117,7 @@ class ContTempNetwork:
                  events_table=None,
                  **kwargs):
 
+        #check that the mandatory columns have the same size if events_table is not given
         if events_table is None:
             assert len(source_nodes) == len(target_nodes) == \
                    len(starting_times) == len(ending_times)
@@ -127,6 +128,7 @@ class ContTempNetwork:
                 all_nodes = set()
                 all_nodes.update(source_nodes)
                 all_nodes.update(target_nodes)
+            
                 self.label_to_node_dict = {l : n for n, l in enumerate(sorted(all_nodes))}
                 self.node_to_label_dict = {n : l for l, n in self.label_to_node_dict.items()}
 
@@ -139,8 +141,7 @@ class ContTempNetwork:
                                                   "target_nodes" : target_nodes,
                                                   "starting_times" : starting_times,
                                                   "ending_times" : ending_times}
-            columns=["source_nodes","target_nodes",
-                                             "starting_times","ending_times"]
+            columns=self._ESSENTIAL
 
             if extra_attrs is not None:
                 assert isinstance(extra_attrs, dict)
@@ -210,7 +211,7 @@ class ContTempNetwork:
         self.events_table["durations"] = self.events_table.ending_times - \
                             self.events_table.starting_times
 
-        # to record compute times
+        # to record compute times (CHECK)
         self._compute_times = {}
 
         self._overlapping_events_merged = False
@@ -1075,17 +1076,15 @@ class ContTempNetwork:
         mask = np.logical_and(self.events_table.starting_times < end_time,
                               self.events_table.ending_times > start_time)
 
-        # loop on events
-        data = []
-        cols = []
-        rows = []
-        for ev in self.events_table.loc[mask].itertuples():
-            data.append(min(ev.ending_times, end_time) - max(ev.starting_times, start_time))
-            rows.append(ev.source_nodes)
-            cols.append(ev.target_nodes)
+        ev = self.events_table.loc[mask]
+            # Vectorized overlap calculation
+        data = (np.minimum(ev.ending_times.values, end_time) -
+                    np.maximum(ev.starting_times.values, start_time))
 
-        A = coo_matrix((data, (rows,cols)),
-                       shape=(self.num_nodes, self.num_nodes))
+        A = coo_matrix(
+                (data, (ev.source_nodes.values, ev.target_nodes.values)),
+                shape=(self.num_nodes, self.num_nodes)
+            )
 
         return A + A.T
 
