@@ -1124,26 +1124,15 @@ class ContTempNetwork:
         del starts, ends        
         self.times = self.time_grid.index.get_level_values(0).unique().to_numpy()
 
-
-
-    def _get_closest_time(self, t, new=False):
+    def _get_closest_time(self, t):
         """Return closest smaller or equal time in `times` and its index"""
         if not hasattr(self, "times"):
             self._compute_time_grid()
-        if not new: 
 
-            if t not in self.times:
-            # take the largest smaller time
-                if t <= self.times[0]:
-                    t = self.times[0]
-                else:
-                    t = self.times[self.times <= t].max()
+        k = np.searchsorted(self.times, t, side="right") - 1
+        k = max(k, 0)  # cut to first element if t is before all times
 
-            k = int(np.where(self.times == t)[0])
-        else:
-            pass
-
-        return t, k
+        return self.times[k], k
 
 
     def compute_laplacian_matrices(self, *, t_start=None, t_stop=None,
