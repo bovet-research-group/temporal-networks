@@ -1127,16 +1127,10 @@ class ContTempNetwork:
         if not hasattr(self, "times"):
             self._compute_time_grid()
 
-        if t not in self.times:
-        # take the largest smaller time
-            if t <= self.times[0]:
-                t = self.times[0]
-            else:
-                t = self.times[self.times <= t].max()
+        k = np.searchsorted(self.times, t, side="right") - 1
+        k = max(k, 0)  # cut to first element if t is before all times
 
-        k = int(np.where(self.times == t)[0])
-
-        return t, k
+        return self.times[k], k
 
 
     def compute_laplacian_matrices(self, *, t_start=None, t_stop=None,
