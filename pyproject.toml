@@ -1,0 +1,51 @@
+[project]
+name = "tempnet"
+authors = [
+    {name="Alexandre Bovet", email="alexandre.bovet@uzh.ch"},
+    {name="Yasaman Asgari", email="yasaman.asgari@uzh.ch"},
+    {name="Jonas Liechti", email="j-i-l@t4d.ch"},
+]
+description = "A library for analyzing temporal networks."
+# Relative path to the README.md file
+readme = "README.md"
+# Pin for an analysis (== or ~= for patching) and minimal for a package (>=)
+requires-python = ">=3.10.0"
+# Relative path to the license file
+license.file = "LICENSE"
+# Use git tags for versioning
+dynamic = ["version"]
+
+dependencies = [
+    # pin (== or ~= with patches) when developing scripts, minimal (>=) for packages
+    "numpy>=2.2.6",
+    "pandas>=2.3.3",
+    "scipy>=1.15.3",
+]
+
+[dependency-groups]
+testing = [
+    "pytest>=9.0.2",
+]
+docs = [
+    "insegel>=1.3.1",
+    "myst-parser>=4.0.1",
+    "sphinx>=8.1.3",
+    "sphinx-autoapi>=3.8.0",
+]
+dev = [
+    { include-group = "testing" },
+    { include-group = "docs" },
+]
+
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tempnet"]
+
+[build-system]
+# Require hatch-vcs alongside hatchling to enable Git tag versioning
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+# Use the git version to set the version of the package
+[tool.hatch.version]
+source = "vcs"
