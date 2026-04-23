@@ -43,7 +43,7 @@ from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import eigsh, expm
 
 from .parallel_expm import compute_subspace_expm_parallel
-from .sparse_stoch_mat import inplace_csr_row_normalize, SparseStochMat
+from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from .logger import get_logger
 

@@ -20,6 +20,7 @@ dependencies = [
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "scipy>=1.15.3",
+    "stochmat @ git+https://github.com/bovet-research-group/stochmat.git@1.0.2",
 ]
 
 [dependency-groups]
@@ -67,13 +68,16 @@ ignore = ["T201"]
 [tool.hatch.build.targets.wheel]
 packages = ["src/tempnet"]
 
+# (Optional to set the version also Python-style)
+[tool.hatch.build.hooks.vcs]
+version-file = "src/tempnet/_version.py"
+
 # Use the git version to set the version of the package
 [tool.hatch.version]
 source = "vcs"
 
-# (Optional to set the version also Python-style)
-[tool.hatch.build.hooks.vcs]
-version-file = "src/tempnet/_version.py"
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [build-system]
 requires = [
