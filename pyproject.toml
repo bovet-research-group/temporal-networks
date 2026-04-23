@@ -3,7 +3,7 @@ name = "tempnet"
 authors = [
     {name="Alexandre Bovet", email="alexandre.bovet@uzh.ch"},
     {name="Yasaman Asgari", email="yasaman.asgari@uzh.ch"},
-    {name="Jonas Liechti", email="j-i-l@t4d.ch"},
+    {name="Jonas I. Liechti", email="j-i-l@t4d.ch"},
 ]
 description = "A library for analyzing temporal networks."
 # Relative path to the README.md file
