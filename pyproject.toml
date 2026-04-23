@@ -38,14 +38,46 @@ dev = [
 ]
 
 
+[tool.coverage.run]
+relative_files = true
+source = ["src"]
+omit = [
+  "tests",
+  "*__init__.py",
+]
+
+[tool.coverage.paths]
+source = [
+    "src/flowstab",
+]
+
+# This is for the linting with ruff
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+# T201: complain about print statements
+ignore = ["T201"]
+
+[tool.ruff.lint.per-file-ignores]
+# we want to accept import violations in special contexts
+"__init__.py" = ["E402"]
+"**/{tests,docs,tools}/*" = ["E402"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/tempnet"]
-
-[build-system]
-# Require hatch-vcs alongside hatchling to enable Git tag versioning
-requires = ["hatchling", "hatch-vcs"]
-build-backend = "hatchling.build"
 
 # Use the git version to set the version of the package
 [tool.hatch.version]
 source = "vcs"
+
+# (Optional to set the version also Python-style)
+[tool.hatch.build.hooks.vcs]
+version-file = "src/tempnet/_version.py"
+
+[build-system]
+requires = [
+  "hatchling",
+  "hatch-vcs",
+]
+build-backend = "hatchling.build"
