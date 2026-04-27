@@ -49,7 +49,7 @@ omit = [
 
 [tool.coverage.paths]
 source = [
-    "src/flowstab",
+    "src/tempnet",
 ]
 
 # This is for the linting with ruff
