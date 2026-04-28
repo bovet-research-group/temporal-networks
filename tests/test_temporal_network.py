@@ -15,6 +15,7 @@ from scipy.sparse import csr_matrix
 
 from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
 
+
 class TestTempNetwork:
     def setup_method(self):
         # ###
@@ -37,9 +38,9 @@ class TestTempNetwork:
         self.minimal.tmp_pkl = tempfile.NamedTemporaryFile(suffix='.pkl',
                                                            delete=False)
         self.minimal.tmp_json = tempfile.NamedTemporaryFile(suffix='.json',
-                                                    delete=False)
+                                                            delete=False)
         self.minimal_instant = copy(self.minimal)
-        del(self.minimal_instant.ending_times)
+        del self.minimal_instant.ending_times
         self.minimal_instant.events_table = self.minimal.events_table.drop(
             ContTempNetwork._ENDINGS, axis=1
         )
@@ -49,18 +50,18 @@ class TestTempNetwork:
         # we assume 10 nodes, and each starting a connection in order
         self.simple.source_nodes = list(range(1, 11))
         # target nodes are also in order
-        self.simple.target_nodes = list(range(2,11)) + [1]
+        self.simple.target_nodes = list(range(2, 11)) + [1]
         self.simple.starting_times = [0, 0.5, 1, 2, 3, 4, 4, 5, 5, 5]
-        self.simple.ending_times =   [3, 1, 2, 7, 4, 5, 6, 6, 6, 7]
+        self.simple.ending_times = [3, 1, 2, 7, 4, 5, 6, 6, 6, 7]
         self.simple.events_table = self._to_df(self.simple)
         self.simple.nodes = self._get_nodes(self.simple)
         self.simple.node_label_id_map = self._get_label_id_map(self.simple)
         self.simple.tmp_pkl = tempfile.NamedTemporaryFile(suffix='.pkl',
                                                           delete=False)
         self.simple.tmp_json = tempfile.NamedTemporaryFile(suffix='.json',
-                                                    delete=False)
+                                                           delete=False)
         self.simple_instant = copy(self.simple)
-        del(self.simple_instant.ending_times)
+        del self.simple_instant.ending_times
         self.simple_instant.events_table = self.simple.events_table.drop(
             ContTempNetwork._ENDINGS, axis=1
         )
@@ -71,7 +72,7 @@ class TestTempNetwork:
                         'mice_contact_sequence.csv.gz'
         self.real.raw_df = pd.read_csv(self.real.url,
                                        compression='gzip')
-        self.real.cut_after = 3600 # only use first hour
+        self.real.cut_after = 3600  # only use first hour
         self.real.events_table = self.real.raw_df[
             self.real.raw_df['ending_times'] < 3600
         ]
@@ -79,7 +80,6 @@ class TestTempNetwork:
         # self.real.target_nodes = self.real.raw_df['target_nodes'].tolist()
         # self.real.starting_times = self.real.raw_df['starting_times'].tolist()
         # self.real.ending_times = self.real.raw_df['ending_times'].tolist()
-
 
         # ###
         # gather all networks
@@ -175,10 +175,10 @@ class TestTempNetwork:
         with pytest.raises(AssertionError):
             # error in source and target nodes
             ContTempNetwork(source_nodes=[1, 2, 3], target_nodes=[1, 2],
-                            starting_times = [0, 0], ending_times = [1, 1])
+                            starting_times=[0, 0], ending_times=[1, 1])
             # not enough ending times
             ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2],
-                            starting_times = [0, 0], ending_times = [1])
+                            starting_times=[0, 0], ending_times=[1])
 
     def test_init_missing_params(self):
         """Make sure we detect variable numbers of events
@@ -191,7 +191,7 @@ class TestTempNetwork:
         with pytest.raises(TypeError):
             # int and str cannot be compared > type error
             ContTempNetwork(source_nodes=[0, 1], target_nodes=['a', 'b'],
-                            starting_times = [0, 0], ending_times = [1, 1])
+                            starting_times=[0, 0], ending_times=[1, 1])
 
     @pytest.fixture
     def saved_network(self):
@@ -323,7 +323,6 @@ class TestTempNetwork:
         assert inst_temp_network.instantaneous_events
         # use the method form the child class
         inst_temp_network.compute_laplacian_matrices()
-        import ipdb; ipdb.set_trace()
         print(f"{list(map(lambda x: x.toarray(), inst_temp_network.laplacians))=}")
         # check if the internal dfs are the same
         pd.testing.assert_frame_equal(temp_network._events_table,
@@ -333,6 +332,7 @@ class TestTempNetwork:
             np.testing.assert_equal(laplacian.toarray(),
                                     inst_temp_network.laplacians[i].toarray())
 
+
 def test_ContTempNetworkErrors():
     with pytest.raises(AssertionError):
         ContTempNetwork(source_nodes=[0, 1], target_nodes=[1])
@@ -340,11 +340,13 @@ def test_ContTempNetworkErrors():
     with pytest.raises(Exception):
         ContTempNetwork(events_table=pd.DataFrame({"source_nodes": [0, 1]}))
 
+
 def test_ContTempInstNetwork():
     """
     """
     from tempnet.temporal_network import ContTempInstNetwork
     pass
+
 
 def test_lin_approx_trans_matrix():
     """
@@ -352,11 +354,13 @@ def test_lin_approx_trans_matrix():
     from tempnet.temporal_network import lin_approx_trans_matrix
     pass
 
+
 def test_compute_stationary_transition():
     """
     """
     from tempnet.temporal_network import compute_stationary_transition
     pass
+
 
 def test_compute_subspace_expm():
     """
@@ -364,11 +368,13 @@ def test_compute_subspace_expm():
     from tempnet.temporal_network import compute_subspace_expm
     pass
 
+
 def test_csc_row_normalize():
     """
     """
     from tempnet.temporal_network import csc_row_normalize
     pass
+
 
 def test_find_spectral_gap():
     """
@@ -376,11 +382,13 @@ def test_find_spectral_gap():
     from tempnet.temporal_network import find_spectral_gap
     pass
 
+
 def test_remove_nnz_rowcol():
     """
     """
     from tempnet.temporal_network import remove_nnz_rowcol
     pass
+
 
 def test_rebuild_nnz_rowcol():
     """
@@ -388,11 +396,13 @@ def test_rebuild_nnz_rowcol():
     from tempnet.temporal_network import numpy_rebuild_nnz_rowcol
     pass
 
+
 def test_sparse_lapl_expm():
     """
     """
     from tempnet.temporal_network import sparse_lapl_expm
     pass
+
 
 def test_sparse_lin_approx():
     """
@@ -400,17 +410,20 @@ def test_sparse_lin_approx():
     from tempnet.temporal_network import sparse_lin_approx
     pass
 
+
 def test_sparse_stationary_trans():
     """
     """
     from tempnet.temporal_network import sparse_stationary_trans
     pass
 
+
 def test_set_to_ones():
     """
     """
     from tempnet.temporal_network import set_to_ones
     pass
+
 
 def test_set_to_zeroes():
     """

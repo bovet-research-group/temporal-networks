@@ -1,5 +1,6 @@
 import pytest
 
+
 def test_distro():
     from tempnet.synth_temp_network import (
         Distro,
@@ -13,7 +14,8 @@ def test_distro():
 
 # you are here!
 @pytest.mark.parametrize(
-        "_id, i_d_loc, i_d_scale, i_d_mf, a_d_loc, a_d_scale, a_d_mf, dist_type, group", 
+        "_id, i_d_loc, i_d_scale, i_d_mf, a_d_loc, a_d_scale, a_d_mf,"
+        " dist_type, group",
         [(1, 0.0, 1.0, None, 0.0, 1.0, None, "experimental", 0),]
     )
 def test_individual(_id,
@@ -38,6 +40,7 @@ def test_individual(_id,
     _ = i1.draw_activ_time(time=None)
     _ = i1.draw_activ_time(time=1.0)
 
+
 def test_synth_temp_network():
     from tempnet.synth_temp_network import (
         Individual,
@@ -47,4 +50,3 @@ def test_synth_temp_network():
     sim = SynthTempNetwork(individuals, t_start=0, t_end=50)
 
     sim.run(save_all_states=True, save_dt_states=True, verbose=True)
-
