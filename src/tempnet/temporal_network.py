@@ -191,23 +191,28 @@ class ContTempNetwork:
                     "`events_table` must be a pandas DataFrame or the"
                     "path to a CSV file. "
                     f"'{type(events_table)} is not acceptable."
-                )                               
-            reset_event_table_index = False     
-            if relabel_nodes:                   
+                )
+            reset_event_table_index = False
+            if relabel_nodes:
                 all_nodes = set()
                 all_nodes.update(events_table.source_nodes.tolist())
                 all_nodes.update(events_table.target_nodes.tolist())
-                self.label_to_node_dict = {l : n for n, l in enumerate(sorted(all_nodes))}
-                self.node_to_label_dict = {n : l for l, n in self.label_to_node_dict.items()}
+                self.label_to_node_dict = {
+                    m: n for n, m in enumerate(sorted(all_nodes))
+                }
+                self.node_to_label_dict = {
+                    n: m for m, n in self.label_to_node_dict.items()
+                }
             else:
-                self.node_to_label_dict=node_to_label_dict
-
+                self.node_to_label_dict = node_to_label_dict
 
         if reset_event_table_index:
             self.events_table.reset_index(inplace=True, drop=True)
 
-        self.node_array = np.sort(pd.unique(self.events_table[["source_nodes",
-                                    "target_nodes"]].values.ravel("K")))
+        self.node_array = np.sort(pd.unique(
+            self.events_table[["source_nodes",
+                               "target_nodes"]].values.ravel("K")
+        ))
 
         self.num_nodes = self.node_array.shape[0]
 
@@ -217,8 +222,9 @@ class ContTempNetwork:
 
         self.end_time = self.events_table.ending_times.max()
 
-        self.events_table["durations"] = self.events_table.ending_times - \
-                            self.events_table.starting_times
+        self.events_table[
+            "durations"
+        ] = self.events_table.ending_times - self.events_table.starting_times
 
         # to record compute times
         self._compute_times = {}
@@ -230,10 +236,8 @@ class ContTempNetwork:
                 num_merged = self._merge_overlapping_events()
             self._overlapping_events_merged = True
 
-
         self.is_directed = False
         self.instantaneous_events = False
-
 
     def __repr__(self):
         return str(self.__class__) + \
@@ -243,7 +247,7 @@ class ContTempNetwork:
              matrices_list=None,
              attributes_list=None):
         """Save graph event_table and matrices as pickle file
-        
+
         Parameters
         ----------
         filename: str
@@ -253,43 +257,41 @@ class ContTempNetwork:
             List of names of matrices to save.
             The default list is:
                 `matrices_list = ['laplacians',
-                                    'adjacencies',
-                                    'inter_T',
-                                    'inter_T_lin',
-                                    'T',
-                                    'T_lin',
-                                    '_stationary_trans',
-                                    'delta_inter_T',
-                                    'delta_inter_T_lin',]`
+                                  'adjacencies',
+                                  'inter_T',
+                                  'inter_T_lin',
+                                  'T',
+                                  'T_lin',
+                                  '_stationary_trans',
+                                  'delta_inter_T',
+                                  'delta_inter_T_lin',]`
         attributes_list: list of strings
             List of attribute names to save.
             The default list is:
                 `attributes_list = ['node_to_label_dict',
-                                  'events_table',
-                                  'times',
-                                  'time_grid',
-                                  'num_nodes',
-                                  '_compute_times',
-                                  '_t_start_laplacians',
-                                  '_k_start_laplacians',
-                                  '_t_stop_laplacians',
-                                  '_k_stop_laplacians',
-                                  '_overlapping_events_merged',]`
-                                    
-            
+                                    'events_table',
+                                    'times',
+                                    'time_grid',
+                                    'num_nodes',
+                                    '_compute_times',
+                                    '_t_start_laplacians',
+                                    '_k_start_laplacians',
+                                    '_t_stop_laplacians',
+                                    '_k_stop_laplacians',
+                                    '_overlapping_events_merged',]`
+
         """
         save_dict = dict()
 
-
         matrices = ["laplacians",
-                      "adjacencies",
-                      "inter_T",
-                      "inter_T_lin",
-                      "T",
-                      "T_lin",
-                      "_stationary_trans",
-                      "delta_inter_T",
-                      "delta_inter_T_lin"]
+                    "adjacencies",
+                    "inter_T",
+                    "inter_T_lin",
+                    "T",
+                    "T_lin",
+                    "_stationary_trans",
+                    "delta_inter_T",
+                    "delta_inter_T_lin"]
 
         if matrices_list is None:
             matrices_list = matrices
@@ -312,68 +314,64 @@ class ContTempNetwork:
 
         for attr in attributes_list:
             if hasattr(self, attr):
-                save_dict[attr] = getattr(self,attr)
-
+                save_dict[attr] = getattr(self, attr)
 
         for mat in matrices_list:
             if hasattr(self, mat):
-                save_dict[mat] = getattr(self,mat)
-
+                save_dict[mat] = getattr(self, mat)
 
         with open(os.path.splitext(filename)[0] + ".pickle", "wb") as fopen:
             pickle.dump(save_dict, fopen)
-
 
     @classmethod
     def load(cls, filename,
              matrices_list=None,
              attributes_list=None):
         """Load network from file and returns a ContTempNetwork instance.
-        
+
         Parameters
         ----------
         filename: str
-            Filename where the network is saved save. The extension is automatically added.
+            Filename where the network is saved save. The extension is
+            automatically added.
 
         matrices_list: list of strings
             List of names of matrices to load.
             The default list is:
                 `matrices_list = ['laplacians',
-                                    'adjacencies',
-                                    'inter_T',
-                                    'inter_T_lin',
-                                    'T',
-                                    'T_lin',
-                                    '_stationary_trans',
-                                    'delta_inter_T',
-                                    'delta_inter_T_lin',]`
+                                  'adjacencies',
+                                  'inter_T',
+                                  'inter_T_lin',
+                                  'T',
+                                  'T_lin',
+                                  '_stationary_trans',
+                                  'delta_inter_T',
+                                  'delta_inter_T_lin',]`
         attributes_list: list of strings
             List of attribute names to load.
             The default list is:
                 `attributes_list = ['node_to_label_dict',
-                                  'events_table',
-                                  'times',
-                                  'time_grid',
-                                  'num_nodes',
-                                  '_compute_times',
-                                  '_t_start_laplacians',
-                                  '_k_start_laplacians',
-                                  '_t_stop_laplacians',
-                                  '_k_stop_laplacians',
-                                  '_overlapping_events_merged',]`
-                                    
-            
-            
+                                    'events_table',
+                                    'times',
+                                    'time_grid',
+                                    'num_nodes',
+                                    '_compute_times',
+                                    '_t_start_laplacians',
+                                    '_k_start_laplacians',
+                                    '_t_stop_laplacians',
+                                    '_k_stop_laplacians',
+                                    '_overlapping_events_merged',]`
+
         """
         matrices = ["laplacians",
-                      "adjacencies",
-                      "inter_T",
-                      "inter_T_lin",
-                      "T",
-                      "T_lin",
-                      "_stationary_trans",
-                      "delta_inter_T",
-                      "delta_inter_T_lin"]
+                    "adjacencies",
+                    "inter_T",
+                    "inter_T_lin",
+                    "T",
+                    "T_lin",
+                    "_stationary_trans",
+                    "delta_inter_T",
+                    "delta_inter_T_lin"]
 
         if matrices_list is None:
             matrices_list = matrices
@@ -393,19 +391,17 @@ class ContTempNetwork:
 
         if attributes_list is None:
             attributes_list = attributes
-
-
         # all in a pickle file
 
-        graph_dict = pd.read_pickle(os.path.splitext(filename)[0] +".pickle")
+        graph_dict = pd.read_pickle(os.path.splitext(filename)[0] + ".pickle")
 
         events_table = graph_dict.pop("events_table")
 
         net = cls(events_table=events_table,
-                           relabel_nodes=False,
-                           node_to_label_dict=graph_dict.pop("node_to_label_dict"))
+                  relabel_nodes=False,
+                  node_to_label_dict=graph_dict.pop("node_to_label_dict"))
 
-        for k,val in graph_dict.items():
+        for k, val in graph_dict.items():
             if k in matrices_list:
                 setattr(net, k, val)
             if k in attributes_list:
@@ -413,27 +409,40 @@ class ContTempNetwork:
 
         return net
 
+    def save_inter_T(self,
+                     filename,
+                     lamda=None,
+                     round_zeros=True,
+                     tol=1e-8,
+                     compressed=False,
+                     save_delta=False,
+                     replace_existing=False):
+        """Saves all the inter transition matrices.
 
-    def save_inter_T(self, filename, lamda=None, round_zeros=True, tol=1e-8,
-                                   compressed=False,
-                                   save_delta=False,
-                                   replace_existing=False):
-        """ 
-        
-            
-        Saves all the inter transition matrices in `self.inter_T[lamda]` 
-        in a pickle file togheter  with a dictionary including parameters: 
-        `_k_start_laplacians`, `_k_stop_laplacians`, `_t_start_laplacians`,
-        `_t_stop_laplacians`, `_t_stop_laplacians`, `times_k_start_to_k_stop+1` 
-        (= self.times.values[self._k_start_laplacians:self._k_stop_laplacians+1])
+        This method saves all matrixes in `self.inter_T[lamda]` in a pickle
+        file togheter with a dictionary including parameters:
+
+        - `_k_start_laplacians`
+        - `_k_stop_laplacians`
+        - `_t_start_laplacians`
+        - `_t_stop_laplacians`
+        - `_t_stop_laplacians`
+        - `times_k_start_to_k_stop + 1`
+
+          given by
+          ```
+          self.times.values[
+              self._k_start_laplacians: self._k_stop_laplacians + 1
+          ]
+          ```
         `num_nodes` and `_compute_times`.
-            
-        if `save_delta` is True, creates delta_inter_T if it is 
-        not already present and saves it together with 
+
+        if `save_delta` is True, creates delta_inter_T if it is
+        not already present and saves it together with
         inter_T[lamda][0] in a pickle file.
         otherwise, saves inter_T[lamda] directly (good if used with
         SparseStochMat instances).
-            
+
         Parameters
         ----------
             filename: str
@@ -442,30 +451,30 @@ class ContTempNetwork:
             Use to save to results for a specific lamba. If None, the results
             for all the computed lambdas will be saved. Default is None.
         round_zeros: bool.
-            If True, values smaller than tol*max(abs(inter_T_k)) will be set to zero
-            to preserve sparsity. Default is True.
+            If True, values smaller than tol*max(abs(inter_T_k)) will be set to
+            zero to preserve sparsity. Default is True.
         tol: float
             See round_zeros. Default is 1e-8.
         compressed: bool
             Used to compress the file with gzip. Default is False.
         save_delta: bool
-            If True, creates delta_inter_T if it is 
-            not already present and saves it together with 
-            inter_T[lamda][0]. Only the differences between two consecutives
-            inter_Ts are saved in order to minimize file size. 
-            Must not be used if `use_sparse_stoch` was used in `compute_inter_transition_matrices`.
+            If True, creates delta_inter_T if it is not already present and
+            saves it together with inter_T[lamda][0].
+            Only the differences between two consecutives inter_Ts are saved in
+            order to minimize file size.
+            Must not be used if `use_sparse_stoch` was used in
+            `compute_inter_transition_matrices`.
         replace_existing: bool
-            If True, erase and replace files if they already exists. 
+            If True, erase and replace files if they already exists.
             Default is False.
-            
+
         Returns
         -------
             None
-            
-                        
-        """
-        assert hasattr(self, "inter_T"), f"PID {os.getpid()} : nothing saved, compute inter_T first."
 
+        """
+        assert hasattr(self, "inter_T"), f"PID {os.getpid()} : nothing " \
+            "saved, compute inter_T first."
 
         ext = os.path.splitext(filename)[-1]
 
@@ -480,43 +489,53 @@ class ContTempNetwork:
         skipping = False
         if os.path.exists(file):
             if replace_existing:
+                # TODO: move to logger usage
                 print("PID ", os.getpid(), f" : , file {file} already exists, replacing it.")
             else:
+                # TODO: move to logger usage
                 print("PID ", os.getpid(), f" : , file {file} already exists, skipping.")
                 skipping = True
 
         if not skipping:
-
 
             save_dict = {}
             save_dict["_k_start_laplacians"] = self._k_start_laplacians
             save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
             save_dict["_t_start_laplacians"] = self._t_start_laplacians
             save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-            save_dict["times_k_start_to_k_stop+1"] = self.times.values[\
-                                self._k_start_laplacians:self._k_stop_laplacians+1]
+            save_dict["times_k_start_to_k_stop+1"] = self.times.values[
+                self._k_start_laplacians:self._k_stop_laplacians + 1
+            ]
             save_dict["num_nodes"] = self.num_nodes
             save_dict["_compute_times"] = self._compute_times
 
             if save_delta:
-                assert not isinstance(self.inter_T[lamda][0],
-                                  SparseStochMat),\
-                                "inter_T must not be SparseStochMat"
+                assert not isinstance(
+                    self.inter_T[lamda][0], SparseStochMat
+                ), "inter_T must not be SparseStochMat"
 
-                if not hasattr(self, "delta_inter_T") and \
-                                    hasattr(self, "inter_T"):
+                if not hasattr(
+                    self, "delta_inter_T"
+                ) and hasattr(self, "inter_T"):
                     if lamda is not None:
-                        self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
+                        self._compute_delta_trans_mat(lamda,
+                                                      round_zeros=round_zeros,
                                                       tol=tol)
                     else:
-                        #computes it for all lamda
+                        # computes it for all lamda
                         for lamda in self.inter_T.keys():
-                            self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
-                                                      tol=tol)
+                            self._compute_delta_trans_mat(
+                                lamda,
+                                round_zeros=round_zeros,
+                                tol=tol
+                            )
 
-                if (lamda is not None) and (lamda not in self.delta_inter_T.keys()):
-                    self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
-                                                      tol=tol)
+                if (
+                    lamda is not None
+                ) and (lamda not in self.delta_inter_T.keys()):
+                    self._compute_delta_trans_mat(lamda,
+                                                  round_zeros=round_zeros,
+                                                  tol=tol)
 
                 if hasattr(self, "delta_inter_T"):
                     save_dict["inter_T"] = dict()
@@ -529,11 +548,15 @@ class ContTempNetwork:
 
                     for lamda in lamdas:
                         save_dict["inter_T"][lamda] = dict()
-                        save_dict["inter_T"][lamda]["delta_inter_T"] = self.delta_inter_T[lamda]
-                        save_dict["inter_T"][lamda]["trans_mat0"] = self.inter_T[lamda][0].copy()
+                        save_dict["inter_T"][lamda][
+                            "delta_inter_T"] = self.delta_inter_T[lamda]
+                        save_dict["inter_T"][lamda][
+                            "trans_mat0"] = self.inter_T[lamda][0].copy()
                         if round_zeros:
-                            set_to_zeroes(save_dict["inter_T"][lamda]["trans_mat0"],
-                                          tol=tol)
+                            set_to_zeroes(
+                                save_dict["inter_T"][lamda]["trans_mat0"],
+                                tol=tol
+                            )
 
                 text = "delta trans mats"
 
@@ -548,9 +571,9 @@ class ContTempNetwork:
                     lamdas = [lamda]
 
                 for lamda in lamdas:
-                    assert isinstance(self.inter_T[lamda][0],
-                                      SparseStochMat),\
-                                    "inter_T needs to be SparseStochMat"
+                    assert isinstance(
+                        self.inter_T[lamda][0], SparseStochMat
+                    ), "inter_T needs to be SparseStochMat"
 
                     save_dict["inter_T"][lamda] = []
                     for interT in self.inter_T[lamda]:
@@ -560,34 +583,35 @@ class ContTempNetwork:
 
                 text = "sparse stoch trans mats"
 
-
             if compressed:
-
+                # TODO: switch to logging
                 print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
-                with gzip.open(file,
-                               "wb", compresslevel=2) as fopen:
+                with gzip.open(file, "wb", compresslevel=2) as fopen:
                     pickle.dump(save_dict, fopen)
             else:
-
+                # TODO: switch to logging
                 print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
                 with open(file, "wb") as fopen:
                     pickle.dump(save_dict, fopen)
 
+    def save_inter_T_lin(self,
+                         filename,
+                         lamda=None,
+                         round_zeros=True,
+                         tol=1e-8,
+                         compressed=False,
+                         replace_existing=True,
+                         save_delta=False):
+        """Creates delta_inter_T_lin if it is not already present.
 
-
-
-    def save_inter_T_lin(self, filename, lamda=None, round_zeros=True, tol=1e-8,
-                                   compressed=False,
-                                   replace_existing=True,
-                                   save_delta=False):
-        """Creates delta_inter_T_lin if it is not already present and
-        saves it together with inter_T_lin[lamda][t_s][0] in a pickle file.
-                        
+        The delta_inter_T_lin is saves together with
+        inter_T_lin[lamda][t_s][0] in a pickle file.
         """
-        assert hasattr(self, "inter_T_lin"), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
-
+        assert hasattr(
+            self, "inter_T_lin"
+        ), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
 
         ext = os.path.splitext(filename)[-1]
 
@@ -602,8 +626,10 @@ class ContTempNetwork:
         skipping = False
         if os.path.exists(file):
             if replace_existing:
+                # TODO: switch to logger
                 print("PID ", os.getpid(), f" : , file {file} already exists, replacing it.")
             else:
+                # TODO: switch to logger
                 print("PID ", os.getpid(), f" : , file {file} already exists, skipping.")
                 skipping = True
 
@@ -614,9 +640,9 @@ class ContTempNetwork:
             save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
             save_dict["_t_start_laplacians"] = self._t_start_laplacians
             save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-            save_dict["times_k_start_to_k_stop+1"] = self.times.values[\
-                                self._k_start_laplacians:self._k_stop_laplacians+1]
-
+            save_dict["times_k_start_to_k_stop+1"] = self.times.values[
+                self._k_start_laplacians:self._k_stop_laplacians + 1
+            ]
             save_dict["num_nodes"] = self.num_nodes
             save_dict["_compute_times"] = self._compute_times
 
@@ -624,22 +650,26 @@ class ContTempNetwork:
                 if not hasattr(self, "delta_inter_T_lin") and \
                                     hasattr(self, "inter_T_lin"):
                     if lamda is not None:
-                        self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
+                        self._compute_delta_trans_mat(lamda,
+                                                      round_zeros=round_zeros,
                                                       tol=tol)
                     else:
-                        #computes it for all lamda
+                        # computes it for all lamda
                         for lamda in self.inter_T_lin.keys():
-                            self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
-                                                      tol=tol)
-
-                if (lamda is not None) and (lamda not in self.delta_inter_T_lin.keys()):
-                    self._compute_delta_trans_mat(lamda, round_zeros=round_zeros,
-                                                      tol=tol)
-
-
+                            self._compute_delta_trans_mat(
+                                lamda,
+                                round_zeros=round_zeros,
+                                tol=tol
+                            )
+                if (
+                    lamda is not None
+                ) and (
+                    lamda not in self.delta_inter_T_lin.keys()
+                ):
+                    self._compute_delta_trans_mat(lamda,
+                                                  round_zeros=round_zeros,
+                                                  tol=tol)
                 if hasattr(self, "delta_inter_T_lin"):
-
-
                     save_dict["inter_T_lin"] = dict()
                     save_dict["is_delta_trans"] = True
 
@@ -652,11 +682,18 @@ class ContTempNetwork:
                         save_dict["inter_T_lin"][lamda] = dict()
                         for t_s in self.inter_T_lin[lamda].keys():
                             save_dict["inter_T_lin"][lamda][t_s] = dict()
-                            save_dict["inter_T_lin"][lamda][t_s]["delta_inter_T_lin"] = self.delta_inter_T_lin[lamda][t_s]
-                            save_dict["inter_T_lin"][lamda][t_s]["trans_mat_lin0"] = self.inter_T_lin[lamda][t_s][0].copy()
+                            save_dict["inter_T_lin"][lamda][t_s][
+                                "delta_inter_T_lin"
+                            ] = self.delta_inter_T_lin[lamda][t_s]
+                            save_dict["inter_T_lin"][lamda][t_s][
+                                "trans_mat_lin0"
+                            ] = self.inter_T_lin[lamda][t_s][0].copy()
                             if round_zeros:
-                                set_to_zeroes(save_dict["inter_T_lin"][lamda][t_s]["trans_mat_lin0"],
-                                          tol=tol)
+                                set_to_zeroes(
+                                    save_dict["inter_T_lin"][lamda][t_s][
+                                        "trans_mat_lin0"],
+                                    tol=tol
+                                )
 
                 text = "delta trans mats"
 
@@ -673,47 +710,44 @@ class ContTempNetwork:
                 for lamda in lamdas:
                     save_dict["inter_T_lin"][lamda] = dict()
                     for t_s in self.inter_T_lin[lamda].keys():
-                        assert isinstance(self.inter_T_lin[lamda][t_s][0],
-                                          SparseStochMat),\
-                                        "inter_T needs to be SparseStochMat"
-
+                        assert isinstance(
+                            self.inter_T_lin[lamda][t_s][0], SparseStochMat
+                        ), "inter_T needs to be SparseStochMat"
                         save_dict["inter_T_lin"][lamda][t_s] = []
                         for interT in self.inter_T_lin[lamda][t_s]:
                             if round_zeros:
                                 interT.set_to_zeroes(tol=tol)
-                            save_dict["inter_T_lin"][lamda][t_s].append(interT.to_dict())
+                            save_dict["inter_T_lin"][lamda][t_s].append(
+                                interT.to_dict()
+                            )
 
                 text = "sparse stoch trans mats"
 
-
-
             if compressed:
-
+                # TODO: switch to logging
                 print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
-                with gzip.open(file,
-                               "wb", compresslevel=2) as fopen:
+                with gzip.open(file, "wb", compresslevel=2) as fopen:
                     pickle.dump(save_dict, fopen)
             else:
-
+                # TODO: switch to logging
                 print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
                 with open(file, "wb") as fopen:
                     pickle.dump(save_dict, fopen)
 
-
     @staticmethod
     def load_inter_T(filename):
-        """Loads inter_T and inter_T_lin from 'filename' that was saved with
-        save_inter_T.
-            
-        returns a dictionary with the inter_T restored.
-            
+        """
+        Loads inter_T and inter_T_lin from 'filename'.
+
+        The file must have been generated with `save_inter_T`.
+
+        Returns a dictionary with the inter_T restored.
         """
         ext = os.path.splitext(filename)[-1]
 
-
-        if ext not in [".pickle",".gz"]:
+        if ext not in [".pickle", ".gz"]:
             # detect extension
             if os.path.exists(filename + ".pickle"):
                 ext = ".pickle"
@@ -736,12 +770,14 @@ class ContTempNetwork:
             with open(filename, "rb") as fopen:
                 load_dict = pickle.load(fopen)
 
-        return_dict = {"_k_start_laplacians" : load_dict["_k_start_laplacians"],
-                       "_k_stop_laplacians" : load_dict["_k_stop_laplacians"],
-                       "_t_start_laplacians" : load_dict["_t_start_laplacians"],
-                       "_t_stop_laplacians" : load_dict["_t_stop_laplacians"],
-                       "num_nodes" : load_dict["num_nodes"],
-                       "times_k_start_to_k_stop+1" : load_dict["times_k_start_to_k_stop+1"]}
+        return_dict = {
+            "_k_start_laplacians": load_dict["_k_start_laplacians"],
+            "_k_stop_laplacians": load_dict["_k_stop_laplacians"],
+            "_t_start_laplacians": load_dict["_t_start_laplacians"],
+            "_t_stop_laplacians": load_dict["_t_stop_laplacians"],
+            "num_nodes": load_dict["num_nodes"],
+            "times_k_start_to_k_stop+1": load_dict["times_k_start_to_k_stop+1"]
+        }
 
         # rebuild inter_T from delta_inter_T
         if "inter_T" in load_dict.keys():
@@ -750,9 +786,10 @@ class ContTempNetwork:
             if load_dict.get("is_sparse_stoch", False):
 
                 for lamda in load_dict["inter_T"].keys():
-                    return_dict["inter_T"][lamda] = \
-                        [SparseStochMat(**mat_dict) for mat_dict in \
-                                          load_dict["inter_T"][lamda]]
+                    return_dict["inter_T"][lamda] = [
+                        SparseStochMat(**mat_dict)
+                        for mat_dict in load_dict["inter_T"][lamda]
+                    ]
 
             else:
                 for lamda in load_dict["inter_T"].keys():
@@ -760,9 +797,9 @@ class ContTempNetwork:
                         [load_dict["inter_T"][lamda]["trans_mat0"]]
 
                     for dT in load_dict["inter_T"][lamda]["delta_inter_T"]:
-                        return_dict["inter_T"][lamda].append(\
-                                 return_dict["inter_T"][lamda][-1] + dT)
-
+                        return_dict["inter_T"][lamda].append(
+                            return_dict["inter_T"][lamda][-1] + dT
+                        )
 
         if "inter_T_lin" in load_dict.keys():
             return_dict["inter_T_lin"] = dict()
@@ -774,9 +811,11 @@ class ContTempNetwork:
 
                     for t_s in load_dict["inter_T_lin"][lamda].keys():
 
-                        return_dict["inter_T_lin"][lamda][t_s] = \
-                            [SparseStochMat(**mat_dict) for mat_dict in \
-                                              load_dict["inter_T_lin"][lamda][t_s]]
+                        return_dict["inter_T_lin"][lamda][t_s] = [
+                            SparseStochMat(**mat_dict)
+                            for mat_dict in load_dict[
+                                "inter_T_lin"][lamda][t_s]
+                        ]
 
             else:
                 for lamda in load_dict["inter_T_lin"].keys():
@@ -784,44 +823,49 @@ class ContTempNetwork:
 
                     for t_s in load_dict["inter_T_lin"][lamda].keys():
 
-                        return_dict["inter_T_lin"][lamda][t_s] = \
-                            [load_dict["inter_T_lin"][lamda][t_s]["trans_mat_lin0"]]
+                        return_dict["inter_T_lin"][lamda][t_s] = [
+                            load_dict[
+                                "inter_T_lin"][lamda][t_s]["trans_mat_lin0"]
+                        ]
 
-                        for dT in load_dict["inter_T_lin"][lamda][t_s]["delta_inter_T_lin"]:
-                            return_dict["inter_T_lin"][lamda][t_s].append(\
-                                     return_dict["inter_T_lin"][lamda][t_s][-1]+dT)
-
-
+                        for dT in load_dict["inter_T_lin"][lamda][t_s][
+                                "delta_inter_T_lin"]:
+                            return_dict["inter_T_lin"][lamda][t_s].append(
+                                return_dict["inter_T_lin"][lamda][t_s][-1] + dT
+                            )
 
         del load_dict
-
         return return_dict
 
-    def save_T(self, filename, lamda=None, round_zeros=True, tol=1e-8,
-                                   compressed=False):
-        """ 
-        saves a dict with 'T' as key and net.T as item with other 
-        useful attributes.
-            
-        also works with SparseStochMat.
-            
-        only works if net.T[lamda] is a matrix and not a list of matrices,
-        i.e. if compute_transition_matrices was ran without save_intermediate.
-                        
+    def save_T(self,
+               filename,
+               lamda=None,
+               round_zeros=True,
+               tol=1e-8,
+               compressed=False):
         """
-        assert hasattr(self, "T"), f"PID {os.getpid()} : nothing saved, compute inter_T first."
+        Save a dict with 'T' as key and net.T as item with other attributes.
+
+        This also works with SparseStochMat.
+
+        It only works if net.T[lamda] is a matrix and not a list of matrices,
+        i.e. if compute_transition_matrices was ran without save_intermediate.
+
+        """
+        assert hasattr(
+            self, "T"
+        ), f"PID {os.getpid()} : nothing saved, compute inter_T first."
 
         save_dict = {}
         save_dict["_k_start_laplacians"] = self._k_start_laplacians
         save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
         save_dict["_t_start_laplacians"] = self._t_start_laplacians
         save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-        save_dict["times_k_start_to_k_stop+1"] = self.times.values[\
-                            self._k_start_laplacians:self._k_stop_laplacians+1]
+        save_dict["times_k_start_to_k_stop+1"] = self.times.values[
+            self._k_start_laplacians:self._k_stop_laplacians + 1
+        ]
         save_dict["num_nodes"] = self.num_nodes
         save_dict["_compute_times"] = self._compute_times
-
-
 
         save_dict["T"] = dict()
 
@@ -856,7 +900,6 @@ class ContTempNetwork:
             else:
                 raise TypeError("T must be csr or SparseStochMat.")
 
-
         ext = os.path.splitext(filename)[-1]
 
         file = filename
@@ -865,46 +908,49 @@ class ContTempNetwork:
 
             if ext != ".gz":
                 file += ".gz"
-
+            # TODO: switch to logging
             print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
-            with gzip.open(file,
-                           "wb", compresslevel=2) as fopen:
+            with gzip.open(file, "wb", compresslevel=2) as fopen:
                 pickle.dump(save_dict, fopen)
         else:
             ext = os.path.splitext(filename)[-1]
             if ext != ".pickle":
                 file += ".pickle"
-
+            # TODO: switch to logging
             print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
             with open(file, "wb") as fopen:
                 pickle.dump(save_dict, fopen)
 
-    def save_T_lin(self, filename, lamda=None, round_zeros=True, tol=1e-8,
-                                   compressed=False):
-        """ 
-        saves a dict with 'T_lin' as key and net.T_lin as item with other 
-        useful attributes.
-            
-        also works with SparseStochMat instance.
-            
-        only works if net.T_lin[lamda][t_s] is a matrix and not a list of matrices,
-        i.e. if compute_transition_matrices was ran without save_intermediate.
-                        
+    def save_T_lin(self,
+                   filename,
+                   lamda=None,
+                   round_zeros=True,
+                   tol=1e-8,
+                   compressed=False):
         """
-        assert hasattr(self, "T_lin"), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
+        Saves a dict with 'T_lin' as key and net.T_lin and other attributes.
+
+        This also works with SparseStochMat instance.
+
+        It only works if net.T_lin[lamda][t_s] is a matrix and not a list of matrices,
+        i.e. if compute_transition_matrices was ran without save_intermediate.
+        """
+        assert hasattr(
+            self, "T_lin"
+        ), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
 
         save_dict = {}
         save_dict["_k_start_laplacians"] = self._k_start_laplacians
         save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
         save_dict["_t_start_laplacians"] = self._t_start_laplacians
         save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-        save_dict["times_k_start_to_k_stop+1"] = self.times.values[\
-                            self._k_start_laplacians:self._k_stop_laplacians+1]
+        save_dict["times_k_start_to_k_stop+1"] = self.times.values[
+            self._k_start_laplacians:self._k_stop_laplacians + 1
+        ]
         save_dict["num_nodes"] = self.num_nodes
         save_dict["_compute_times"] = self._compute_times
-
 
         save_dict["T_lin"] = dict()
 
@@ -943,7 +989,6 @@ class ContTempNetwork:
                 else:
                     raise TypeError("T must be csr or SparseStochMat.")
 
-
         ext = os.path.splitext(filename)[-1]
 
         file = filename
@@ -953,33 +998,33 @@ class ContTempNetwork:
             if ext != ".gz":
                 file += ".gz"
 
+            # TODO: switch to logging
             print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
-            with gzip.open(file,
-                           "wb", compresslevel=2) as fopen:
+            with gzip.open(file, "wb", compresslevel=2) as fopen:
                 pickle.dump(save_dict, fopen)
         else:
             ext = os.path.splitext(filename)[-1]
             if ext != ".pickle":
                 file += ".pickle"
 
+            # TODO: switch to logging
             print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
             with open(file, "wb") as fopen:
                 pickle.dump(save_dict, fopen)
 
+
     @staticmethod
     def load_T(filename):
-        """Loads T and T_lin from 'filename' that was saved with
-        save_T.
-            
-        returns a dictionary with the T restored.
-            
+        """Loads T and T_lin from 'filename' that was saved with save_T.
+
+        Returns a dictionary with the T restored.
+
         """
         ext = os.path.splitext(filename)[-1]
 
-
-        if ext not in [".pickle",".gz"]:
+        if ext not in [".pickle", ".gz"]:
             # detect extension
             if os.path.exists(filename + ".pickle"):
                 ext = ".pickle"
@@ -994,21 +1039,21 @@ class ContTempNetwork:
                 raise FileNotFoundError(filename)
 
         if ext == ".gz" or ext == ".pickle.gz":
-            with gzip.open(filename,
-                           "rb") as fopen:
+            with gzip.open(filename, "rb") as fopen:
                 load_dict = pickle.load(fopen)
 
         else:
             with open(filename, "rb") as fopen:
                 load_dict = pickle.load(fopen)
 
-        return_dict = {"_k_start_laplacians" : load_dict["_k_start_laplacians"],
-                       "_k_stop_laplacians" : load_dict["_k_stop_laplacians"],
-                       "_t_start_laplacians" : load_dict["_t_start_laplacians"],
-                       "_t_stop_laplacians" : load_dict["_t_stop_laplacians"],
-                       "num_nodes" : load_dict["num_nodes"],
-                       "times_k_start_to_k_stop+1" : load_dict["times_k_start_to_k_stop+1"]}
-
+        return_dict = {
+            "_k_start_laplacians": load_dict["_k_start_laplacians"],
+            "_k_stop_laplacians": load_dict["_k_stop_laplacians"],
+            "_t_start_laplacians": load_dict["_t_start_laplacians"],
+            "_t_stop_laplacians": load_dict["_t_stop_laplacians"],
+            "num_nodes": load_dict["num_nodes"],
+            "times_k_start_to_k_stop+1": load_dict["times_k_start_to_k_stop+1"]
+        }
 
         if "T" in load_dict.keys():
             return_dict["T"] = dict()
@@ -1022,7 +1067,6 @@ class ContTempNetwork:
             else:
                 for lamda in load_dict["T"].keys():
                     return_dict["T"][lamda] = load_dict["T"][lamda]
-
 
         if "T_lin" in load_dict.keys():
             return_dict["T_lin"] = dict()
@@ -1046,33 +1090,27 @@ class ContTempNetwork:
                         return_dict["T_lin"][lamda][t_s] = \
                                             load_dict["T_lin"][lamda][t_s]
 
-
-
         del load_dict
-
         return return_dict
 
-
-    def compute_static_adjacency_matrix(self,
-                               start_time=None,
-                               end_time=None):
+    def compute_static_adjacency_matrix(self, start_time=None, end_time=None):
         """Returns the adjacency matrix of the static network built from the
         aggregagted edge activity between `start_time` and `end_time`.
 
         Parameters
         ----------
         start_time : float or int, optional
-            Starting time for the aggregation. The default is None, i.e. the 
+            Starting time for the aggregation. The default is None, i.e. the
             start time of the entire temporal network.
         end_time : float or int, optional
-            Ending time for the aggregation. The default is None, i.e. the 
+            Ending time for the aggregation. The default is None, i.e. the
             end time of the entire temporal network.
 
         Returns
         -------
         CSR sparse matrix
-            Symmetric adjacency matrix, where element ij is equal to the 
-            aggregated time during which egde ij was active after `start_time` 
+            Symmetric adjacency matrix, where element ij is equal to the
+            aggregated time during which egde ij was active after `start_time`
             and before `end_time`.
 
         """
@@ -1090,11 +1128,14 @@ class ContTempNetwork:
         cols = []
         rows = []
         for ev in self.events_table.loc[mask].itertuples():
-            data.append(min(ev.ending_times, end_time) - max(ev.starting_times, start_time))
+            data.append(
+                min(ev.ending_times,
+                    end_time) - max(ev.starting_times, start_time)
+            )
             rows.append(ev.source_nodes)
             cols.append(ev.target_nodes)
 
-        A = coo_matrix((data, (rows,cols)),
+        A = coo_matrix((data, (rows, cols)),
                        shape=(self.num_nodes, self.num_nodes))
 
         return A + A.T
@@ -1146,7 +1187,10 @@ class ContTempNetwork:
 
         return t, k
 
-    def compute_laplacian_matrices(self, *, t_start=None, t_stop=None,
+    def compute_laplacian_matrices(self,
+                                   *,
+                                   t_start=None,
+                                   t_stop=None,
                                    save_adjacencies=False):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
@@ -1288,7 +1332,7 @@ class ContTempNetwork:
 
             events_k = [self.events_table.loc[
                 mid,
-                ["source_nodes","target_nodes"]
+                ["source_nodes", "target_nodes"]
             ].astype(np.int64) for mid in meet_id.values]
 
             # update instantaneous matrices
