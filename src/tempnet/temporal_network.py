@@ -50,48 +50,51 @@ from .logger import get_logger
 # get the logger
 logger = get_logger()
 
+
 class ContTempNetwork:
     """Continuous time temporal network
-    
+
     Parameters
     ----------
     source_nodes: Python list
-        List of source nodes of each event, ordered according to `starting_times`.
-    
+        List of source nodes of each event, ordered according to
+        `starting_times`.
+
     target_nodes: Python list
         List of target nodes of each event.
-        
+
     starting_times: Python list
         List of starting times of each event.
-        
+
     ending_times: Python list
         List of ending times of each event.
-        
+
     extra_attrs: Dict
-        Extra event attributes. Must be given in a dict with {attr_name: list_of_values},
-        where list_of_values has the same order and length as `source_nodes`.
-        
+        Extra event attributes. Must be given in a dict with
+        {attr_name: list_of_values}, where list_of_values has the same order
+        and length as `source_nodes`.
+
     relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in 
+        Relabel nodes from 0 to num_nodes and save original labels in
         self.node_to_label_dict. Default is `True`
-        
+
     reset_event_table_index: boolean
         Reset the index of the `events_table` DataFrame. Default is `True`.
-        
+
     node_to_label_dict: Python dict
-        If `relabel_nodes` is `False, this can be used to save the original labels
-        of the nodes.
-        
+        If `relabel_nodes` is `False, this can be used to save the original
+        labels of the nodes.
+
     merge_overlapping_events: boolean
-        Check for overlapping events (between the same pair of nodes) 
+        Check for overlapping events (between the same pair of nodes)
         and merges them. Default is `False`.
-        
+
     events_table: Pandas Dataframe
         Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
-        and 'ending_times' and index corresponding to event index. Used for
-        instantiating a new ConTempNetwork from the event_table of an other one.
-    
-    
+        and 'ending_times' and index corresponding to event index.
+        Used for instantiating a new ConTempNetwork from the event_table of
+        an other one.
+
     """
     # parametrize the column names > single place to change them:
     _SOURCES = "source_nodes"
@@ -104,6 +107,7 @@ class ContTempNetwork:
     _DURATIONS = "durations"
     # for instantaneous event this is the duration to use
     _DEFAULT_DURATION = 1
+
     def __init__(self, *,
                  source_nodes=[],
                  target_nodes=[],
@@ -122,25 +126,31 @@ class ContTempNetwork:
                    len(starting_times) == len(ending_times)
 
             if relabel_nodes:
-               # relabel nodes from 0 to num_nodes and save
+                # relabel nodes from 0 to num_nodes and save
                 # original labels in self.node_to_label_dict
                 all_nodes = set()
                 all_nodes.update(source_nodes)
                 all_nodes.update(target_nodes)
-                self.label_to_node_dict = {l : n for n, l in enumerate(sorted(all_nodes))}
-                self.node_to_label_dict = {n : l for l, n in self.label_to_node_dict.items()}
+                self.label_to_node_dict = {
+                    m: n for n, m in enumerate(sorted(all_nodes))
+                }
+                self.node_to_label_dict = {
+                    n: m for m, n in self.label_to_node_dict.items()
+                }
 
-                source_nodes = [self.label_to_node_dict[n] for n in source_nodes]
-                target_nodes = [self.label_to_node_dict[n] for n in target_nodes]
+                source_nodes = [self.label_to_node_dict[n]
+                                for n in source_nodes]
+                target_nodes = [self.label_to_node_dict[n]
+                                for n in target_nodes]
             else:
-                self.node_to_label_dict=node_to_label_dict
+                self.node_to_label_dict = node_to_label_dict
 
-            data={"source_nodes" : source_nodes,
-                                                  "target_nodes" : target_nodes,
-                                                  "starting_times" : starting_times,
-                                                  "ending_times" : ending_times}
-            columns=["source_nodes","target_nodes",
-                                             "starting_times","ending_times"]
+            data = {"source_nodes": source_nodes,
+                    "target_nodes": target_nodes,
+                    "starting_times": starting_times,
+                    "ending_times": ending_times}
+            columns = ["source_nodes", "target_nodes",
+                       "starting_times", "ending_times"]
 
             if extra_attrs is not None:
                 assert isinstance(extra_attrs, dict)
@@ -1089,26 +1099,25 @@ class ContTempNetwork:
 
         return A + A.T
 
-
     def _compute_time_grid(self):
         """Create `self.time_grid`, a dataframe with ('times', 'id') as index,
         wre `id` is the index of the corresponding event in `events_table`,
-        and column 'is_start' which is True is the ('times', 'id') 
+        and column 'is_start' which is True is the ('times', 'id')
         corresponds to a starting event.
         Also creates `self.times`, an array with all the times values.
-            
+
         """
         self.time_grid = pd.DataFrame(
             columns=["times", "id", "is_start"],
             index=range(self.events_table.shape[0]*2)
         )
-        self.time_grid.iloc[:self.events_table.shape[0],[0,1]] = \
-                     self.events_table.reset_index()[["starting_times","index"]]
+        self.time_grid.iloc[:self.events_table.shape[0], [0, 1]] = \
+            self.events_table.reset_index()[["starting_times", "index"]]
         self.time_grid["is_start"] = False
-        self.time_grid.loc[0:self.events_table.shape[0]-1,"is_start"] = True
+        self.time_grid.loc[0:self.events_table.shape[0]-1, "is_start"] = True
 
-        self.time_grid.iloc[self.events_table.shape[0]:,[0,1]] = \
-                      self.events_table.reset_index()[["ending_times","index"]]
+        self.time_grid.iloc[self.events_table.shape[0]:, [0, 1]] = \
+            self.events_table.reset_index()[["ending_times", "index"]]
 
         self.time_grid.times = pd.to_numeric(self.time_grid.times)
 
@@ -1121,14 +1130,13 @@ class ContTempNetwork:
 
         self.times = self.time_grid.index.levels[0]
 
-
     def _get_closest_time(self, t):
         """Return closest smaller or equal time in `times` and its index"""
         if not hasattr(self, "times"):
             self._compute_time_grid()
 
         if t not in self.times:
-        # take the largest smaller time
+            # take the largest smaller time
             if t <= self.times[0]:
                 t = self.times[0]
             else:
@@ -1138,39 +1146,41 @@ class ContTempNetwork:
 
         return t, k
 
-
     def compute_laplacian_matrices(self, *, t_start=None, t_stop=None,
                                    save_adjacencies=False):
         """Computes the laplacian matrices and saves them in `self.laplacians`
-            
+
             Computes from the first event time (in `self.times`) before or
             equal to `t_start` until the event time index before `t_stop`.
-            
+
             Laplacians are computed from `self.times[self._k_start_laplacians]`
             until `self.times[self._k_stop_laplacians-1]`.
-            
+
             The laplacian at step k, is the random walk laplacian
             between `times[k]`. and `times[k+1]`.
-            
+
         Parameters
         ----------
         t_start : float or int, optional
             The default is None, i.e. starts at the beginning of times.
-            The computation starts from the first time index before or equal to t_start.
-            The corresponding starting time index is saved in `self._k_start_laplacians`
-            and the real starting time is `self.times[self._k_start_laplacians]` which 
-            is saved in `self._t_start_laplacians`.
+            The computation starts from the first time index before or equal
+            to t_start. The corresponding starting time index is saved in
+            `self._k_start_laplacians` and the real starting time is
+            `self.times[self._k_start_laplacians]` which is saved in
+            `self._t_start_laplacians`.
         t_stop : float or int, optional
-            Same than `t_start` but for the ending time of computations. Default is end of times.
+            Same than `t_start` but for the ending time of computations.
+            Default is end of times.
             Computations stop at self.times[self._k_stop_laplacians-1].
-            Similarily to `t_start`, the corresponding times are saved in 
+            Similarily to `t_start`, the corresponding times are saved in
             `self._k_stop_laplacians` and `self._t_stop_laplacians`.
         save_adjacencies : bool, optional
-            Default is False. Use to save adjacency matrices in `self.adjacencies`.
+            Default is False. Use to save adjacency matrices in
+            `self.adjacencies`.
 
         Returns
         -------
-        None.            
+        None.
 
         """
         logger.info("Computing Laplacians")
@@ -1182,17 +1192,16 @@ class ContTempNetwork:
         A = lil_matrix((self.num_nodes, self.num_nodes),
                        dtype=np.float64)
 
-        #identity
+        # identity
         I = eye(self.num_nodes,
                 dtype=np.float64).tocsc()
 
-        #degree array
+        # degree array
         degrees = np.zeros(self.num_nodes, dtype=np.float64)
         # inverse degrees diagonal matrix
         Dm1 = I.copy()
         # self loop matrix
         S = I.copy()
-
 
         self.laplacians = []
         if save_adjacencies:
@@ -1224,60 +1233,65 @@ class ContTempNetwork:
 
             # find events that have started before or at t_k-1
             # and were still occuring at t_k-1
-            mask_ini = (self.events_table.starting_times <= \
-                                                t_km1) & \
-                        (self.events_table.ending_times > \
-                                                t_km1)
-
-            for event in self.events_table.loc[mask_ini][["source_nodes",
-                                          "target_nodes"]].itertuples():
+            mask_ini = (
+                self.events_table.starting_times <= t_km1
+            ) & (
+                self.events_table.ending_times > t_km1
+            )
+            for event in self.events_table.loc[mask_ini][
+                ["source_nodes", "target_nodes"]
+            ].itertuples():
 
                 if A[event.source_nodes, event.target_nodes] != 1:
-                        A[event.source_nodes, event.target_nodes] = 1
-                        A[event.target_nodes, event.source_nodes] = 1
+                    A[event.source_nodes, event.target_nodes] = 1
+                    A[event.target_nodes, event.source_nodes] = 1
 
-                        degrees[event.source_nodes] += 1
-                        degrees[event.target_nodes] += 1
+                    degrees[event.source_nodes] += 1
+                    degrees[event.target_nodes] += 1
 
                 if degrees[event.source_nodes] == 0:
-                        S.data[event.source_nodes] = 1
-                        Dm1.data[event.source_nodes] = 1
+                    S.data[event.source_nodes] = 1
+                    Dm1.data[event.source_nodes] = 1
                 else:
                     S.data[event.source_nodes] = 0
-                    Dm1.data[event.source_nodes] = 1/degrees[event.source_nodes]
+                    Dm1.data[
+                        event.source_nodes] = 1 / degrees[event.source_nodes]
 
                 if degrees[event.target_nodes] == 0:
                     S.data[event.target_nodes] = 1
                     Dm1.data[event.target_nodes] = 1
                 else:
                     S.data[event.target_nodes] = 0
-                    Dm1.data[event.target_nodes] = 1/degrees[event.target_nodes]
-
+                    Dm1.data[
+                        event.target_nodes] = 1 / degrees[event.target_nodes]
 
         # time grid for this time range
-        time_grid_range = self.time_grid.loc[\
-                  (self.time_grid.index.get_level_values("times") >= \
-                       self._t_start_laplacians) & \
-                  (self.time_grid.index.get_level_values("times") < \
-                       self._t_stop_laplacians)]
-
-        for k, (tk, time_ev) in enumerate(time_grid_range.groupby(level="times")):
-            if not k%1000:
+        time_grid_range = self.time_grid.loc[(
+            self.time_grid.index.get_level_values(
+                "times") >= self._t_start_laplacians
+        ) & (
+            self.time_grid.index.get_level_values(
+                "times") < self._t_stop_laplacians
+        )]
+        for k, (tk, time_ev) in enumerate(
+                time_grid_range.groupby(level="times")):
+            if not k % 1000:
                 logger.info(
                     f"{k} over "
                     f"{self._k_stop_laplacians - self._k_start_laplacians}"
                 )
-                logger.info( f"{time.time()-t0:.2f}s")
+                logger.info(f"{time.time()-t0:.2f}s")
 
             meet_id = time_ev.index.get_level_values("id")
             # starting or ending events
             is_starts = time_ev.is_start.values
 
+            events_k = [self.events_table.loc[
+                mid,
+                ["source_nodes","target_nodes"]
+            ].astype(np.int64) for mid in meet_id.values]
 
-            events_k = [self.events_table.loc[mid,["source_nodes","target_nodes"]].astype(np.int64) \
-                                        for mid in meet_id.values]
-
-            #update instantaneous matrices
+            # update instantaneous matrices
             for event, is_start in zip(events_k, is_starts):
                 # unweighted, undirected
                 if is_start:
@@ -1303,14 +1317,16 @@ class ContTempNetwork:
                     Dm1.data[event.source_nodes] = 1
                 else:
                     S.data[event.source_nodes] = 0
-                    Dm1.data[event.source_nodes] = 1/degrees[event.source_nodes]
+                    Dm1.data[
+                        event.source_nodes] = 1 / degrees[event.source_nodes]
 
                 if degrees[event.target_nodes] == 0:
                     S.data[event.target_nodes] = 1
                     Dm1.data[event.target_nodes] = 1
                 else:
                     S.data[event.target_nodes] = 0
-                    Dm1.data[event.target_nodes] = 1/degrees[event.target_nodes]
+                    Dm1.data[
+                        event.target_nodes] = 1 / degrees[event.target_nodes]
 
             # Laplacian L(tk)
             Acsc = A.tocsc()
@@ -1329,25 +1345,29 @@ class ContTempNetwork:
                                           t_stop=None, fix_tau_k=False,
                                           use_sparse_stoch=False,
                                           dense_expm=True):
-        """Computes interevent transition matrices as T_k(lamda) = expm(-tau_k*lamda*L_k).
-        
-        The transition matrix T_k is saved in `self.inter_T[lamda][k]`, where 
+        """
+        Computes interevent transition matrices.
+
+        T_k(lamda) = expm(-tau_k*lamda*L_k).
+
+
+        The transition matrix T_k is saved in `self.inter_T[lamda][k]`, where
         self.inter_T is a dictionary with lamda as keys and lists of transition
         matrices as values.
-        
-        will compute from self.times[self._k_start_laplacians] until 
+
+        will compute from self.times[self._k_start_laplacians] until
         self.times[self._k_stop_laplacians-1]
-        
+
         the transition matrix at step k, is the probability transition matrix
         between times[k] and times[k+1]
-        
+
         Parameters
         ----------
         lamda : float, optional
-            Random walk rate, dynamical resolution parameter. The default (None)
-            is 1 over the median inter event time.
+            Random walk rate, dynamical resolution parameter.
+            The default (None) is 1 over the median inter event time.
         t_start : float or int, optional
-            Starting time, passed to `compute_laplacian_matrices` if the 
+            Starting time, passed to `compute_laplacian_matrices` if the
             Laplacians have not yet been computed.
             Otherwise is not used.
             The computation starts at self.times[self._k_start_laplacians].
@@ -1357,18 +1377,19 @@ class ContTempNetwork:
             Computations stop at self.times[self._k_stop_laplacians-1].
             Default is end of times.
         fix_tau_k : bool, optional
-            If true, all interevent times (tau_k) in the formula above are set to 1. 
-            This decouples the dynamic scale from the length of event which
-            is useful for temporal networks with instantaneous events.
+            If true, all interevent times (tau_k) in the formula above are set
+            to 1. This decouples the dynamic scale from the length of event
+            which is useful for temporal networks with instantaneous events.
             The default is False.
         use_sparse_stoch : bool, optional
             Whether to use custom sparse stochastic matrix format to save the
-            inter transition matrices. Especially useful for large networks as 
-            the matrix exponential is then computed on each connected component 
+            inter transition matrices. Especially useful for large networks as
+            the matrix exponential is then computed on each connected component
             separately (more memory efficient). The default is False.
         dense_expm : bool, optional
-            Whether to use the dense version of the matrix exponential algorithm
-            at each time steps. Recommended for not too large networks. 
+            Whether to use the dense version of the matrix exponential
+            algorithm at each time steps.
+            Recommended for not too large networks.
             The inter trans. matrices are still saved as sparse scipy matrices
             as they usually have many zero values. The default is True. Has no
             effect is use_sparse_stoch is True.
@@ -1384,7 +1405,6 @@ class ContTempNetwork:
             self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
         if not hasattr(self, "inter_T"):
             self.inter_T = dict()
-
 
         if lamda is None:
             logger.info("Taking lamda as 1/tau_w with tau_w = median "
@@ -1402,7 +1422,7 @@ class ContTempNetwork:
             t0 = time.time()
             for k, tk in enumerate(self.times[self._k_start_laplacians:
                                               self._k_stop_laplacians]):
-                if not k%1000:
+                if not k % 1000:
                     logger.debug(
                         f"{k} over "
                         f"{self._k_stop_laplacians-1-self._k_start_laplacians}"
@@ -1415,59 +1435,73 @@ class ContTempNetwork:
                     tau_k = self.times[self._k_start_laplacians+k+1] - tk
 
                 if use_sparse_stoch:
-                    self.inter_T[lamda].append(sparse_lapl_expm(self.laplacians[k],
-                                                                       tau_k*lamda,
-                                                                       dense_expm=dense_expm))
+                    self.inter_T[lamda].append(
+                        sparse_lapl_expm(self.laplacians[k],
+                                         tau_k*lamda,
+                                         dense_expm=dense_expm)
+                    )
                 elif self.laplacians[k].getnnz() == 0:
                     # expm of zero = identity
-                    self.inter_T[lamda].append(eye(self.num_nodes,format="csr"))
+                    self.inter_T[lamda].append(
+                        eye(self.num_nodes, format="csr")
+                    )
                 elif dense_expm:
-                    self.inter_T[lamda].append(csr_matrix(expm(-tau_k*lamda*self.laplacians[k].toarray())))
+                    self.inter_T[lamda].append(csr_matrix(
+                            expm(-tau_k * lamda * self.laplacians[k].toarray())
+                        ))
                 else:
-                    self.inter_T[lamda].append(expm(-tau_k*lamda*self.laplacians[k]).tocsr())
+                    self.inter_T[lamda].append(expm(
+                        -tau_k * lamda * self.laplacians[k]
+                    ).tocsr())
 
             if len(self.inter_T[lamda]) == 0:
                 logger.info("no events, trans. matrix = identity")
                 # is there was no event, the transition is identity
                 if use_sparse_stoch:
-                    self.inter_T[lamda].append(SparseStochMat.create_diag(size=self.num_nodes))
+                    self.inter_T[lamda].append(
+                        SparseStochMat.create_diag(size=self.num_nodes)
+                    )
                 else:
                     self.inter_T[lamda].append(eye(self.num_nodes,
-                                                      dtype=np.float64,
-                                                      format="csr"))
+                                                   dtype=np.float64,
+                                                   format="csr"))
 
             t_end = time.time()-t0
 
-            self._compute_times["inter_T_" + str(lamda)]  = t_end
+            self._compute_times["inter_T_" + str(lamda)] = t_end
 
             logger.debug(
                 f"Finished computing interevent transition matrices in {t_end}"
             )
         logger.debug(
-            f"Interevent transition matrices already computed for lamda={lamda}"
+            f"Interevent transition matrices already computed for {lamda=}"
         )
 
-    def compute_lin_inter_transition_matrices(self, lamda=None, t_start=None,
+    def compute_lin_inter_transition_matrices(self,
+                                              lamda=None,
+                                              t_start=None,
                                               t_stop=None,
                                               t_s=10, fix_tau_k=False,
                                               use_sparse_stoch=False):
-        """Compute interevent transition matrices as a linear approximation of
-        expm(-tau_k*lamda*L_k) based on the discrete time transition matrix.
-            
+        """Compute interevent transition matrices as a linear approximation.
+
+        Approximated it expm(-tau_k*lamda*L_k) based on the discrete time
+        transition matrix.
+
         `t_s` is the time value for which the linear approximation reaches the
         stationary transition matrix (default is `t_s=10`).
-        
+
         The transition matrix T_k_lin is saved in 
         `self.inter_T_lin[lamda][t_s][k]`,
         where `self.inter_T_lin` is a dictionary with lamda as keys and
         lists of transition matrices as values.
-            
+
         will compute from self.times[self._k_start_laplacians]
         until self.times[self._k_stop_laplacians-1]
-            
+
         the transition matrix at step k, is the probability transition matrix
         between times[k] and times[k+1]
-            
+
         """
         I = eye(self.num_nodes,
                 dtype=np.float64, format="csr")
@@ -1512,7 +1546,7 @@ class ContTempNetwork:
             t0 = time.time()
             for k, tk in enumerate(self.times[self._k_start_laplacians:
                                               self._k_stop_laplacians]):
-                if not k%1000:
+                if not k % 1000:
                     logger.debug(
                         f"{k} over "
                         f"{self._k_stop_laplacians-1-self._k_start_laplacians}"
@@ -1528,57 +1562,63 @@ class ContTempNetwork:
 
                 if use_sparse_stoch:
 
-                    #get non zero indices
-                    nonzerosum_rowcols = ~np.logical_and(Lcsr.getnnz(1)==0,
-                                                         Lcsr.getnnz(0)==0)
+                    # get non zero indices
+                    nonzerosum_rowcols = ~np.logical_and(Lcsr.getnnz(1) == 0,
+                                                         Lcsr.getnnz(0) == 0)
 
                     nz_rowcols, = (nonzerosum_rowcols).nonzero()
 
-                    self.inter_T_lin[lamda][t_s].append(\
-                           sparse_lin_approx(I - Lcsr,
-                                             tau_k*lamda,
-                                             Pi=self._stationary_trans[k],
-                                             t_s=t_s,
-                                             nz_rowcols=nz_rowcols))
+                    self.inter_T_lin[lamda][t_s].append(
+                        sparse_lin_approx(I - Lcsr,
+                                          tau_k * lamda,
+                                          Pi=self._stationary_trans[k],
+                                          t_s=t_s,
+                                          nz_rowcols=nz_rowcols)
+                    )
                 else:
-
-                    self.inter_T_lin[lamda][t_s].append(\
-                           lin_approx_trans_matrix(I - Lcsr,
-                                                   tau_k*lamda,
-                                                   Pi=self._stationary_trans[k],
-                                                   t_s=t_s))
+                    self.inter_T_lin[lamda][t_s].append(
+                        lin_approx_trans_matrix(I - Lcsr,
+                                                tau_k * lamda,
+                                                Pi=self._stationary_trans[k],
+                                                t_s=t_s))
 
             if len(self.inter_T_lin[lamda][t_s]) == 0:
                 logger.debug("no events, lin. trans. matrix = identity")
                 # is there was no event, the transition is identity
                 if use_sparse_stoch:
-                    self.inter_T_lin[lamda].append(SparseStochMat.create_diag(size=self.num_nodes))
+                    self.inter_T_lin[lamda].append(
+                        SparseStochMat.create_diag(size=self.num_nodes)
+                    )
                 else:
-                    self.inter_T_lin[lamda][t_s].append(eye(self.num_nodes,
-                                                      dtype=np.float64,
-                                                      format="csr"))
+                    self.inter_T_lin[lamda][t_s].append(
+                        eye(self.num_nodes,
+                            dtype=np.float64,
+                            format="csr")
+                    )
 
             t_end = time.time()-t0
             self._compute_times[f"tran_matrices_lin_{lamda}_{t_s}"] = t_end
 
             logger.debug("Finished computing linear interevent transition "
-                        f"matrices in {t_end}")
+                         f"matrices in {t_end}")
 
-
-
-    def compute_transition_matrices(self, lamda=None, t_start=None, t_stop=None,
+    def compute_transition_matrices(self,
+                                    lamda=None,
+                                    t_start=None,
+                                    t_stop=None,
                                     save_intermediate=True,
                                     reverse_time=False,
                                     force_csr=False,
                                     tol=None):
-        """Compute transition matrices and saves them in a dict of lists `self.T[lamda]`
-        where `self.T[lamda][k]` is the product of all interevent transition 
-        matrices from t_0 to t_k computed with lamda.
+        """Compute transition matrices and saves them in a dict of lists.
+
+        The matrices are saved as `self.T[lamda]` where `self.T[lamda][k]` is
+        the product of all interevent transition matrices from t_0 to t_k
+        computed with lamda.
         """
         if not hasattr(self, "inter_T") or \
                 lamda not in self.inter_T.keys():
             raise Exception("Compute inter_T first.")
-
 
         if not hasattr(self, "T"):
             self.T = dict()
@@ -1589,8 +1629,7 @@ class ContTempNetwork:
             logger.info("Reversed time computation.")
         else:
             k_init = 0
-            k_range = range(1,len(self.inter_T[lamda]))
-
+            k_range = range(1, len(self.inter_T[lamda]))
 
         if lamda not in self.T.keys():
             if save_intermediate:
@@ -1603,7 +1642,7 @@ class ContTempNetwork:
                     self.T[lamda] = [self.inter_T[lamda][k_init]]
 
                 if tol is not None:
-                    set_to_zeroes(self.T[lamda][0],tol)
+                    set_to_zeroes(self.T[lamda][0], tol)
                     inplace_csr_row_normalize(self.T[lamda][0])
             else:
                 if force_csr:
@@ -1612,33 +1651,30 @@ class ContTempNetwork:
                     self.T[lamda] = self.inter_T[lamda][k_init]
 
                 if tol is not None:
-                    set_to_zeroes(self.T[lamda],tol)
+                    set_to_zeroes(self.T[lamda], tol)
                     inplace_csr_row_normalize(self.T[lamda])
-
-
-
 
             logger.info("Computing transition matrix")
 
             t0 = time.time()
 
             for k in k_range:
-                if not k%1000:
+                if not k % 1000:
                     logger.info(f"{k} over {len(self.inter_T[lamda])}")
                     logger.info(f"{time.time()-t0:.2f}s")
 
                 Tk = self.inter_T[lamda][k]
                 if tol is not None:
-                    set_to_zeroes(Tk,tol)
+                    set_to_zeroes(Tk, tol)
                     inplace_csr_row_normalize(Tk)
 
                 if save_intermediate:
 
                     self.T[lamda].append(self.T[lamda][-1] @ Tk)
 
-                    #normalize T to correct precision errors
+                    # normalize T to correct precision errors
                     if tol is not None:
-                        set_to_zeroes(self.T[lamda][-1],tol)
+                        set_to_zeroes(self.T[lamda][-1], tol)
 
                     inplace_csr_row_normalize(self.T[lamda][-1])
                 else:
@@ -1646,25 +1682,30 @@ class ContTempNetwork:
                     if tol is not None:
                         set_to_zeroes(self.T[lamda], tol)
 
-                    #normalize T to correct precision errors
+                    # normalize T to correct precision errors
                     inplace_csr_row_normalize(self.T[lamda])
 
             t_end = time.time()-t0
 
-            self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = t_end
+            self._compute_times[
+                f"trans_matrix_{lamda}_rev{reverse_time}"] = t_end
 
             logger.info(f"Finished in {t_end:.2f}s")
         logger.info(
             f"Transition matrices already computed for lamda={lamda}"
         )
 
-    def compute_lin_transition_matrices(self, lamda=None,
-                                        t_start=None, t_stop=None,
+    def compute_lin_transition_matrices(self,
+                                        lamda=None,
+                                        t_start=None,
+                                        t_stop=None,
                                         t_s=10, save_intermediate=True,
                                         reverse_time=False):
-        """Compute transition matrices and saves them in a dict of lists `self.T_lin[lamda][t_s]`
-        where `self.T_lin[lamda][t_s][k]` is the product of all interevent transition 
-        matrices from t_0 to t_k computed with lamda and t_s.
+        """Compute transition matrices and saves them in a dict of lists.
+
+        The transition matrices are save as `self.T_lin[lamda][t_s]` where
+        `self.T_lin[lamda][t_s][k]` is the product of all interevent
+        transition matrices from t_0 to t_k computed with lamda and t_s.
         """
         if not hasattr(self, "inter_T_lin") \
                 or lamda not in self.inter_T_lin.keys() \
@@ -1690,22 +1731,25 @@ class ContTempNetwork:
                 logger.info("Reversed time computation.")
             else:
                 k_init = 0
-                k_range = range(1,len(self.inter_T_lin[lamda][t_s]))
-
+                k_range = range(1, len(self.inter_T_lin[lamda][t_s]))
 
             # initial conditions
             if lamda not in self.T_lin.keys():
                 self.T_lin[lamda] = dict()
                 if save_intermediate:
-                    self.T_lin[lamda][t_s] = [self.inter_T_lin[lamda][t_s][k_init]]
+                    self.T_lin[lamda][t_s] = [
+                            self.inter_T_lin[lamda][t_s][k_init]]
                 else:
-                    self.T_lin[lamda][t_s] = self.inter_T_lin[lamda][t_s][k_init]
+                    self.T_lin[lamda][t_s] = self.inter_T_lin[
+                            lamda][t_s][k_init]
 
             if t_s not in self.T_lin[lamda].keys():
                 if save_intermediate:
-                    self.T_lin[lamda][t_s] = [self.inter_T_lin[lamda][t_s][k_init]]
+                    self.T_lin[lamda][t_s] = [self.inter_T_lin[
+                        lamda][t_s][k_init]]
                 else:
-                    self.T_lin[lamda][t_s] = self.inter_T_lin[lamda][t_s][k_init]
+                    self.T_lin[lamda][t_s] = self.inter_T_lin[
+                            lamda][t_s][k_init]
 
             logger.info(
                 f"Computing transition matrix for lamda={lamda}, t_s={t_s}"
@@ -1714,34 +1758,37 @@ class ContTempNetwork:
             t0 = time.time()
 
             for k in k_range:
-                if not k%1000:
-                    logger.info(f"{k} over {len(self.inter_T_lin[lamda][t_s])}")
+                if not k % 1000:
+                    logger.info(
+                        f"{k} over {len(self.inter_T_lin[lamda][t_s])}")
                     logger.info(f"{time.time()-t0:.2f}s")
                 if save_intermediate:
-                    self.T_lin[lamda][t_s].append(self.T_lin[lamda][t_s][-1] @ \
-                                      self.inter_T_lin[lamda][t_s][k])
-
-                    #normalize T to correct precision errors
+                    self.T_lin[lamda][t_s].append(
+                        self.T_lin[lamda][t_s][-1] @ self.inter_T_lin[
+                            lamda][t_s][k]
+                    )
+                    # normalize T to correct precision errors
                     inplace_csr_row_normalize(self.T_lin[lamda][t_s][-1])
                 else:
                     self.T_lin[lamda][t_s] = self.T_lin[lamda][t_s] @ \
                                       self.inter_T_lin[lamda][t_s][k]
-
-                    #normalize T to correct precision errors
+                    # normalize T to correct precision errors
                     inplace_csr_row_normalize(self.T_lin[lamda][t_s])
 
             t_end = time.time()-t0
 
-            self._compute_times[f"trans_matrix_lin_{lamda}_{t_s}_rev{reverse_time}"] = t_end
+            self._compute_times[
+                f"trans_matrix_lin_{lamda}_{t_s}_rev{reverse_time}"] = t_end
 
             logger.info(f"Finished in {t_end}s")
         logger.info(
             f"Transition matrices already computed for lamda={lamda}"
         )
 
-    def _compute_stationary_transition(self, t_start=None,
-                                               t_stop=None,
-                                               use_sparse_stoch=True):
+    def _compute_stationary_transition(self,
+                                       t_start=None,
+                                       t_stop=None,
+                                       use_sparse_stoch=True):
 
         if not hasattr(self, "laplacians"):
             self.compute_laplacian_matrices(t_start=t_start,
@@ -1757,65 +1804,67 @@ class ContTempNetwork:
 
         t0 = time.time()
         for k in range(len(self.laplacians)):
-            if not k%1000:
+            if not k % 1000:
                 logger.info(f"{k} over {len(self.laplacians)}")
                 logger.info(f"{time.time()-t0:.2f}s")
 
             if use_sparse_stoch:
-                self._stationary_trans.append(\
-                  sparse_stationary_trans(I - self.laplacians[k]))
+                self._stationary_trans.append(
+                    sparse_stationary_trans(I - self.laplacians[k])
+                )
 
             else:
-                self._stationary_trans.append(\
-                      compute_stationary_transition(I - self.laplacians[k]))
+                self._stationary_trans.append(
+                    compute_stationary_transition(I - self.laplacians[k])
+                )
 
-
-        t_end = time.time()-t0
+        t_end = time.time() - t0
 
         self._compute_times["_stationary_trans"] = t_end
 
         logger.info(f"Stationary transition matrices computation took {t_end}s")
 
-
-
-
     def _merge_overlapping_events(self):
-        """Merge temporally overlapping undirected event between each pair of nodes.
-            
         """
-        events_to_keep = np.ones(self.events_table.shape[0],dtype=bool)
+        Merge temporally overlapping undir. event between each pair of nodes.
+        """
+        events_to_keep = np.ones(self.events_table.shape[0], dtype=bool)
 
         A = self.compute_static_adjacency_matrix()
 
         # loop over nodes
         for i, n1 in enumerate(self.node_array):
 
-            for n2 in (A[n1,:] > 0).nonzero()[1]:
+            for n2 in (A[n1, :] > 0).nonzero()[1]:
 
+                mask_12 = np.logical_and(
+                    self.events_table.source_nodes.values == n1,
+                    self.events_table.target_nodes.values == n2
+                )
 
-                mask_12 = np.logical_and(self.events_table.source_nodes.values == n1,
-                                         self.events_table.target_nodes.values == n2)
-
-                mask_21 = np.logical_and(self.events_table.source_nodes.values == n2,
-                                         self.events_table.target_nodes.values == n1)
-
-                #sort by starting times
-                evs = self.events_table.loc[np.logical_or(mask_12, mask_21)].\
-                                sort_values(by=["starting_times", "ending_times"])
+                mask_21 = np.logical_and(
+                    self.events_table.source_nodes.values == n2,
+                    self.events_table.target_nodes.values == n1
+                )
+                # sort by starting times
+                evs = self.events_table.loc[
+                    np.logical_or(mask_12, mask_21)
+                ].sort_values(by=["starting_times", "ending_times"])
 
                 evs_list = list(evs.itertuples())
 
                 # event to compare
                 ev1 = evs_list[0]
                 merged = 0
-                for k in range(1,len(evs_list)):
+                for k in range(1, len(evs_list)):
                     ev2 = evs_list[k]
-                    # if ev2 overlaps with ev1, merge them, otherwise ev2 becomes
-                    # ev1
+                    # if ev2 overlaps with ev1, merge them
+                    # otherwise ev2 becomes ev1
                     if ev2.starting_times < ev1.ending_times:
-                        #merge
+                        # merge
                         events_to_keep[ev2.Index] = False
-                        self.events_table.loc[ev1.Index,"ending_times"] = ev2.ending_times
+                        self.events_table.loc[
+                            ev1.Index, "ending_times"] = ev2.ending_times
                         ev1._replace(ending_times=ev2.ending_times)
                         merged += 1
                     else:
@@ -1842,40 +1891,41 @@ class ContTempNetwork:
         return num_merged
 
     def _compute_delta_trans_mat(self, lamda, round_zeros=True, tol=1e-8):
-        """Comptes and put in a attribute `delta_inter_T` the matrix differences
-        between each consecutive inter_T.
-            
-        self.delta_inter_T[lamda][k] = self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
-            
+        """Comptes and  matrix differences between each consecutive inter_T.
+
+        The computed difference is put in a attribute `delta_inter_T` the
+        self.delta_inter_T[
+            lamda][k] = self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
+
         The length of self.delta_inter_T[lamda] is len(self.inter_T[lamda]) - 1
-            
+
         """
         if hasattr(self, "inter_T") and lamda in self.inter_T.keys():
-
 
             if not hasattr(self, "delta_inter_T"):
                 self.delta_inter_T = dict()
 
             if lamda not in self.delta_inter_T.keys():
 
-                self.delta_inter_T[lamda] = [self.inter_T[lamda][k+1] - \
-                                                  self.inter_T[lamda][k] for k in \
-                                                  range(len(self.inter_T[lamda])-1)]
+                self.delta_inter_T[lamda] = [
+                    self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
+                    for k in range(len(self.inter_T[lamda])-1)
+                ]
 
                 if round_zeros:
                     for M in self.delta_inter_T[lamda]:
                         set_to_zeroes(M, tol=tol)
 
             else:
+                # TODO: switch to logger
                 print("PID ", os.getpid(), " : ",
                       f"delta_inter_T has already been computed with lamda={lamda}")
 
         else:
+            # TODO: switch to logger
             print("PID ", os.getpid(), " : ", "delta_inter_T has not been computed")
 
-
         if hasattr(self, "inter_T_lin") and lamda in self.inter_T_lin.keys():
-
 
             if not hasattr(self, "delta_inter_T_lin"):
                 self.delta_inter_T_lin = dict()
@@ -1886,75 +1936,79 @@ class ContTempNetwork:
 
                 for t_s in self.inter_T_lin[lamda].keys():
 
-                    self.delta_inter_T_lin[lamda][t_s] = [self.inter_T_lin[lamda][t_s][k+1] - \
-                                                      self.inter_T_lin[lamda][t_s][k] for k in \
-                                                      range(len(self.inter_T_lin[lamda][t_s])-1)]
+                    self.delta_inter_T_lin[lamda][t_s] = [
+                        self.inter_T_lin[
+                            lamda][t_s][k+1] - self.inter_T_lin[lamda][t_s][k]
+                        for k in range(len(self.inter_T_lin[lamda][t_s])-1)
+                    ]
 
                     if round_zeros:
                         for M in self.delta_inter_T_lin[lamda][t_s]:
                             set_to_zeroes(M, tol=tol)
 
             else:
+                # TODO: switch to logger
                 print("PID ", os.getpid(), " : ",
                       f"delta_inter_T_lin has already been computed with lamda={lamda}")
 
         else:
+            # TODO: switch to logger
             print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
 
 
 class ContTempInstNetwork(ContTempNetwork):
-    """Continuous time temporal network with instantaneous events
-    
-        This is a subclass of ContTempNetwork for continuous time temporal
-        networks where events do not have a duration.
-        
-        In practice, it is implemented as a ContTempNetwork where 
-        ending_times_k = starting_times_k+1 and where durations (tau_k) = 1  
-        for all events for the computation of the transition matrices.
-        
+    """Continuous time temporal network with instantaneous events.
+
+    This is a subclass of ContTempNetwork for continuous time temporal
+    networks where events do not have a duration.
+
+    In practice, it is implemented as a ContTempNetwork where 
+    ending_times_k = starting_times_k+1 and where durations (tau_k) = 1  
+    for all events for the computation of the transition matrices.
+
     Parameters
     ----------
     source_nodes: Python list
-        List of source nodes of each event, ordered according to `starting_times`
-    
+        List of source nodes of each event, ordered according to
+        `starting_times`.
+
     target_nodes: Python list
         List of target nodes of each event
-        
+
     starting_times: Python list
         List of starting times of each event
-                
+
     relabel_nodes: boolean
         Relabel nodes from 0 to num_nodes and save original labels in 
         self.node_to_label_dict. Default is `True`
-        
+
     reset_event_table_index: boolean
         Reset the index of the `events_table` DataFrame. Default is `True`.
-        
+
     node_to_label_dict: Python dict
         If `relabel_nodes` is `False, this can be used to save the original labels
         of the nodes.
-                
+
     events_table: Pandas Dataframe
         Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
         and 'ending_times' and index corresponding to event index. Used for
         instantiating a new ConTempNetwork from the event_table of an other one.
-    
-    
     """
 
-    def __init__(self, source_nodes=[],
-                        target_nodes=[],
-                        starting_times=[],
-                        relabel_nodes=True,
-                        reset_event_table_index=True,
-                        node_to_label_dict=None,
-                        events_table=None):
+    def __init__(self,
+                 source_nodes=[],
+                 target_nodes=[],
+                 starting_times=[],
+                 relabel_nodes=True,
+                 reset_event_table_index=True,
+                 node_to_label_dict=None,
+                 events_table=None):
 
         if events_table is None:
 
-
             utimes = np.unique(starting_times)
-            end_times_map = {utimes[k] : utimes[k+1] for k in range(utimes.size-1)}
+            end_times_map = {utimes[k]: utimes[k+1]
+                             for k in range(utimes.size - 1)}
             end_times_map[utimes[-1]] = utimes[-1]+1
 
             ending_times = [end_times_map[t] for t in starting_times]
@@ -1969,23 +2023,21 @@ class ContTempInstNetwork(ContTempNetwork):
                              merge_overlapping_events=False,
                              events_table=events_table)
 
-
         self.events_table["durations"] = [1.0]*self.events_table.shape[0]
         self.instantaneous_events = True
 
+    def compute_laplacian_matrices(self,
+                                   t_start=None,
+                                   t_stop=None,
+                                   save_adjacencies=False):
+        """Compute all laplacian matrices and saves them in self.laplacians.
 
-
-
-    def compute_laplacian_matrices(self, t_start=None,
-                                   t_stop=None, save_adjacencies=False):
-        """Compute all laplacian matrices and saves them in self.laplacians
-        
         Computes from the first time index before or equal to t_start until
         the time index before t_stop.
-            
+
         laplacians are computed from self.times[self._k_start_laplacians]
         until self.times[self._k_stop_laplacians-1]
-            
+
         The laplacian at step k, is the random walk laplacian
         between times[k] and times[k+1]
         """
@@ -1998,17 +2050,16 @@ class ContTempInstNetwork(ContTempNetwork):
         A = dok_matrix((self.num_nodes, self.num_nodes),
                        dtype=np.float64)
 
-        #identity
+        # identity
         I = eye(self.num_nodes,
                 dtype=np.float64).tocsc()
 
-        #degree array
+        # degree array
         degrees = np.zeros(self.num_nodes, dtype=np.float64)
         # inverse degrees diagonal matrix
         Dm1 = I.copy()
         # self loop matrix
         S = I.copy()
-
 
         self.laplacians = []
         if save_adjacencies:
@@ -2032,16 +2083,18 @@ class ContTempInstNetwork(ContTempNetwork):
 
         t0 = time.time()
 
-
         # time grid for this time range
-        time_grid_range = self.time_grid.loc[\
-                  (self.time_grid.index.get_level_values("times") >= \
-                       self._t_start_laplacians) & \
-                  (self.time_grid.index.get_level_values("times") < \
-                       self._t_stop_laplacians)]
+        time_grid_range = self.time_grid.loc[(
+            self.time_grid.index.get_level_values(
+                "times") >= self._t_start_laplacians
+        ) & (
+            self.time_grid.index.get_level_values(
+                "times") < self._t_stop_laplacians
+        )]
 
-        for k, (tk, time_ev) in enumerate(time_grid_range.groupby(level="times")):
-            if not k%1000:
+        for k, (tk, time_ev) in enumerate(
+                time_grid_range.groupby(level="times")):
+            if not k % 1000:
                 logger.info(
                     f"{k} over "
                     f"{self._k_stop_laplacians - self._k_start_laplacians}"
@@ -2052,10 +2105,12 @@ class ContTempInstNetwork(ContTempNetwork):
             # starting or ending events
             is_starts = time_ev.is_start.values
 
-            events_k = self.events_table.loc[meet_id,
-                              ["source_nodes","target_nodes"]].astype(np.int64)
+            events_k = self.events_table.loc[
+                meet_id,
+                ["source_nodes", "target_nodes"]
+            ].astype(np.int64)
 
-            #update instantaneous matrices
+            # update instantaneous matrices
             for event, is_start in zip(events_k.itertuples(), is_starts):
                 # unweighted, undirected
                 if is_start:
@@ -2069,16 +2124,19 @@ class ContTempInstNetwork(ContTempNetwork):
                         degrees[event.target_nodes] += 1
 
                         S.data[event.source_nodes] = 0
-                        Dm1.data[event.source_nodes] = 1/degrees[event.source_nodes]
+                        Dm1.data[
+                            event.source_nodes
+                        ] = 1 / degrees[event.source_nodes]
 
                         S.data[event.target_nodes] = 0
-                        Dm1.data[event.target_nodes] = 1/degrees[event.target_nodes]
+                        Dm1.data[
+                            event.target_nodes
+                        ] = 1 / degrees[event.target_nodes]
 
                 else:
-                    #end of meeting
+                    # end of meeting
                     # no need for instantaneous events
                     pass
-
 
             # Laplacian L(tk)
             Acsc = A.tocsc()
@@ -2099,84 +2157,93 @@ class ContTempInstNetwork(ContTempNetwork):
         self._compute_times["laplacians"] = t_end
         logger.info(f"Finished in {t_end}")
 
+    def compute_inter_transition_matrices(self,
+                                          lamda=None,
+                                          t_start=None,
+                                          t_stop=None,
+                                          use_sparse_stoch=False,
+                                          dense_expm=True):
+        """Compute interevent transition matrices.
 
+        T_k(lamda) = expm(-lamda*L_k).
 
-
-    def compute_inter_transition_matrices(self, lamda=None, t_start=None, t_stop=None,
-                                    use_sparse_stoch=False,
-                                    dense_expm=True):
-        """Compute interevent transition matrices as T_k(lamda) = expm(-lamda*L_k).
-        
         Here, for instantaneous events, all events are assumed to have the 
         same duration of unit time (i.e. tau_k =1 for all k).
-        
+
         The transition matrix T_k is saved in `self.inter_T[lamda][k]`,
         where self.inter_T is a dictionary with lamda as keys and
         lists of transition matrices as values.
-            
+
         will compute from self.times[self._k_start_laplacians]
         until self.times[self._k_stop_laplacians-1]
-            
+
         the transition matrix at step k, is the probability transition matrix
-        between times[k] and times[k+1]   
+        between times[k] and times[k+1].
         """
-        super().compute_inter_transition_matrices(lamda=lamda,
-                                                  t_start=t_start,
-                                                  t_stop=t_stop,
-                                                  fix_tau_k=True,
-                                                  use_sparse_stoch=use_sparse_stoch,
-                                                  dense_expm=dense_expm)
+        super().compute_inter_transition_matrices(
+            lamda=lamda,
+            t_start=t_start,
+            t_stop=t_stop,
+            fix_tau_k=True,
+            use_sparse_stoch=use_sparse_stoch,
+            dense_expm=dense_expm
+        )
 
+    def compute_lin_inter_transition_matrices(self,
+                                              lamda=None,
+                                              t_start=None,
+                                              t_stop=None,
+                                              t_s=10,
+                                              use_sparse_stoch=False):
+        """Compute interevent transition matrices as a linear approximation.
 
-    def compute_lin_inter_transition_matrices(self, lamda=None, t_start=None, t_stop=None,
-                                    t_s=10,
-                                    use_sparse_stoch=False):
-        """Compute interevent transition matrices as a linear approximation of
-        expm(-lamda*L_k) based on the discrete time transition matrix.
-            
+        Approximation is done for expm(-lamda*L_k) based on the discrete time
+        transition matrix.
+
         Here, for instantaneous events, all events are assumed to have the 
         same duration of unit time (i.e. tau_k =1 for all k).
-            
+
         `t_s` is the time value for which the linear approximation reaches the
         stationary transition matrix (default is `t_s=10`).
-        
+
         The transition matrix T_k_lin is saved in 
         `self.inter_T_lin[lamda][t_s][k]`,
         where `self.inter_T_lin` is a dictionary with lamda as keys and
         lists of transition matrices as values.
-            
+
         will compute from self.times[self._k_start_laplacians]
         until self.times[self._k_stop_laplacians-1]
-            
+
         the transition matrix at step k, is the probability transition matrix
         between times[k] and times[k+1]
-            
         """
-        super().compute_lin_inter_transition_matrices(\
-                                                lamda=lamda,
-                                                t_start=t_start,
-                                                t_stop=t_stop,
-                                                t_s=t_s,
-                                                fix_tau_k=True,
-                                                use_sparse_stoch=use_sparse_stoch)
+        super().compute_lin_inter_transition_matrices(
+            lamda=lamda,
+            t_start=t_start,
+            t_stop=t_stop,
+            t_s=t_s,
+            fix_tau_k=True,
+            use_sparse_stoch=use_sparse_stoch
+        )
 
 
-def lin_approx_trans_matrix(T, t, Pi=None,t_s=10):
-    r"""Linear approximation of a continuous time transition matrix :math:`T(t) = e^{-tL}` based on
-    an interpolation between :math:`I` and :math:`T` and 
-    a second interpolation between :math:`T` and :math:`\Pi`, the transition 
-    matrix at stationarity.
-        
+def lin_approx_trans_matrix(T, t, Pi=None, t_s=10):
+    r"""Linear approximation of the continuous time transition matrix.
+
+    :math:`T(t) = e^{-tL}` based on an interpolation between :math:`I` and
+    :math:`T` and a second interpolation between :math:`T` and :math:`\Pi`,
+    the transition matrix at stationarity.
+
     For each connected component of the graph, :math:`T(t)` is approximated as
-        
+
     .. math::
         \tilde{T}(t) & = & (1-t) I + tT \text{ for } 0\leq t \leq 1 \\
             \tilde{T}(t) & = & \frac{1}{1-t_s}[T(t-t_s) + \Pi(1-t)] \text{ for } 1 < t \leq t_s \\
             \tilde{T}(t) & = & \Pi \text{ for } t > t_s
-            
-    where  :math:`t_s` is the mixing time of the random walk (default is `t_s=10`).
-            
-            
+
+    where  :math:`t_s` is the mixing time of the random walk
+    (default is `t_s=10`).
+
     Parameters
     ----------
         T : scipy.sparse csr matrix
@@ -2188,18 +2255,18 @@ def lin_approx_trans_matrix(T, t, Pi=None,t_s=10):
         If None, it will be computed from T.
     t_s : float
         Stationarity time at which the interpolation reaches Pi.
-            
+
     Returns
     -------
         Tapprox : scipy.sparse.csr matrix
         Linear approximation of expmL at time t.
-            
+
     """
     assert isspmatrix_csr(T)
 
     num_nodes = T.shape[0]
     I = eye(num_nodes,
-                dtype=np.float64, format="csr")
+            dtype=np.float64, format="csr")
 
     if t < 0:
         raise ValueError("t must be >= 0")
@@ -2231,7 +2298,7 @@ def compute_stationary_transition(T):
     -------
         Pi : scipy.sparse.csr matrix
         Stationary transition matrix.
-            
+
     """
     num_nodes = T.shape[0]
 
@@ -2239,10 +2306,12 @@ def compute_stationary_transition(T):
     T.eliminate_zeros()
     T.sort_indices()
 
-    n_comp, comp_labels = connected_components(T,directed=False)
+    n_comp, comp_labels = connected_components(T, directed=False)
     comp_sizes = np.bincount(comp_labels)
-    cmp_to_indices = {cmp : (comp_labels == cmp).nonzero()[0] for \
-                          cmp in range(n_comp)}
+    cmp_to_indices = {
+        cmp: (comp_labels == cmp).nonzero()[0]
+        for cmp in range(n_comp)
+    }
 
     # constructors for sparse array
     data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
@@ -2259,42 +2328,48 @@ def compute_stationary_transition(T):
     for row in range(num_nodes):
         cmp = comp_labels[row]
         cmp_degs = degs[cmp_to_indices[cmp]]
-        data[data_ind:data_ind+comp_sizes[cmp]] = \
-                                                cmp_degs/cmp_degs.sum()
-        indices[data_ind:data_ind+comp_sizes[cmp]] = \
-                        cmp_to_indices[cmp]
+        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_degs/cmp_degs.sum()
+        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_to_indices[cmp]
         indptr[row] = data_ind
         data_ind += comp_sizes[cmp]
     indptr[num_nodes] = data_ind
 
     # Stationary transition matrix
 
-    return csr_matrix((data, indices, indptr), shape=(num_nodes,num_nodes),
-                    dtype=np.float64)
+    return csr_matrix(
+        (data, indices, indptr),
+        shape=(num_nodes, num_nodes),
+        dtype=np.float64
+    )
 
-def compute_subspace_expm(A, n_comp=None, comp_labels=None,
-                           thresh_ratio=None,
-                           normalize_rows=True):
-    """Compute the exponential matrix of `A` by applying expm on each connected
-    subgraphs defined by A and recomposing it to return expm(A).
+
+def compute_subspace_expm(A,
+                          n_comp=None,
+                          comp_labels=None,
+                          thresh_ratio=None,
+                          normalize_rows=True):
+    """Compute the exponential matrix of `A`.
+
+    The computation is done by applying expm on each connected subgraphs
+    defined by A and recomposing it to return expm(A).
 
     Parameters
     ----------
         A : scipy.sparse.csc_matrix
-        
+
     thresh_ratio: float, optional.
         Threshold ratio used to trim negligible values in the resulting matrix.
         Values smaller than `max(expm(A))/thresh_ratio` are set to 
         zero. Default is None.
     normalize_rows: bool, optional.
         Whether rows of the resulting matrix are normalized to sum to 1.
-        
+
 
     Returns
     -------
         expm(A) : scipy.sparse.csr_matrix
         matrix exponential of A
-            
+
     """
     num_nodes = A.shape[0]
 
@@ -2303,10 +2378,11 @@ def compute_subspace_expm(A, n_comp=None, comp_labels=None,
     A.sort_indices()
 
     if (n_comp is None) or (comp_labels is None):
-        n_comp, comp_labels = connected_components(A,directed=False)
+        n_comp, comp_labels = connected_components(A, directed=False)
     comp_sizes = np.bincount(comp_labels)
-    cmp_indices = [(comp_labels == cmp).nonzero()[0] for \
-                          cmp in range(n_comp)]
+    cmp_indices = [
+        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
+    ]
 
     logger.info(f"subspace_expm with {n_comp} components")
 
@@ -2327,7 +2403,7 @@ def compute_subspace_expm(A, n_comp=None, comp_labels=None,
             f"Computing component {i} over {n_comp}, with size {cmp_ind.size}"
         )
 
-        subnets_expms.append(expm(A[cmp_ind,:][:,cmp_ind]).toarray())
+        subnets_expms.append(expm(A[cmp_ind, :][:, cmp_ind]).toarray())
 
     # reconstruct csr sparse matrix
     logger.info("Reconstructing expm mat")
@@ -2337,7 +2413,7 @@ def compute_subspace_expm(A, n_comp=None, comp_labels=None,
         cmp_expm = subnets_expms[cmp]
         sub_expm_row, = np.where(cmp_indices[cmp] == row)
 
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row,:]
+        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
 
         indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
 
@@ -2347,18 +2423,19 @@ def compute_subspace_expm(A, n_comp=None, comp_labels=None,
 
     indptr[num_nodes] = data_ind
 
-    expmA = csr_matrix((data, indices, indptr), shape=(num_nodes,num_nodes),
-                    dtype=np.float64)
+    expmA = csr_matrix(
+        (data, indices, indptr),
+        shape=(num_nodes, num_nodes),
+        dtype=np.float64
+    )
 
     if thresh_ratio is not None:
-        expmA.data[expmA.data<expmA.data.max()/thresh_ratio] = 0.0
+        expmA.data[expmA.data < expmA.data.max() / thresh_ratio] = 0.0
         expmA.eliminate_zeros()
     if normalize_rows:
         inplace_csr_row_normalize(expmA)
 
     return expmA
-
-
 
 
 def csc_row_normalize(X):
@@ -2374,97 +2451,89 @@ def csc_row_normalize(X):
 
     return X.tocsc()
 
+
 def find_spectral_gap(L):
     """L is assummed to be connected"""
     Lcsr = L.tocsr()
 
     I = eye(L.shape[0],
-                dtype=np.float64,
-                format="csr")
+            dtype=np.float64,
+            format="csr")
 
     degs = np.diff((I-Lcsr).indptr)
 
     D12 = diags(np.sqrt(degs),
                 format="csr")
     Dm12 = diags(1/np.sqrt(degs),
-                format="csr")
+                 format="csr")
 
     Lsym = D12 @ Lcsr @ Dm12
 
     # stationary solution
     Pi = np.vstack([degs/degs.sum()]*L.shape[0])
 
-
-    gap = eigsh(Lsym.toarray()-Pi,1,sigma=0,
-                return_eigenvectors=False)
+    gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
 
     return gap
 
 
 def remove_nnz_rowcol(L):
-    """Returns a CSC or CSR matrix where the indices with zero row and column
-    cols have been removed, also return an array of the indices of rows/columns
-    with non-zero values and the (linear) size of L.
-        
-        
+    """CSC or CSR matrix with removed zero row and columns
+
+    This also returns an array of the indices of rows/columns with non-zero
+    values and the (linear) size of L.
+
     Returns
     -------
     L_small, nonzero_indices, size
-        
+
     """
     # indicies with zero sum row AND col
-    nonzerosum_rowcols = ~np.logical_and(L.getnnz(1)==0,
-                                        L.getnnz(0)==0)
+    nonzerosum_rowcols = ~np.logical_and(L.getnnz(1) == 0,
+                                         L.getnnz(0) == 0)
 
     nonzero_indices, = (nonzerosum_rowcols).nonzero()
 
-    return L[nonzerosum_rowcols][:,nonzerosum_rowcols], nonzero_indices, L.shape[0]
-
-
-
+    return (
+        L[nonzerosum_rowcols][:, nonzerosum_rowcols],
+        nonzero_indices,
+        L.shape[0]
+    )
 
 
 def numpy_rebuild_nnz_rowcol(T_data,
-                              T_indices,
-                              T_indptr,
-                              zero_indices):
-    """Returns a CSR matrix (data,indices,rownnz, shape) built from the CSR
-    matrix T_small but with
-    added row-colums at zero_indicies (with 1 on the diagonal)
-        
-     
+                             T_indices,
+                             T_indptr,
+                             zero_indices):
+    """Returns a CSR matrix.
+
+    The CSR matrix (data, indices, rownnz, shape) is built from the CSR matrix
+    T_small but with added row-colums at zero_indicies (with 1 on the diagonal)
+
     """
     n_rows = T_indptr.size-1 + zero_indices.size
 
-    data = np.zeros(T_data.size+zero_indices.size,
-                                   dtype=np.float64)
-    indices = np.zeros(T_data.size+zero_indices.size,
-                                   dtype=np.int32)
-    indptr = np.zeros(n_rows+1,
-                                   dtype=np.int32)
-    new_col_inds = np.zeros(T_indptr.size-1,
-                                   dtype=np.int32)
-    Ts_indices = np.zeros(T_indices.size,
-                                   dtype=np.int32)
+    data = np.zeros(T_data.size+zero_indices.size, dtype=np.float64)
+    indices = np.zeros(T_data.size+zero_indices.size, dtype=np.int32)
+    indptr = np.zeros(n_rows+1, dtype=np.int32)
+    new_col_inds = np.zeros(T_indptr.size-1, dtype=np.int32)
+    Ts_indices = np.zeros(T_indices.size, dtype=np.int32)
     zero_set = set(zero_indices)
-
 
     # map col indices to new positions
     k = 0
     for i in range(n_rows):
         if i not in zero_set:
             new_col_inds[k] = i
-            k +=1
+            k += 1
 
-
-
-    for k,i in enumerate(T_indices):
+    for k, i in enumerate(T_indices):
         Ts_indices[k] = new_col_inds[i]
 
     row_id_small_t = -1
     data_ind = 0
     for row_id in range(n_rows):
-        row_id_small_t +=1
+        row_id_small_t += 1
         if row_id in zero_set:
             # add a row with just 1 on the diagonal
             data[data_ind] = 1.0
@@ -2481,24 +2550,25 @@ def numpy_rebuild_nnz_rowcol(T_data,
             num_data_row = row_end - row_start
 
             data[data_ind:data_ind+num_data_row] = T_data[row_start:row_end]
-            indices[data_ind:data_ind+num_data_row] = Ts_indices[row_start:row_end]
+            indices[
+                data_ind:data_ind+num_data_row] = Ts_indices[row_start:row_end]
             indptr[row_id+1] = indptr[row_id]+num_data_row
 
             data_ind += num_data_row
 
-
     return (data, indices, indptr, n_rows)
 
 
-
-
-def sparse_lapl_expm(L, fact, dense_expm=True, nproc=1,
+def sparse_lapl_expm(L,
+                     fact,
+                     dense_expm=True,
+                     nproc=1,
                      thresh_ratio=None,
                      normalize_rows=True):
-    """ 
-    computes the matrix exponential of a laplacian L, expm(-fact*L), 
-    considering only the non-zeros rows/cols of L
+    """Computes the matrix exponential of a laplacian L.
 
+    The exponential, expm(-fact*L), is computed considering only the non-zeros
+    rows/cols of L
 
     Parameters
     ----------
@@ -2513,24 +2583,23 @@ def sparse_lapl_expm(L, fact, dense_expm=True, nproc=1,
         number of parallel processes for dense_expm=False. The default is 1.
     thresh_ratio: float, optional.
         Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
+        Values smaller than `max(expm(A))/thresh_ratio` are set to
         zero. For dense_expm=False. Default is None.
     normalize_rows: bool, optional.
         Whether rows of the resulting matrix are normalized to sum to 1.
         For dense_expm=False
-        
+
     Returns
     -------
     expm(-fact*L) : `SparseStochMat` object
-        Transition matrix 
+        Transition matrix
 
     """
-    if L.getnnz() == 0: #zero matrix
+    if L.getnnz() == 0:  # zero matrix
         # return identity
         return SparseStochMat.create_diag(L.shape[0])
 
     L_small, nz_inds, size = remove_nnz_rowcol(L)
-
 
     if nproc == 1:
         expm_func = partial(compute_subspace_expm,
@@ -2545,7 +2614,6 @@ def sparse_lapl_expm(L, fact, dense_expm=True, nproc=1,
                             thresh_ratio=thresh_ratio,
                             normalize_rows=normalize_rows)
 
-
     if dense_expm:
         T_small = csr_matrix(expm(-fact*L_small.toarray()))
     else:
@@ -2553,7 +2621,7 @@ def sparse_lapl_expm(L, fact, dense_expm=True, nproc=1,
         # for large networks, try subspace expm
         L_small.eliminate_zeros()
         if L_small.shape[0] >= 1000:
-            n_comp, comp_labels = connected_components(L_small,directed=False)
+            n_comp, comp_labels = connected_components(L_small, directed=False)
             if n_comp > 1 :
                 T_small = expm_func(n_comp=n_comp,
                                     comp_labels=comp_labels)
@@ -2563,17 +2631,17 @@ def sparse_lapl_expm(L, fact, dense_expm=True, nproc=1,
             T_small = expm(-fact*L_small).tocsr()
 
     return SparseStochMat(size, T_small.data, T_small.indices,
-                            T_small.indptr, nz_inds)
+                          T_small.indptr, nz_inds)
 
 
 def sparse_lin_approx(T, t, Pi=None, t_s=10, nz_rowcols=None):
-    """Linear approximation of a continuous time transition matrix
-        for sparse transition matrices.
-        
-        Performs computation using `lin_approx_trans_matrix` 
-        on a smallest L matrices with no zeros 
-        row/cols and returns a SparseStochMat 
-    
+    """Linear approximation of a continuous time transition matrix.
+
+    This is desgned for sparse transition matrices.
+
+    Performs computation using `lin_approx_trans_matrix` 
+    on a smallest L matrices with no zeros 
+    row/cols and returns a SparseStochMat 
 
     Parameters
     ----------
@@ -2582,12 +2650,14 @@ def sparse_lin_approx(T, t, Pi=None, t_s=10, nz_rowcols=None):
     t : float
         Interpolation time.
     Pi : scipcy sparse csr matrix, optional
-        Transition matrix at stationarity. Same shape that T. 
+        Transition matrix at stationarity. Same shape that T.
         The default is None, i.e. computed from T.
     t_s : float, optional
-        Stationarity time at which the interpolation reaches Pi. The default is 10.
+        Stationarity time at which the interpolation reaches Pi.
+        The default is 10.
     nz_rowcols : ndarray of int32
-        indices of T of nonzero offdiagonal rows/cols to build a SparseStochMat 
+        indices of T of nonzero offdiagonal rows/cols to build a
+        SparseStochMat.
 
     Returns
     -------
@@ -2602,18 +2672,19 @@ def sparse_lin_approx(T, t, Pi=None, t_s=10, nz_rowcols=None):
     elif isinstance(Pi, SparseStochMat):
         Pi_small = Pi.T_small
     elif isinstance(Pi, csr_matrix):
-        Pi_small = SparseStochMat.from_full_csr_matrix(Pi, nz_rowcols=nz_rowcols).T_small
+        Pi_small = SparseStochMat.from_full_csr_matrix(
+            Pi, nz_rowcols=nz_rowcols
+        ).T_small
     else:
         raise TypeError("Pi must be a csr or SparseStochMat.")
 
     Tapprox_small = lin_approx_trans_matrix(T_ss.T_small,
-                                        t=t,
-                                        Pi=Pi_small,
-                                        t_s=t_s)
+                                            t=t,
+                                            Pi=Pi_small,
+                                            t_s=t_s)
 
     return SparseStochMat(T_ss.size, Tapprox_small.data, Tapprox_small.indices,
-                            Tapprox_small.indptr, T_ss.nz_rowcols)
-
+                          Tapprox_small.indptr, T_ss.nz_rowcols)
 
 
 def sparse_stationary_trans(T):
@@ -2633,30 +2704,35 @@ def sparse_stationary_trans(T):
     Pi_small = compute_stationary_transition(T_ss.T_small)
 
     return SparseStochMat(T_ss.size, Pi_small.data, Pi_small.indices,
-                            Pi_small.indptr, T_ss.nz_rowcols)
+                          Pi_small.indptr, T_ss.nz_rowcols)
 
 
 def set_to_ones(Tcsr, tol=1e-8):
-    """In place replaces ones in sparse matrix that are, within the tolerence, close
-    to ones with actual ones
+    """In-place replacement of ones in sparse matrix within the tolerence.
+
+    Replace values within a tolerance to one with actual ones.
     """
     Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
 
 
 def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
-    """In place replaces zeroes in sparse matrix that are, within the tolerence, close
-    to zero with actual zeroes.
+    """In-place replacement of zeroes in sparse matrix within a tolerance.
+
+    Replace values that are, within the tolerence, close to zero with actual
+    zeroes.
+
     If tol is None, does nothing
     """
     if tol is not None:
         if isinstance(Tcsr, SparseStochMat):
             Tcsr.set_to_zeroes(tol, relative=relative)
-        elif isinstance(Tcsr, (csr_matrix,csc_matrix)):
+        elif isinstance(Tcsr, (csr_matrix, csc_matrix)):
             if Tcsr.data.size > 0:
                 if relative:
                     # tol = tol*np.abs(Tcsr.data).max()
-                    # finding the max of the absolute value without making a copy of the whole array
-                    tol = tol*np.abs([Tcsr.data.min(),Tcsr.data.max()]).max()
+                    # finding the max of the absolute value without making a
+                    # copy of the whole array
+                    tol = tol*np.abs([Tcsr.data.min(), Tcsr.data.max()]).max()
 
                 if use_absolute_value:
                     Tcsr.data[np.abs(Tcsr.data) <= tol] = 0
