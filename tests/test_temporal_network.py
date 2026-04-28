@@ -141,13 +141,13 @@ class TestTempNetwork:
             temp_network = ContTempNetwork(
                 events_table=network.events_table,
                 use_as_is=True)
-            assert temp_network._events_table.equals(network.events_table)
+            assert temp_network.events_table.equals(network.events_table)
             # loading a data frame will overwrite the IDs
             with pytest.raises(AssertionError):
                 temp_network = ContTempNetwork(
                     events_table=network.events_table
                 )
-                assert temp_network._events_table.equals(network.events_table)
+                assert temp_network.events_table.equals(network.events_table)
 
     def test_init_with_source_and_target_nodes(self):
         for network in self.networks:
@@ -221,12 +221,12 @@ class TestTempNetwork:
             # check if the use as is property is carreid along
             assert not temp_network._use_as_is
             assert temp_network_ua._use_as_is
-            # for the converted network, we expect the _events_table to differ
+            # for the converted network, we expect the events_table to differ
             # essential columns of the internal df
-            _mandatory_cols = temp_network._events_table[
+            _mandatory_cols = temp_network.events_table[
                 [col for col in temp_network._MANDATORY]
             ]
-            _mandatory_cols_ua = temp_network_ua._events_table[
+            _mandatory_cols_ua = temp_network_ua.events_table[
                 [col for col in temp_network_ua._MANDATORY]
             ]
             # essential columns of the property df
@@ -248,12 +248,12 @@ class TestTempNetwork:
                     nw_et[colname]
                 )
                 # for the use as is, also the internal should match
-                assert temp_network_ua._events_table[colname].equals(
+                assert temp_network_ua.events_table[colname].equals(
                     nw_et[colname]
                 )
                 with pytest.raises(AssertionError):
                     # the internal df should not match if not ua
-                    assert temp_network._events_table[colname].equals(
+                    assert temp_network.events_table[colname].equals(
                         nw_et[colname]
                     )
 
@@ -262,8 +262,8 @@ class TestTempNetwork:
             # load the temp network
             loaded_network = get_loaded_network(network=network)
             assert isinstance(loaded_network, ContTempNetwork)
-            sn_et = temp_network._events_table
-            ln_et = loaded_network._events_table
+            sn_et = temp_network.events_table
+            ln_et = loaded_network.events_table
             pd.testing.assert_series_equal(sn_et.source_nodes,
                                            ln_et.source_nodes)
             pd.testing.assert_series_equal(sn_et.target_nodes,
@@ -325,8 +325,8 @@ class TestTempNetwork:
         inst_temp_network.compute_laplacian_matrices()
         print(f"{list(map(lambda x: x.toarray(), inst_temp_network.laplacians))=}")
         # check if the internal dfs are the same
-        pd.testing.assert_frame_equal(temp_network._events_table,
-                                      inst_temp_network._events_table)
+        pd.testing.assert_frame_equal(temp_network.events_table,
+                                      inst_temp_network.events_table)
         # check if the laplacians are the same
         for i, laplacian in enumerate(temp_network.laplacians):
             np.testing.assert_equal(laplacian.toarray(),
