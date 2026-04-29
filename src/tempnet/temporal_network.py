@@ -108,6 +108,23 @@ class ContTempNetwork:
     # for instantaneous event this is the duration to use
     _DEFAULT_DURATION = 1
 
+    def _build_label_maps(self, source_iter, target_iter):
+        """Build label<->node id dicts from two iterables of node labels.
+
+        Sets `self.label_to_node_dict` (original label -> contiguous
+        0..N-1 node id) and `self.node_to_label_dict` (its inverse).
+        Does not modify the input iterables.
+        """
+        all_nodes = set()
+        all_nodes.update(source_iter)
+        all_nodes.update(target_iter)
+        self.label_to_node_dict = {
+            m: n for n, m in enumerate(sorted(all_nodes))
+        }
+        self.node_to_label_dict = {
+            n: m for m, n in self.label_to_node_dict.items()
+        }
+
     def __init__(self, *,
                  source_nodes=[],
                  target_nodes=[],
@@ -128,16 +145,7 @@ class ContTempNetwork:
             if relabel_nodes:
                 # relabel nodes from 0 to num_nodes and save
                 # original labels in self.node_to_label_dict
-                all_nodes = set()
-                all_nodes.update(source_nodes)
-                all_nodes.update(target_nodes)
-                self.label_to_node_dict = {
-                    m: n for n, m in enumerate(sorted(all_nodes))
-                }
-                self.node_to_label_dict = {
-                    n: m for m, n in self.label_to_node_dict.items()
-                }
-
+                self._build_label_maps(source_nodes, target_nodes)
                 source_nodes = [self.label_to_node_dict[n]
                                 for n in source_nodes]
                 target_nodes = [self.label_to_node_dict[n]
@@ -185,7 +193,9 @@ class ContTempNetwork:
                         f"The file at {events_table} could not be parsed."
                     )
             elif isinstance(events_table, pd.DataFrame):
-                self.events_table = events_table
+                # copy to avoid mutating caller's DataFrame when relabeling
+                self.events_table = events_table.copy() if relabel_nodes \
+                    else events_table
             else:
                 raise ValueError(
                     "`events_table` must be a pandas DataFrame or the"
@@ -194,15 +204,16 @@ class ContTempNetwork:
                 )
             reset_event_table_index = False
             if relabel_nodes:
-                all_nodes = set()
-                all_nodes.update(events_table.source_nodes.tolist())
-                all_nodes.update(events_table.target_nodes.tolist())
-                self.label_to_node_dict = {
-                    m: n for n, m in enumerate(sorted(all_nodes))
-                }
-                self.node_to_label_dict = {
-                    n: m for m, n in self.label_to_node_dict.items()
-                }
+                self._build_label_maps(
+                    self.events_table[self._SOURCES],
+                    self.events_table[self._TARGETS],
+                )
+                self.events_table[self._SOURCES] = self.events_table[
+                    self._SOURCES
+                ].map(self.label_to_node_dict)
+                self.events_table[self._TARGETS] = self.events_table[
+                    self._TARGETS
+                ].map(self.label_to_node_dict)
             else:
                 self.node_to_label_dict = node_to_label_dict
 
@@ -2049,23 +2060,41 @@ class ContTempInstNetwork(ContTempNetwork):
                  events_table=None):
 
         if events_table is None:
-
             utimes = np.unique(starting_times)
             end_times_map = {utimes[k]: utimes[k+1]
                              for k in range(utimes.size - 1)}
             end_times_map[utimes[-1]] = utimes[-1]+1
 
             ending_times = [end_times_map[t] for t in starting_times]
+        else:
+            # Instant networks store events_tables without an ending_times
+            # column. The parent constructor's events_table branch requires
+            # ending_times, so we synthesize it here. For CSV inputs we read
+            # the file first, then forward a DataFrame to the parent.
+            if isinstance(events_table, (str, Path)):
+                events_table = pd.read_csv(str(events_table))
+            if isinstance(events_table, pd.DataFrame) and \
+                    self._ENDINGS not in events_table.columns:
+                events_table = events_table.copy()
+                starts = events_table[self._STARTS].to_numpy()
+                utimes = np.unique(starts)
+                end_times_map = {utimes[k]: utimes[k+1]
+                                 for k in range(utimes.size - 1)}
+                end_times_map[utimes[-1]] = utimes[-1]+1
+                events_table[self._ENDINGS] = [
+                    end_times_map[t] for t in starts
+                ]
+            ending_times = []  # ignored when events_table is provided
 
-            super().__init__(source_nodes=source_nodes,
-                             target_nodes=target_nodes,
-                             starting_times=starting_times,
-                             ending_times=ending_times,
-                             relabel_nodes=relabel_nodes,
-                             reset_event_table_index=reset_event_table_index,
-                             node_to_label_dict=node_to_label_dict,
-                             merge_overlapping_events=False,
-                             events_table=events_table)
+        super().__init__(source_nodes=source_nodes,
+                         target_nodes=target_nodes,
+                         starting_times=starting_times,
+                         ending_times=ending_times,
+                         relabel_nodes=relabel_nodes,
+                         reset_event_table_index=reset_event_table_index,
+                         node_to_label_dict=node_to_label_dict,
+                         merge_overlapping_events=False,
+                         events_table=events_table)
 
         self.events_table["durations"] = [1.0]*self.events_table.shape[0]
         self.instantaneous_events = True
