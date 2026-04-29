@@ -23,6 +23,7 @@ import gzip
 import os
 import pickle
 import time
+from dataclasses import dataclass
 from functools import partial
 
 import numpy as np
@@ -49,6 +50,18 @@ from .logger import get_logger
 
 # get the logger
 logger = get_logger()
+
+
+@dataclass
+class _LaplacianState:
+    """Mutable buffers shared by ``compute_laplacian_matrices`` and its
+    dynamics-specific hooks (``_laplacian_prewarm``,
+    ``_laplacian_on_event_end``, ``_laplacian_step_end``).
+    """
+    A: object        # adjacency buffer (lil_matrix or dok_matrix)
+    S: object        # self-loop diagonal (csc)
+    Dm1: object      # inverse-degree diagonal (csc)
+    degrees: np.ndarray
 
 
 class ContTempNetwork:
@@ -1256,9 +1269,9 @@ class ContTempNetwork:
         if not hasattr(self, "time_grid"):
             self._compute_time_grid()
 
-        # instantaneous adjacency matrix
-        A = lil_matrix((self.num_nodes, self.num_nodes),
-                       dtype=np.float64)
+        # instantaneous adjacency matrix (subclasses may override the
+        # buffer type, e.g. dok_matrix for pulse dynamics)
+        A = self._make_adjacency_buffer(self.num_nodes)
 
         # identity
         I = eye(self.num_nodes,
@@ -1270,6 +1283,8 @@ class ContTempNetwork:
         Dm1 = I.copy()
         # self loop matrix
         S = I.copy()
+
+        state = _LaplacianState(A=A, S=S, Dm1=Dm1, degrees=degrees)
 
         self.laplacians = []
         if save_adjacencies:
@@ -1293,45 +1308,9 @@ class ContTempNetwork:
 
         t0 = time.time()
 
-        if self._k_start_laplacians > 0:
-            # initial conditions, we have to find the adjacency mat just before
-            # _k_start_laplacians.
-
-            t_km1 = self.times[self._k_start_laplacians-1]
-
-            # find events that have started before or at t_k-1
-            # and were still occuring at t_k-1
-            mask_ini = (
-                self.events_table.starting_times <= t_km1
-            ) & (
-                self.events_table.ending_times > t_km1
-            )
-            for event in self.events_table.loc[mask_ini][
-                ["source_nodes", "target_nodes"]
-            ].itertuples():
-
-                if A[event.source_nodes, event.target_nodes] != 1:
-                    A[event.source_nodes, event.target_nodes] = 1
-                    A[event.target_nodes, event.source_nodes] = 1
-
-                    degrees[event.source_nodes] += 1
-                    degrees[event.target_nodes] += 1
-
-                if degrees[event.source_nodes] == 0:
-                    S.data[event.source_nodes] = 1
-                    Dm1.data[event.source_nodes] = 1
-                else:
-                    S.data[event.source_nodes] = 0
-                    Dm1.data[
-                        event.source_nodes] = 1 / degrees[event.source_nodes]
-
-                if degrees[event.target_nodes] == 0:
-                    S.data[event.target_nodes] = 1
-                    Dm1.data[event.target_nodes] = 1
-                else:
-                    S.data[event.target_nodes] = 0
-                    Dm1.data[
-                        event.target_nodes] = 1 / degrees[event.target_nodes]
+        # dynamics-specific pre-warm (interval: seed adjacency from events
+        # alive just before _k_start_laplacians; pulse: no-op).
+        self._laplacian_prewarm(state)
 
         # time grid for this time range
         time_grid_range = self.time_grid.loc[(
@@ -1365,49 +1344,122 @@ class ContTempNetwork:
                 if is_start:
                     # if they are not already connected (can happen if the
                     # opposite event overlap)
-                    if A[event.source_nodes, event.target_nodes] != 1:
-                        A[event.source_nodes, event.target_nodes] = 1
-                        A[event.target_nodes, event.source_nodes] = 1
+                    if state.A[event.source_nodes, event.target_nodes] != 1:
+                        state.A[event.source_nodes, event.target_nodes] = 1
+                        state.A[event.target_nodes, event.source_nodes] = 1
 
-                        degrees[event.source_nodes] += 1
-                        degrees[event.target_nodes] += 1
-
-                elif A[event.source_nodes, event.target_nodes] > 0:
-                    A[event.source_nodes, event.target_nodes] = 0
-                    A[event.target_nodes, event.source_nodes] = 0
-
-                    degrees[event.source_nodes] -= 1
-                    degrees[event.target_nodes] -= 1
-
-                # update self loops
-                if degrees[event.source_nodes] == 0:
-                    S.data[event.source_nodes] = 1
-                    Dm1.data[event.source_nodes] = 1
+                        state.degrees[event.source_nodes] += 1
+                        state.degrees[event.target_nodes] += 1
                 else:
-                    S.data[event.source_nodes] = 0
-                    Dm1.data[
-                        event.source_nodes] = 1 / degrees[event.source_nodes]
+                    # dynamics-specific end-of-event handling
+                    # (interval: clear A entry & decrement degrees;
+                    #  pulse: no-op).
+                    self._laplacian_on_event_end(state, event)
 
-                if degrees[event.target_nodes] == 0:
-                    S.data[event.target_nodes] = 1
-                    Dm1.data[event.target_nodes] = 1
-                else:
-                    S.data[event.target_nodes] = 0
-                    Dm1.data[
-                        event.target_nodes] = 1 / degrees[event.target_nodes]
+                # update self loops from current degrees
+                self._laplacian_update_self_loops(state, event)
 
             # Laplacian L(tk)
-            Acsc = A.tocsc()
+            Acsc = state.A.tocsc()
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            self.laplacians.append(I - Dm1 @ (Acsc + S))
+            self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
             if save_adjacencies:
-                self.adjacencies.append(A.copy())
+                self.adjacencies.append(state.A.copy())
+
+            # dynamics-specific end-of-step handling (interval: persist
+            # state across steps; pulse: reset A, S, Dm1, degrees).
+            self._laplacian_step_end(state)
 
         t_end = time.time()-t0
         self._compute_times["laplacians"] = t_end
         logger.info(f"Finished in {t_end}")
+
+    # ------------------------------------------------------------------
+    # Laplacian-loop extension hooks.
+    #
+    # Default implementations encode *interval* dynamics (events occupy
+    # a finite [start, end) interval, state persists across time steps).
+    # ``ContTempInstNetwork`` overrides them to encode *pulse* dynamics
+    # (events are instantaneous; state is reset every step).
+    # ------------------------------------------------------------------
+
+    def _make_adjacency_buffer(self, n):
+        """Allocate the mutable adjacency buffer used by the laplacian loop.
+
+        Default is ``lil_matrix`` (interval dynamics). Pulse dynamics
+        overrides this with ``dok_matrix`` because it needs ``.clear()``
+        in ``_laplacian_step_end``.
+        """
+        return lil_matrix((n, n), dtype=np.float64)
+
+    def _laplacian_prewarm(self, state):
+        """Seed ``state`` with events that are already active at the time
+        step just before ``self._k_start_laplacians``.
+
+        Interval default: replays the matching events to populate ``A``,
+        ``degrees``, ``S``, ``Dm1``. Pulse override: no-op.
+        """
+        if self._k_start_laplacians <= 0:
+            return
+
+        t_km1 = self.times[self._k_start_laplacians - 1]
+
+        # find events that have started before or at t_k-1
+        # and were still occuring at t_k-1
+        mask_ini = (
+            self.events_table.starting_times <= t_km1
+        ) & (
+            self.events_table.ending_times > t_km1
+        )
+        for event in self.events_table.loc[mask_ini][
+            ["source_nodes", "target_nodes"]
+        ].itertuples():
+
+            if state.A[event.source_nodes, event.target_nodes] != 1:
+                state.A[event.source_nodes, event.target_nodes] = 1
+                state.A[event.target_nodes, event.source_nodes] = 1
+
+                state.degrees[event.source_nodes] += 1
+                state.degrees[event.target_nodes] += 1
+
+            self._laplacian_update_self_loops(state, event)
+
+    def _laplacian_on_event_end(self, state, event):
+        """Handle an event whose ``is_start`` flag is ``False``.
+
+        Interval default: clear the corresponding adjacency entry and
+        decrement degrees (when still set). Pulse override: no-op
+        (events are instantaneous and state is reset each step).
+        """
+        if state.A[event.source_nodes, event.target_nodes] > 0:
+            state.A[event.source_nodes, event.target_nodes] = 0
+            state.A[event.target_nodes, event.source_nodes] = 0
+
+            state.degrees[event.source_nodes] -= 1
+            state.degrees[event.target_nodes] -= 1
+
+    def _laplacian_update_self_loops(self, state, event):
+        """Sync ``state.S`` and ``state.Dm1`` with ``state.degrees`` for
+        the two nodes touched by ``event``.
+        """
+        for node in (event.source_nodes, event.target_nodes):
+            if state.degrees[node] == 0:
+                state.S.data[node] = 1
+                state.Dm1.data[node] = 1
+            else:
+                state.S.data[node] = 0
+                state.Dm1.data[node] = 1 / state.degrees[node]
+
+    def _laplacian_step_end(self, state):
+        """Hook called after each time-step's laplacian is appended.
+
+        Interval default: no-op (state persists). Pulse override:
+        resets ``A``, ``S``, ``Dm1``, ``degrees`` to identity/zero so
+        the next step starts from a clean slate.
+        """
+        pass
 
     def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
                                           t_stop=None, fix_tau_k=False,
@@ -2105,6 +2157,7 @@ class ContTempInstNetwork(ContTempNetwork):
         self.instantaneous_events = True
 
     def compute_laplacian_matrices(self,
+                                   *,
                                    t_start=None,
                                    t_stop=None,
                                    save_adjacencies=False):
@@ -2119,131 +2172,49 @@ class ContTempInstNetwork(ContTempNetwork):
         The laplacian at step k, is the random walk laplacian
         between times[k] and times[k+1]
 
-        NOTE: This override implements *pulse dynamics* (state A, S, Dm1,
-        degrees are reset to zero at every time step, and event ends are
-        no-ops). This is intentionally distinct from
+        NOTE: This subclass implements *pulse dynamics* (state ``A``,
+        ``S``, ``Dm1``, ``degrees`` are reset to zero at every time step,
+        and event ends are no-ops). This is intentionally distinct from
         ``ContTempNetwork.compute_laplacian_matrices`` which implements
         *interval dynamics* (persistent state across time steps, with
         event ends clearing the corresponding adjacency entry). The
         behavior here mirrors upstream ``TemporalNetwork.py`` at commit
         f99bca3, so the two classes are not expected to produce equal
         laplacians even when ending_times are aligned to start + 1.
+
+        The pulse semantics are encoded entirely via the
+        ``_make_adjacency_buffer``, ``_laplacian_prewarm``,
+        ``_laplacian_on_event_end`` and ``_laplacian_step_end`` hooks
+        below; the loop body itself lives in the parent class.
         """
-        logger.info("Computing Laplacians")
+        return super().compute_laplacian_matrices(
+            t_start=t_start,
+            t_stop=t_stop,
+            save_adjacencies=save_adjacencies,
+        )
 
-        if not hasattr(self, "time_grid"):
-            self._compute_time_grid()
+    # --- pulse-dynamics hook overrides --------------------------------
 
-        # instantaneous adjacency matrix
-        A = dok_matrix((self.num_nodes, self.num_nodes),
-                       dtype=np.float64)
+    def _make_adjacency_buffer(self, n):
+        # dok_matrix supports .clear() which is needed in
+        # _laplacian_step_end below.
+        return dok_matrix((n, n), dtype=np.float64)
 
-        # identity
-        I = eye(self.num_nodes,
-                dtype=np.float64).tocsc()
+    def _laplacian_prewarm(self, state):
+        # Pulse dynamics: no events persist across step boundaries, so
+        # nothing to seed.
+        pass
 
-        # degree array
-        degrees = np.zeros(self.num_nodes, dtype=np.float64)
-        # inverse degrees diagonal matrix
-        Dm1 = I.copy()
-        # self loop matrix
-        S = I.copy()
+    def _laplacian_on_event_end(self, state, event):
+        # Pulse dynamics: end events are no-ops (state is reset every
+        # step in _laplacian_step_end below).
+        pass
 
-        self.laplacians = []
-        if save_adjacencies:
-            self.adjacencies = []
-
-        # set boundary conditions : L_k is the laplacian during t_k and t_k+1
-        if t_start is None:
-            self._t_start_laplacians = self.times[0]
-            self._k_start_laplacians = 0
-        else:
-            t, k = self._get_closest_time(t_start)
-            self._t_start_laplacians = t
-            self._k_start_laplacians = k
-        if t_stop is None:
-            self._t_stop_laplacians = self.times[-1]
-            self._k_stop_laplacians = len(self.times)-1
-        else:
-            t, k = self._get_closest_time(t_stop)
-            self._t_stop_laplacians = t
-            self._k_stop_laplacians = k
-
-        t0 = time.time()
-
-        # time grid for this time range
-        time_grid_range = self.time_grid.loc[(
-            self.time_grid.index.get_level_values(
-                "times") >= self._t_start_laplacians
-        ) & (
-            self.time_grid.index.get_level_values(
-                "times") < self._t_stop_laplacians
-        )]
-
-        for k, (tk, time_ev) in enumerate(
-                time_grid_range.groupby(level="times")):
-            if not k % 1000:
-                logger.info(
-                    f"{k} over "
-                    f"{self._k_stop_laplacians - self._k_start_laplacians}"
-                )
-                print(f"PID {os.getpid()} : {time.time()-t0:.2f}s")
-
-            meet_id = time_ev.index.get_level_values("id")
-            # starting or ending events
-            is_starts = time_ev.is_start.values
-
-            events_k = self.events_table.loc[
-                meet_id,
-                ["source_nodes", "target_nodes"]
-            ].astype(np.int64)
-
-            # update instantaneous matrices
-            for event, is_start in zip(events_k.itertuples(), is_starts):
-                # unweighted, undirected
-                if is_start:
-                    # if they are not already connected (can happen if the
-                    # opposite event overlap)
-                    if A[event.source_nodes, event.target_nodes] != 1:
-                        A[event.source_nodes, event.target_nodes] = 1
-                        A[event.target_nodes, event.source_nodes] = 1
-
-                        degrees[event.source_nodes] += 1
-                        degrees[event.target_nodes] += 1
-
-                        S.data[event.source_nodes] = 0
-                        Dm1.data[
-                            event.source_nodes
-                        ] = 1 / degrees[event.source_nodes]
-
-                        S.data[event.target_nodes] = 0
-                        Dm1.data[
-                            event.target_nodes
-                        ] = 1 / degrees[event.target_nodes]
-
-                else:
-                    # end of meeting
-                    # no need for instantaneous events
-                    pass
-
-            # Laplacian L(tk)
-            Acsc = A.tocsc()
-            # T_D = Dm1 @ (Acsc + S)
-            # L = I - T_D
-
-            self.laplacians.append(I - Dm1 @ (Acsc + S))
-            if save_adjacencies:
-                self.adjacencies.append(A.copy())
-
-            # reset matrices
-            A.clear()
-            S.data.fill(1.0)
-            Dm1.data.fill(1.0)
-            degrees.fill(0.0)
-
-        t_end = time.time()-t0
-        self._compute_times["laplacians"] = t_end
-        logger.info(f"Finished in {t_end}")
+    def _laplacian_step_end(self, state):
+        state.A.clear()
+        state.S.data.fill(1.0)
+        state.Dm1.data.fill(1.0)
+        state.degrees.fill(0.0)
 
     def compute_inter_transition_matrices(self,
                                           lamda=None,
