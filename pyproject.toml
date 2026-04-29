@@ -26,9 +26,8 @@ dependencies = [
 [dependency-groups]
 testing = [
     "pytest>=9.0.2",
-    "memray>=1.19.2",
-    "pytest>=9.0.2",
     "pytest-cov>=7.1.0",
+    "memray>=1.19.2",
     "pytest-memray>=1.8.0",
     "ruff>=0.15.8",
 ]
@@ -50,6 +49,7 @@ source = ["src"]
 omit = [
   "tests",
   "*__init__.py",
+  "_version.py",
 ]
 
 [tool.coverage.paths]

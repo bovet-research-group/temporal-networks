@@ -40,7 +40,7 @@ from .logger import setup_logger, get_logger
 # Default log level
 setup_logger()  # Set up the logger with the default level
 
-from .temporal_network import (
+from .temporal_network import (  # noqa: F401
     ContTempNetwork,
     set_to_zeroes,
     sparse_lapl_expm
