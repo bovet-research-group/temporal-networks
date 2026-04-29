@@ -16,7 +16,7 @@ def test_distro():
 @pytest.mark.parametrize(
         "_id, i_d_loc, i_d_scale, i_d_mf, a_d_loc, a_d_scale, a_d_mf,"
         " dist_type, group",
-        [(1, 0.0, 1.0, None, 0.0, 1.0, None, "experimental", 0),]
+        [(1, 0.0, 1.0, None, 0.0, 1.0, None, "exponential", 0),]
     )
 def test_individual(_id,
                     i_d_loc, i_d_scale, i_d_mf,

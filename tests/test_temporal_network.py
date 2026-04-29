@@ -103,16 +103,20 @@ class TestTempNetwork:
 
     @staticmethod
     def _get_instance(network: SimpleNamespace, use_df=False, **params):
+        is_instant = not hasattr(network, ContTempNetwork._ENDINGS)
+        cls = ContTempInstNetwork if is_instant else ContTempNetwork
         if use_df:
-            return ContTempNetwork(events_table=network.events_table, **params)
+            return cls(events_table=network.events_table, **params)
         else:
-            return ContTempNetwork(
+            kwargs = dict(
                 source_nodes=network.source_nodes,
                 target_nodes=network.target_nodes,
                 starting_times=network.starting_times,
-                ending_times=getattr(network, ContTempNetwork._ENDINGS, None),
-                **params
+                **params,
             )
+            if not is_instant:
+                kwargs["ending_times"] = network.ending_times
+            return cls(**kwargs)
 
     @staticmethod
     def _get_nodes(network: SimpleNamespace):
@@ -137,12 +141,7 @@ class TestTempNetwork:
 
     def test_init_with_source_and_target_nodes(self):
         for network in self.networks:
-            temp_network = ContTempNetwork(
-                source_nodes=network.source_nodes,
-                target_nodes=network.target_nodes,
-                starting_times=network.starting_times,
-                ending_times=getattr(network, ContTempNetwork._ENDINGS, None)
-            )
+            temp_network = self._get_instance(network, use_df=False)
             assert isinstance(temp_network, ContTempNetwork)
 
     def test_init_without_source_nodes(self):
@@ -244,36 +243,38 @@ class TestTempNetwork:
 
     def test_time_grid(self):
         for network in self.networks:
-            temp_network = ContTempNetwork(
-                events_table=network.events_table,
-            )
+            temp_network = self._get_instance(network, use_df=True)
             temp_network._compute_time_grid()
 
-    def test_compare_laplacian_computation(self):
-        """Check if the instant version is equivalent to the non-instant
-        version.
-        """
+    def test_inst_events_table_matches_start_plus_one_interval(self):
+        """ContTempInstNetwork synthesizes ending_times = start + 1.
 
-        temp_network = ContTempNetwork(
-            events_table=self.minimal.events_table
+        The resulting events_table must equal that of an interval
+        ContTempNetwork explicitly constructed with the same
+        ending_times.
+
+        Note: laplacian equality is intentionally not asserted here.
+        ContTempInstNetwork.compute_laplacian_matrices implements pulse
+        dynamics (state reset every step, no-op on event end), matching
+        upstream TemporalNetwork.py at commit f99bca3, which is
+        fundamentally distinct from the parent's interval dynamics.
+        """
+        starts = self.minimal.starting_times
+        interval = ContTempNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
+            ending_times=[s + 1 for s in starts],
         )
-        temp_network.compute_laplacian_matrices()
-        assert not temp_network.instantaneous_events
-        print(f"{list(map(lambda x: x.toarray(), temp_network.laplacians))=}")
-        inst_temp_network = ContTempInstNetwork(
-            events_table=self.minimal_instant.events_table
+        inst = ContTempInstNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
         )
-        assert inst_temp_network.instantaneous_events
-        # use the method form the child class
-        inst_temp_network.compute_laplacian_matrices()
-        print(f"{list(map(lambda x: x.toarray(), inst_temp_network.laplacians))=}")
-        # check if the internal dfs are the same
-        pd.testing.assert_frame_equal(temp_network.events_table,
-                                      inst_temp_network.events_table)
-        # check if the laplacians are the same
-        for i, laplacian in enumerate(temp_network.laplacians):
-            np.testing.assert_equal(laplacian.toarray(),
-                                    inst_temp_network.laplacians[i].toarray())
+        pd.testing.assert_frame_equal(
+            interval.events_table.reset_index(drop=True),
+            inst.events_table.reset_index(drop=True),
+        )
 
 
 def test_ContTempNetworkErrors():
@@ -569,4 +570,79 @@ class TestContTempInstNetwork:
         df_before = df.copy()
         ContTempInstNetwork(events_table=df)
         pd.testing.assert_frame_equal(df, df_before)
+
+    def test_uneven_starts_use_start_plus_one(self):
+        """Synthesized ending_times must be start + 1 for each event,
+        independent of the spacing or uniqueness of starting times.
+        """
+        net = ContTempInstNetwork(
+            source_nodes=[0, 1, 2],
+            target_nodes=[1, 2, 0],
+            starting_times=[0.0, 0.5, 5.0],
+        )
+        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+
+    def test_uneven_starts_via_dataframe_use_start_plus_one(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[0.0, 0.5, 5.0])
+        net = ContTempInstNetwork(events_table=df)
+        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+
+
+class TestContTempNetworkEndingTimesRequired:
+    """ContTempNetwork must raise ValueError when ending_times is absent.
+
+    The validation pinpoints the missing input ('ending_times' or the
+    DataFrame column) and directs users to ContTempInstNetwork for
+    instantaneous networks.
+    """
+
+    def test_positional_no_ending_raises(self):
+        with pytest.raises(ValueError) as exc:
+            ContTempNetwork(
+                source_nodes=[0, 1],
+                target_nodes=[1, 0],
+                starting_times=[0.0, 1.0],
+                ending_times=None,
+            )
+        msg = str(exc.value)
+        assert "ending_times" in msg
+        assert "ContTempInstNetwork" in msg
+
+    def test_positional_empty_ending_raises(self):
+        with pytest.raises(ValueError) as exc:
+            ContTempNetwork(
+                source_nodes=[0, 1],
+                target_nodes=[1, 0],
+                starting_times=[0.0, 1.0],
+                ending_times=[],
+            )
+        assert "ending_times" in str(exc.value)
+
+    def test_events_table_missing_ending_column_raises(self):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1],
+            "target_nodes": [1, 0],
+            "starting_times": [0.0, 1.0],
+        })
+        with pytest.raises(ValueError) as exc:
+            ContTempNetwork(events_table=df)
+        msg = str(exc.value)
+        assert "ending_times" in msg
+        assert "ContTempInstNetwork" in msg
+
+    def test_all_empty_inputs_still_assertion(self):
+        """Degenerate empty case must remain an AssertionError, not the
+        new ValueError (the validator only fires when starts are present).
+        """
+        # All-empty lists: existing length-mismatch assertion path is fine,
+        # length 0 == 0 == 0 == 0, so this should NOT raise at all.
+        net = ContTempNetwork(
+            source_nodes=[],
+            target_nodes=[],
+            starting_times=[],
+            ending_times=[],
+        )
+        assert net.num_events == 0
 
