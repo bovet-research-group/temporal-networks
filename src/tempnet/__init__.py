@@ -45,6 +45,7 @@ from .temporal_network import (  # noqa: F401
     set_to_zeroes,
     sparse_lapl_expm
 )
+from ._legacy import ContTempInstNetwork  # noqa: F401
 
 def set_log_level(level):
     """
