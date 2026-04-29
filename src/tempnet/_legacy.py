@@ -1,10 +1,5 @@
 """Legacy shims kept for backwards compatibility.
 
-This module hosts classes whose public API is preserved while the
-package transitions to the composition-based design described in
-``OOSetup.md`` (Phase 2). Importing or instantiating anything from here
-emits a :class:`DeprecationWarning`; the implementations themselves are
-unchanged for now.
 """
 
 import warnings
