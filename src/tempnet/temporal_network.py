@@ -139,6 +139,13 @@ class ContTempNetwork:
                  **kwargs):
 
         if events_table is None:
+            if (ending_times is None or len(ending_times) == 0) \
+                    and len(starting_times) > 0:
+                raise ValueError(
+                    "ContTempNetwork requires 'ending_times' for each event."
+                    " For instantaneous temporal networks use"
+                    " ContTempInstNetwork."
+                )
             assert len(source_nodes) == len(target_nodes) == \
                    len(starting_times) == len(ending_times)
 
@@ -203,6 +210,12 @@ class ContTempNetwork:
                     f"'{type(events_table)} is not acceptable."
                 )
             reset_event_table_index = False
+            if self._ENDINGS not in self.events_table.columns:
+                raise ValueError(
+                    f"events_table is missing required column"
+                    f" '{self._ENDINGS}'. For instantaneous temporal"
+                    " networks use ContTempInstNetwork."
+                )
             if relabel_nodes:
                 self._build_label_maps(
                     self.events_table[self._SOURCES],
@@ -2060,30 +2073,22 @@ class ContTempInstNetwork(ContTempNetwork):
                  events_table=None):
 
         if events_table is None:
-            utimes = np.unique(starting_times)
-            end_times_map = {utimes[k]: utimes[k+1]
-                             for k in range(utimes.size - 1)}
-            end_times_map[utimes[-1]] = utimes[-1]+1
-
-            ending_times = [end_times_map[t] for t in starting_times]
+            ending_times = [t + self._DEFAULT_DURATION
+                            for t in starting_times]
         else:
             # Instant networks store events_tables without an ending_times
             # column. The parent constructor's events_table branch requires
-            # ending_times, so we synthesize it here. For CSV inputs we read
-            # the file first, then forward a DataFrame to the parent.
+            # ending_times, so we synthesize it here as start + default
+            # duration. For CSV inputs we read the file first, then forward a
+            # DataFrame to the parent.
             if isinstance(events_table, (str, Path)):
                 events_table = pd.read_csv(str(events_table))
             if isinstance(events_table, pd.DataFrame) and \
                     self._ENDINGS not in events_table.columns:
                 events_table = events_table.copy()
-                starts = events_table[self._STARTS].to_numpy()
-                utimes = np.unique(starts)
-                end_times_map = {utimes[k]: utimes[k+1]
-                                 for k in range(utimes.size - 1)}
-                end_times_map[utimes[-1]] = utimes[-1]+1
-                events_table[self._ENDINGS] = [
-                    end_times_map[t] for t in starts
-                ]
+                events_table[self._ENDINGS] = (
+                    events_table[self._STARTS] + self._DEFAULT_DURATION
+                )
             ending_times = []  # ignored when events_table is provided
 
         super().__init__(source_nodes=source_nodes,
@@ -2113,6 +2118,16 @@ class ContTempInstNetwork(ContTempNetwork):
 
         The laplacian at step k, is the random walk laplacian
         between times[k] and times[k+1]
+
+        NOTE: This override implements *pulse dynamics* (state A, S, Dm1,
+        degrees are reset to zero at every time step, and event ends are
+        no-ops). This is intentionally distinct from
+        ``ContTempNetwork.compute_laplacian_matrices`` which implements
+        *interval dynamics* (persistent state across time steps, with
+        event ends clearing the corresponding adjacency entry). The
+        behavior here mirrors upstream ``TemporalNetwork.py`` at commit
+        f99bca3, so the two classes are not expected to produce equal
+        laplacians even when ending_times are aligned to start + 1.
         """
         logger.info("Computing Laplacians")
 
