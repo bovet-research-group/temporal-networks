@@ -73,14 +73,14 @@ jobs:
           source .venv/bin/activate
           uv run pytest --junitxml=junit/test-results.xml --cov=tempnet --durations=0
         env:
-          COVERAGE_FILE: ".coverage"
+          COVERAGE_FILE: ".coverage.all"
 
       - name: Store coverage file
         if: matrix.pythonV == needs.determine-python-version.outputs.min-version
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
-          path: .coverage
+          name: coverage-all
+          path: .coverage.all
           include-hidden-files: true
 
       # Update per-version pass/fail badge in gist
