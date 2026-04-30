@@ -43,11 +43,6 @@ dev = [
 ]
 
 
-[tool.pytest.ini_options]
-filterwarnings = [
-    "ignore:ContTempInstNetwork is deprecated:DeprecationWarning",
-]
-
 [tool.coverage.run]
 relative_files = true
 source = ["src"]
