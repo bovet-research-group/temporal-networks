@@ -1220,7 +1220,7 @@ class ContTempNetwork:
             else:
                 t = self.times[self.times <= t].max()
 
-        k = int(np.where(self.times == t)[0])
+        k = int(np.where(self.times == t)[0][0])
 
         return t, k
 
