@@ -1,0 +1,157 @@
+name: Development Workflow
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+    branches:
+      - main
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  determine-python-version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.pyver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Determine minimum Python version from pyproject.toml
+        id: pyver
+        run: |
+          py_req=$(sed -n 's/^[[:space:]]*requires-python[[:space:]]*=[[:space:]]*"\(.*\)".*/\1/p' pyproject.toml | head -n1)
+          py_min=$(echo "$py_req" | sed -n 's/.*>=[[:space:]]*\([0-9]\+\.[0-9]\+\).*/\1/p')
+          if [ -z "$py_min" ]; then
+            echo "Could not parse minimum Python version from requires-python='$py_req'" >&2
+            exit 1
+          fi
+          echo "version=$py_min" >> "$GITHUB_OUTPUT"
+          echo "Resolved minimum Python: $py_min"
+
+  setup-and-test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    needs: [determine-python-version]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Intel MKL
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install intel-mkl
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install ${{ needs.determine-python-version.outputs.version }}
+
+      - name: Install project and dev dependencies
+        run: |
+          uv venv --python ${{ needs.determine-python-version.outputs.version }} .venv
+          source .venv/bin/activate
+          uv pip install -e . --group dev
+
+      - name: Build wheel
+        run: uv build
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with: 
+          name: wheel
+          path: dist
+          retention-days: 1
+
+      - name: Lint with ruff
+        run: uv run ruff check --select=ALL --output-format=github src/
+        continue-on-error: true
+
+      - name: Tests without memory tracking
+        run: |
+          uv run pytest --junitxml=junit/test-results.xml --cov=tempnet --durations=0 -k 'not _memory' \
+            || { code=$?; [ $code -eq 5 ] && exit 0 || exit $code; }
+        env:
+          COVERAGE_FILE: ".coverage.no_memory"
+
+      - name: Store coverage file
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-no_memory
+          path: .coverage.no_memory
+          include-hidden-files: true
+
+  test-memory:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-24.04
+    needs: [determine-python-version]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Intel MKL
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install intel-mkl
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install ${{ needs.determine-python-version.outputs.version }}
+
+      - name: Install project and dev dependencies
+        run: |
+          uv venv --python ${{ needs.determine-python-version.outputs.version }} .venv
+          source .venv/bin/activate
+          uv pip install -e . --group dev
+
+      - name: Tests memory tracking
+        run: |
+          uv run pytest --junitxml=junit/test-results.xml --cov=tempnet --durations=0 --memray --most-allocations=0 -k '_memory' \
+            || { code=$?; [ $code -eq 5 ] && exit 0 || exit $code; }
+        env:
+          COVERAGE_FILE: ".coverage.memory"
+
+      - name: Store coverage file
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-memory
+          path: .coverage.memory
+          include-hidden-files: true
+
+  coverage:
+    if: always() && github.event.pull_request.draft == false
+    name: combine-coverage
+    runs-on: ubuntu-24.04
+    needs: [setup-and-test, test-memory]
+    permissions:
+      pull-requests: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          merge-multiple: true
+      - name: Coverage comment
+        id: coverage_comment
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_COVERAGE_FILES: true
+
+      - name: Store Pull Request comment
+        uses: actions/upload-artifact@v4
+        if: steps.coverage_comment.outputs.COMMENT_FILE_WRITTEN == 'true'
+        with:
+          name: python-coverage-comment-action
+          path: python-coverage-comment-action.txt
