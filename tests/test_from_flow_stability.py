@@ -323,7 +323,6 @@ class TestTempNetwork:
         assert inst_temp_network.instantaneous_events
         # use the method form the child class
         inst_temp_network.compute_laplacian_matrices()
-        import ipdb; ipdb.set_trace()
         print(f"{list(map(lambda x: x.toarray(), inst_temp_network.laplacians))=}")
         # check if the internal dfs are the same
         pd.testing.assert_frame_equal(temp_network._events_table,
