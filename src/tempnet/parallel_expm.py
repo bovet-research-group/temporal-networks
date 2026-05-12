@@ -266,5 +266,3 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
         inplace_csr_row_normalize(expmA)
 
     return expmA
-
-
