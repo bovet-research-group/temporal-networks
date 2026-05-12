@@ -13,7 +13,7 @@ import pandas as pd
 from scipy.sparse import csr_matrix
 
 
-from flowstab.temporal_network import ContTempNetwork, ContTempInstNetwork
+from tempnet import ContTempNetwork, ContTempInstNetwork
 
 class TestTempNetwork:
     def setup_method(self):
@@ -343,77 +343,77 @@ def test_ContTempNetworkErrors():
 def test_ContTempInstNetwork():
     """
     """
-    from flowstab.temporal_network import ContTempInstNetwork
+    from tempnet import ContTempInstNetwork
     pass
 
 def test_lin_approx_trans_matrix():
     """
     """
-    from flowstab.temporal_network import lin_approx_trans_matrix
+    from tempnet import lin_approx_trans_matrix
     pass
 
 def test_compute_stationary_transition():
     """
     """
-    from flowstab.temporal_network import compute_stationary_transition
+    from tempnet import compute_stationary_transition
     pass
 
 def test_compute_subspace_expm():
     """
     """
-    from flowstab.temporal_network import compute_subspace_expm
+    from tempnet import compute_subspace_expm
     pass
 
 def test_csc_row_normalize():
     """
     """
-    from flowstab.temporal_network import csc_row_normalize
+    from tempnet import csc_row_normalize
     pass
 
 def test_find_spectral_gap():
     """
     """
-    from flowstab.temporal_network import find_spectral_gap
+    from tempnet import find_spectral_gap
     pass
 
 def test_remove_nnz_rowcol():
     """
     """
-    from flowstab.temporal_network import remove_nnz_rowcol
+    from tempnet import remove_nnz_rowcol
     pass
 
 def test_rebuild_nnz_rowcol():
     """
     """
-    from flowstab.temporal_network import numpy_rebuild_nnz_rowcol
+    from tempnet import numpy_rebuild_nnz_rowcol
     pass
 
 def test_sparse_lapl_expm():
     """
     """
-    from flowstab.temporal_network import sparse_lapl_expm
+    from tempnet import sparse_lapl_expm
     pass
 
 def test_sparse_lin_approx():
     """
     """
-    from flowstab.temporal_network import sparse_lin_approx
+    from tempnet import sparse_lin_approx
     pass
 
 def test_sparse_stationary_trans():
     """
     """
-    from flowstab.temporal_network import sparse_stationary_trans
+    from tempnet import sparse_stationary_trans
     pass
 
 def test_set_to_ones():
     """
     """
-    from flowstab.temporal_network import set_to_ones
+    from tempnet import set_to_ones
     pass
 
 def test_set_to_zeroes():
     """
     """
-    from flowstab.temporal_network import set_to_zeroes
+    from tempnet import set_to_zeroes
     pass
