@@ -280,6 +280,11 @@ class ContTempNetwork:
         return str(self.__class__) + \
               f" with {self.num_nodes} nodes and {self.num_events} events"
 
+    @property
+    def nodes(self):
+        """Sorted list of original node labels."""
+        return sorted(self.label_to_node_dict.keys())
+
     def save(self, filename,
              matrices_list=None,
              attributes_list=None):

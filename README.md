@@ -1,18 +1,26 @@
 # temporal-networks
+
+<!-- header-start -->
 A library for analyzing temporal networks.
+<!-- header-end -->
 
 ## Installation
 
-The `tempnet` package requires Python versions of 3.10.0 or higher.
-To ensure reproducible environments and precise dependency resolution, we
-recommend using the open-source package manager `uv`:
+<!-- installation-start -->
+The `tempnet` package requires Python 3.10 or higher.
 
-After a virtual environment is initialized, `tempnet` can be installed via the
-following execution:
+Install from PyPI:
 
 ```bash
-uv pip install git+https://github.com/bovet-research-group/temporal-networks.git
+pip install tempnet
 ```
+
+To install directly from source:
+
+```bash
+pip install git+https://github.com/bovet-research-group/temporal-networks.git
+```
+<!-- installation-end -->
 
 ## Development
 

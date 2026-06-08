@@ -30,18 +30,30 @@ testing = [
     "memray>=1.19.2",
     "pytest-memray>=1.8.0",
     "ruff>=0.15.8",
+    "zenodo-get>=3.0.0",
 ]
 docs = [
-    "insegel>=1.3.1",
+    "pydata-sphinx-theme>=0.16.1",
     "myst-parser>=4.0.1",
     "sphinx>=8.1.3",
     "sphinx-autoapi>=3.8.0",
+    "sphinx-gallery>=0.18.0",
+    "sphinx-design>=0.6.1",
+    "sphinx-togglebutton>=0.4.0",
+    "sphinx-copybutton>=0.5.2",
+    "matplotlib>=3.9.0",
+    "zenodo-get>=3.0.0",
 ]
 dev = [
     { include-group = "testing" },
     { include-group = "docs" },
 ]
 
+
+[tool.pytest.ini_options]
+markers = [
+    "network: marks tests that require external network access (Zenodo, etc.)",
+]
 
 [tool.coverage.run]
 relative_files = true
