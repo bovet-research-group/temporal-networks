@@ -20,7 +20,7 @@ dependencies = [
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "scipy>=1.15.3",
-    "stochmat @ git+https://github.com/bovet-research-group/stochmat.git", # attach `@1.0.0-rc4` to pin to a version"
+    "stochmat>=1.0.0",
 ]
 
 [dependency-groups]
@@ -80,9 +80,6 @@ version-file = "src/tempnet/_version.py"
 # Use the git version to set the version of the package
 [tool.hatch.version]
 source = "vcs"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [build-system]
 requires = [
