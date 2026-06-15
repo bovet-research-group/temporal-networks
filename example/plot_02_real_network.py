@@ -131,7 +131,7 @@ ax2.set_yticks([])
 ax2.set_title('Adjacency Matrix (Log Scale)')
 
 plt.tight_layout()
-
+plt.show()
 # %%
 # Convert to a NetworkX graph
 # ---------------------------
@@ -185,7 +185,8 @@ ax.set_xticks(t)
 ax.set_xticklabels([i // 3600 for i in t], rotation=90)
 ax.set_xlabel('Time (Hour)')
 ax.set_ylabel('Number of active nodes')
-
+plt.tight_layout()
+plt.show()
 # %%
 # Active events over time
 # -----------------------
@@ -202,7 +203,8 @@ ax.set_xticks(t)
 ax.set_xticklabels([i // 3600 for i in t], rotation=90)
 ax.set_xlabel('Time (Hour)')
 ax.set_ylabel('Number of active events')
-
+plt.tight_layout()
+plt.show()
 # %%
 # Mouse contact timeline
 # ---------------------------
