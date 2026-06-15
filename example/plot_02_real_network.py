@@ -8,114 +8,260 @@ analyses it as a continuous-time temporal network using
 :class:`~tempnet.ContTempNetwork`.
 
 The dataset records pairwise contact events (start time, end time, source
-mouse, target mouse) collected over several days.  We restrict the analysis
-to the **first hour** (3 600 s) to keep the example fast.
+mouse, target mouse) collected over several days. 
 
-Two plots are produced:
-
-1. **Contact timeline** — each contact is drawn as a horizontal bar; rows
-   correspond to individual mice.
-2. **Event-duration distribution** — histogram of contact durations.
-
-.. note::
-
-   Downloading the dataset requires `zenodo-get
-   <https://pypi.org/project/zenodo-get/>`_, which is **not** a core
-   ``tempnet`` dependency.  Install it separately before running this
-   example::
-
-       pip install zenodo-get
+The example walks through the duration distribution, the aggregated static
+adjacency matrix and network, node and event activity over time, the raw contact timeline.
+and finally the forward transition matrices at several time scales.
 """
-
 # %%
-# Load the dataset
-# ----------------
-# The CSV is fetched from Zenodo using :func:`zenodo_get.download`, which
-# correctly handles Zenodo's redirect chain and has a built-in timeout.
-# The file is written to a temporary directory and loaded into memory;
-# the temporary directory is deleted automatically once the data is in RAM.
-#
-# .. note::
-#    ``zenodo-get`` must be installed separately: ``pip install zenodo-get``
-
+# Load libraries 
+# --------------------
+import os
 import tempfile
+from functools import reduce
 from pathlib import Path
 
-import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import networkx as nx
+import seaborn as sns
+from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
+
 from zenodo_get import download
 
-from tempnet import ContTempNetwork
+import tempnet as tn
+
+# %%
+# Download the dataset
+# --------------------
+# We fetch the contact sequence from Zenodo into a local ``Data`` directory.
+
+RECORD_ID = "4725155"
+FILE_NAME = "mice_contact_sequence.csv.gz"
+
+# %%
+# Load and filter the events
+# --------------------------
+# We read the compressed event table, round the times, and keep only the
+# first day of activity.
 
 RECORD_ID = "4725155"
 FILE_NAME = "mice_contact_sequence.csv.gz"
 
 with tempfile.TemporaryDirectory() as tmpdir:
-    print(f"Downloading {FILE_NAME} from Zenodo record {RECORD_ID}...")
     download(
         record_or_doi=RECORD_ID,
         output_dir=tmpdir,
         file_glob=FILE_NAME,
     )
-    print("Loading into pandas...")
-    raw_df = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
-# tmpdir and its contents are deleted here
+    event_table = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
 
-print(f"Full dataset: {len(raw_df)} events, "
-      f"{raw_df['source_nodes'].nunique()} mice")
+event_table = event_table.round(2)
 
-CUT_AFTER = 3600  # first hour only
-events_table = raw_df[raw_df['ending_times'] < CUT_AFTER].copy()
-print(f"After {CUT_AFTER} s cut: {len(events_table)} events")
-
-# %%
-# Build a ContTempNetwork
-# -----------------------
-
-network = ContTempNetwork(
-    events_table=events_table,
-    merge_overlapping_events=False,
-)
-
-nodes = network.nodes
-print(f"Nodes : {nodes}")
-print(f"Events: {len(network.events_table)}")
-print(
-    f"Time span: [{network.events_table[ContTempNetwork._STARTS].min():.1f}, "
-    f"{network.events_table[ContTempNetwork._ENDINGS].max():.1f}] s"
+# filter 1 hour
+event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
+    drop=True
 )
 
 # %%
-# Plot 1: Contact timeline
-# ------------------------
+# Inspect the first few rows of the event table.
 
-fig, ax = plt.subplots(figsize=(10, 5))
+print(event_table.head())
 
-et = network.events_table
-for _, row in et.iterrows():
-    tgt = row[ContTempNetwork._TARGETS]
-    t0 = row[ContTempNetwork._STARTS]
-    t1 = row[ContTempNetwork._ENDINGS]
-    ax.barh(tgt, t1 - t0, left=t0, height=0.6, color='steelblue', alpha=0.6)
+# %%
+# Build the continuous-time temporal network
+# ------------------------------------------
 
-ax.set_xlabel('Time (s)')
-ax.set_ylabel('Mouse ID')
-ax.set_title(f'Mouse contact timeline — first {CUT_AFTER // 60} min')
+tempo = tn.ContTempNetwork(events_table=event_table)
+
+# %%
+# Now we find the number of nodes and number of events.
+
+print(tempo)
+
+# %%
+# We can also access the variables directly from the object: 
+
+print('Number of mice', tempo.num_nodes)
+print('Number of events', tempo.num_events)
+
+# %%
+# Event-duration distribution
+# ---------------------------
+# Histogram of contact durations on log-linear and log-log axes.
+
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), dpi=200)
+sns.histplot(data=tempo.events_table, x='durations', ax=ax[0],
+             log_scale=(True, False))
+sns.histplot(data=tempo.events_table, x='durations', ax=ax[1],
+             log_scale=(True, True))
+ax[0].axvline(0.25, color='k', linestyle='--')
+ax[0].axvline(2, color='k', linestyle='--')
+ax[0].axvline(200, color='k', linestyle='--')
+
 plt.tight_layout()
 plt.show()
 
 # %%
-# Plot 2: Event-duration distribution
-# ------------------------------------
+# Static aggregated adjacency matrix
+# ----------------------------------
+# We aggregate the temporal network into a static weighted adjacency matrix
+# and display it on linear and logarithmic colour scales.
 
-durations = (
-    et[ContTempNetwork._ENDINGS] - et[ContTempNetwork._STARTS]
-).values
+A = tempo.compute_static_adjacency_matrix()
+A_dense = A.toarray()
 
-fig, ax = plt.subplots(figsize=(6, 4))
-ax.hist(durations, bins=30, edgecolor='white', color='steelblue')
-ax.set_xlabel('Contact duration (s)')
-ax.set_ylabel('Count')
-ax.set_title('Distribution of contact durations')
+fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, dpi=200, figsize=(12, 5))
+
+sns.heatmap(A_dense, ax=ax1, cbar_kws={'label': 'Weight'}, cmap='Greys')
+ax1.set_xlabel('Nodes')
+ax1.set_ylabel('Nodes')
+ax1.set_xticks([])
+ax1.set_yticks([])
+ax1.set_title('Adjacency Matrix (Linear Scale)')
+
+A_log = A_dense.copy()
+A_log[A_log == 0] = np.nan
+
+sns.heatmap(A_log, ax=ax2, norm=LogNorm(), cbar_kws={'label': 'Weight'},
+            cmap='Greys')
+ax2.set_xlabel('Nodes')
+ax2.set_ylabel('Nodes')
+ax2.set_xticks([])
+ax2.set_yticks([])
+ax2.set_title('Adjacency Matrix (Log Scale)')
+
 plt.tight_layout()
+
+# %%
+# Convert to a NetworkX graph
+# ---------------------------
+# We then transform it into a NetworkX object to visualise and perform other
+# algorithms and measure computation.
+
+static = nx.from_numpy_array(A.toarray())
+
+# %%
+# Check whether the aggregated network is connected.
+
+print(nx.is_connected(static))
+
+# %%
+# Draw the aggregated static network, with edge widths scaled by weight.
+
+fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
+
+pos = nx.spring_layout(static, seed=412)
+weights = [static[u][v]["weight"] for u, v in static.edges()]
+max_w = max(weights)
+widths = [2 * np.log10(w) / np.log10(max_w) for w in weights]
+
+nx.draw(static, pos, with_labels=False, width=widths, node_color="teal",
+        node_size=5)
+
+plt.title("Aggregated Static Network")
+plt.show()
+
+# %%
+# The network is not connected, and it is clearly modular.
+#
+# To find the start and end of the temporal network -- equivalently, the
+# minimum start time and maximum end time -- we can query the network
+# directly:
+
+print("Start:", tempo.start_time)
+print("End:", tempo.end_time)
+
+# %%
+# Active nodes over time
+# ----------------------
+# Number of active nodes in each one-hour window across a full day.
+
+t = np.arange(0, 24 * 3600 + 1, 3600)
+n_active = [tempo.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
+fig, ax = plt.subplots(nrows=1, ncols=1)
+ax.plot(t[:-1], n_active, marker='.')
+
+ax.set_xticks(t)
+ax.set_xticklabels([i // 3600 for i in t], rotation=90)
+ax.set_xlabel('Time (Hour)')
+ax.set_ylabel('Number of active nodes')
+
+# %%
+# Active events over time
+# -----------------------
+# Number of active edges/events in each one-hour window.
+
+t = np.arange(0, 24 * 3600 + 1, 3600)
+n_edge_active = [tempo.num_active_edges(t[i], t[i + 1])
+                 for i in range(len(t) - 1)]
+
+fig, ax = plt.subplots(nrows=1, ncols=1)
+ax.plot(t[:-1], n_edge_active, marker='.')
+
+ax.set_xticks(t)
+ax.set_xticklabels([i // 3600 for i in t], rotation=90)
+ax.set_xlabel('Time (Hour)')
+ax.set_ylabel('Number of active events')
+
+# %%
+# Mouse contact timeline
+# ---------------------------
+# The activity of events and nodes depends on the time of day. We can also
+# investigate the network in the first hour. 
+# Each contact is drawn as a horizontal bar; rows correspond to individual
+# mice.
+
+fig, ax = plt.subplots(figsize=(10, 5))
+et = tempo.events_table
+et=et[et['ending_times']<=3600]
+
+for _, row in et.iterrows():
+    tgt = row[tempo._TARGETS]
+    t0 = row[tempo._STARTS]
+    t1 = row[tempo._ENDINGS]
+    ax.barh(tgt, t1 - t0, left=t0, height=0.6, color='steelblue', alpha=0.6)
+
+ax.set_xlabel('Time (s)')
+ax.set_ylabel('Mouse ID')
+ax.set_title('Mouse contact timeline — first 1 hour')
+plt.tight_layout()
+plt.show()
+# %%
+# Forward transition matrices
+# 
+# Now we want to compute the forward transition matrices by 
+# first computing the Laplacians for the 1st hour
+# to keep the example fast enough. 
+tempo = tn.ContTempNetwork(events_table=et)
+tempo.compute_laplacian_matrices()
+
+# %%
+# We then proceed to computing the forward transition matrix for 3 time
+# scales. It may take few minutes to run this. 
+
+scales = [1e-6, 1]
+for i, s in enumerate(scales):
+    tempo.compute_inter_transition_matrices(lamda=s)
+
+forward_transition_matrices = [
+    reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
+]
+
+# %%
+# Visualise the forward transition matrices for each time scale.
+
+norm = LogNorm(vmin=1e-6, vmax=1)
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
+for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
+    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
+                norm=norm)
+    ax[i].set_title(rf'$\lambda$={lamda}')
+    ax[i].set_xticks([])
+    ax[i].set_yticks([])
+
+fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
+             fraction=0.046, pad=0.04)
 plt.show()
