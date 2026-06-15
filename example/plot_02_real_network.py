@@ -15,9 +15,8 @@ adjacency matrix and network, node and event activity over time, the raw contact
 and finally the forward transition matrices at several time scales.
 """
 # %%
-# Load libraries 
-# --------------------
-import os
+# Load libraries
+# --------------
 import tempfile
 from functools import reduce
 from pathlib import Path
@@ -34,18 +33,10 @@ from zenodo_get import download
 import tempnet as tn
 
 # %%
-# Download the dataset
-# --------------------
-# We fetch the contact sequence from Zenodo into a local ``Data`` directory.
-
-RECORD_ID = "4725155"
-FILE_NAME = "mice_contact_sequence.csv.gz"
-
-# %%
-# Load and filter the events
-# --------------------------
-# We read the compressed event table, round the times, and keep only the
-# first day of activity.
+# Download and load the dataset
+# -----------------------------
+# We fetch the contact sequence from Zenodo and directly convert it to a
+# DataFrame.
 
 RECORD_ID = "4725155"
 FILE_NAME = "mice_contact_sequence.csv.gz"
@@ -57,6 +48,12 @@ with tempfile.TemporaryDirectory() as tmpdir:
         file_glob=FILE_NAME,
     )
     event_table = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
+
+# %%
+# Filter the events
+# -----------------
+# We round the times, and keep only the
+# first day of activity.
 
 event_table = event_table.round(2)
 
@@ -82,7 +79,7 @@ tempo = tn.ContTempNetwork(events_table=event_table)
 print(tempo)
 
 # %%
-# We can also access the variables directly from the object: 
+# We can also access the variables directly from the object:
 
 print('Number of mice', tempo.num_nodes)
 print('Number of events', tempo.num_events)
@@ -210,13 +207,13 @@ ax.set_ylabel('Number of active events')
 # Mouse contact timeline
 # ---------------------------
 # The activity of events and nodes depends on the time of day. We can also
-# investigate the network in the first hour. 
+# investigate the network in the first hour.
 # Each contact is drawn as a horizontal bar; rows correspond to individual
 # mice.
 
 fig, ax = plt.subplots(figsize=(10, 5))
 et = tempo.events_table
-et=et[et['ending_times']<=3600]
+et = et[et['ending_times'] <= 3600]
 
 for _, row in et.iterrows():
     tgt = row[tempo._TARGETS]
@@ -231,16 +228,16 @@ plt.tight_layout()
 plt.show()
 # %%
 # Forward transition matrices
-# 
-# Now we want to compute the forward transition matrices by 
+#
+# Now we want to compute the forward transition matrices by
 # first computing the Laplacians for the 1st hour
-# to keep the example fast enough. 
+# to keep the example fast enough.
 tempo = tn.ContTempNetwork(events_table=et)
 tempo.compute_laplacian_matrices()
 
 # %%
 # We then proceed to computing the forward transition matrix for 3 time
-# scales. It may take few minutes to run this. 
+# scales. It may take few minutes to run this.
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
