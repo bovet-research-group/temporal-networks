@@ -244,12 +244,15 @@ forward_transition_matrices = [
 # %%
 # Visualise the forward transition matrices for each time scale.
 
-fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+norm = LogNorm(vmin=1e-6, vmax=1)
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
 for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
     sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
-                vmin=0, vmax=1, norm=LogNorm())
+                norm=norm)
     ax[i].set_title(rf'$\lambda$={lamda}')
     ax[i].set_xticks([])
     ax[i].set_yticks([])
-plt.tight_layout()
+
+fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
+             fraction=0.046, pad=0.04)
 plt.show()
