@@ -2093,7 +2093,7 @@ class ContTempNetwork:
 
     def num_active_nodes(self, t_start, t_end):
         """Return the number of nodes active within the given time window."""
-        nodes=self.active_nodes(self, t_start, t_end)
+        nodes=self.active_nodes(t_start, t_end)
         return len(nodes)
 
 
