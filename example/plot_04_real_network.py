@@ -18,13 +18,19 @@ and finally the forward transition matrices at several time scales.
 # Load libraries 
 # --------------------
 import os
+import tempfile
 from functools import reduce
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import networkx as nx
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.colors import LogNorm
+
+from zenodo_get import download
+
 import tempnet as tn
 
 # %%
@@ -32,12 +38,8 @@ import tempnet as tn
 # --------------------
 # We fetch the contact sequence from Zenodo into a local ``Data`` directory.
 
-datadir = 'Data'
-os.makedirs(datadir, exist_ok=True)
-os.system(
-    'wget -nc https://zenodo.org/record/4725155/files/'
-    'mice_contact_sequence.csv.gz -P Data/'
-)
+RECORD_ID = "4725155"
+FILE_NAME = "mice_contact_sequence.csv.gz"
 
 # %%
 # Load and filter the events
@@ -45,10 +47,17 @@ os.system(
 # We read the compressed event table, round the times, and keep only the
 # first day of activity.
 
-event_table = pd.read_csv(
-    os.path.join(datadir, 'mice_contact_sequence.csv.gz'),
-    compression='gzip',
-)
+RECORD_ID = "4725155"
+FILE_NAME = "mice_contact_sequence.csv.gz"
+
+with tempfile.TemporaryDirectory() as tmpdir:
+    download(
+        record_or_doi=RECORD_ID,
+        output_dir=tmpdir,
+        file_glob=FILE_NAME,
+    )
+    event_table = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
+
 event_table = event_table.round(2)
 
 # filter 1 hour
