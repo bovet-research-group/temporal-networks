@@ -79,7 +79,7 @@ autoapi_options = [
 # -- Sphinx-Gallery ------------------------------------------------------------
 
 sphinx_gallery_conf = {
-    'examples_dirs': '../examples',   # path to example scripts
+    'examples_dirs': '../example',   # path to example scripts
     'gallery_dirs': 'auto_examples',  # path to save generated gallery output
     'filename_pattern': r'plot_',     # only execute files prefixed with plot_
     'ignore_pattern': r'exmpl_',
