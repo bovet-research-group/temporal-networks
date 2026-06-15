@@ -8,14 +8,11 @@ analyses it as a continuous-time temporal network using
 :class:`~tempnet.ContTempNetwork`.
 
 The dataset records pairwise contact events (start time, end time, source
-mouse, target mouse) collected over several days.  We restrict the analysis
-to the **first day** (24 hours) to keep the example fast.
+mouse, target mouse) collected over several days. 
 
-Two plots are produced:
-
-1. **Contact timeline** -- each contact is drawn as a horizontal bar; rows
-   correspond to individual mice.
-2. **Event-duration distribution** -- histogram of contact durations.
+The example walks through the duration distribution, the aggregated static
+adjacency matrix and network, node and event activity over time, the raw contact timeline.
+and finally the forward transition matrices at several time scales.
 """
 # %%
 # Load libraries 
@@ -46,7 +43,7 @@ os.system(
 # Load and filter the events
 # --------------------------
 # We read the compressed event table, round the times, and keep only the
-# first hour (3600 s) of activity.
+# first day of activity.
 
 event_table = pd.read_csv(
     os.path.join(datadir, 'mice_contact_sequence.csv.gz'),
@@ -55,7 +52,7 @@ event_table = pd.read_csv(
 event_table = event_table.round(2)
 
 # filter 1 hour
-event_table = event_table[event_table['starting_times'] <= 24*3600].reset_index(
+event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
     drop=True
 )
 
@@ -201,47 +198,17 @@ ax.set_xlabel('Time (Hour)')
 ax.set_ylabel('Number of active events')
 
 # %%
-# Forward transition matrices
-# ---------------------------
-# The activity of events and nodes depends on the time of day. Now we want to
-# compute the forward transition matrices by first computing the Laplacians.
-# It may take few minutes to run this. 
-
-tempo.compute_laplacian_matrices()
-
-# %%
-# We then proceed to computing the forward transition matrix for 3 time
-# scales.
-
-scales = [1e-8, 1e-3, 100]
-for i, s in enumerate(scales):
-    tempo.compute_inter_transition_matrices(lamda=s)
-
-forward_transition_matrices = [
-    reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
-]
-
-# %%
-# Visualise the forward transition matrices for each time scale.
-
-fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
-
-for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
-    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
-                vmin=0, vmax=1, norm=LogNorm())
-    ax[i].set_title(rf'$\lambda$={lamda}')
-    ax[i].set_xticks([])
-    ax[i].set_yticks([])
-
-# %%
 # Mouse contact timeline
-# ----------------------
+# ---------------------------
+# The activity of events and nodes depends on the time of day. We can also
+# investigate the network in the first hour. 
 # Each contact is drawn as a horizontal bar; rows correspond to individual
 # mice.
 
 fig, ax = plt.subplots(figsize=(10, 5))
-
 et = tempo.events_table
+et=et[et['ending_times']<=3600]
+
 for _, row in et.iterrows():
     tgt = row[tempo._TARGETS]
     t0 = row[tempo._STARTS]
@@ -254,3 +221,35 @@ ax.set_title('Mouse contact timeline — first 1 hour')
 plt.tight_layout()
 plt.show()
 # %%
+# Forward transition matrices
+# 
+# Now we want to compute the forward transition matrices by 
+# first computing the Laplacians for the 1st hour
+# to keep the example fast enough. 
+tempo = tn.ContTempNetwork(events_table=et)
+tempo.compute_laplacian_matrices()
+
+# %%
+# We then proceed to computing the forward transition matrix for 3 time
+# scales. It may take few minutes to run this. 
+
+scales = [1e-6, 1]
+for i, s in enumerate(scales):
+    tempo.compute_inter_transition_matrices(lamda=s)
+
+forward_transition_matrices = [
+    reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
+]
+
+# %%
+# Visualise the forward transition matrices for each time scale.
+
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(8, 4))
+for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
+    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
+                vmin=0, vmax=1, norm=LogNorm())
+    ax[i].set_title(rf'$\lambda$={lamda}')
+    ax[i].set_xticks([])
+    ax[i].set_yticks([])
+plt.tight_layout()
+plt.show()
