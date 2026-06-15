@@ -228,10 +228,11 @@ plt.tight_layout()
 plt.show()
 # %%
 # Forward transition matrices
-#
+# -----------------------
 # Now we want to compute the forward transition matrices by
 # first computing the Laplacians for the 1st hour
 # to keep the example fast enough.
+
 tempo = tn.ContTempNetwork(events_table=et)
 tempo.compute_laplacian_matrices()
 
