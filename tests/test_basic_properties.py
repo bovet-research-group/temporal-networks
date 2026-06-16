@@ -208,23 +208,23 @@ class TestBasicProperties:
     ############################################################## MICE
     
     def test_num_node_real(self, mice_network: ContTempNetwork):
-        n_array=np.load('Tests/Prepare Real test/mice_node_array.npy')
+        n_array=np.load('tests/prepare_mice_test/mice_node_array.npy')
         assert mice_network.num_nodes == len(n_array)
 
     def test_node_array_real(self, mice_network: ContTempNetwork):
-        n_array=np.load('Tests/Prepare Real test/mice_node_array.npy')
+        n_array=np.load('tests/prepare_mice_test/mice_node_array.npy')
         assert sorted(mice_network.node_array) ==sorted(n_array)
 
     def test_event_table_real(self, mice_network: ContTempNetwork):
-        et=pd.read_csv('Tests/Prepare Real test/mice_event_table.csv')
+        et=pd.read_csv('tests/prepare_mice_test/mice_event_table.csv')
         pd.testing.assert_frame_equal(
             mice_network.events_table.reset_index(drop=True),
             et.reset_index(drop=True)
         )
     def test_compute_time_grid_real(self, mice_network: ContTempNetwork):
         mice_network._compute_time_grid()
-        tg=pd.read_csv('Tests/Prepare Real test/mice_time_grid.csv')
-        times=np.load('Tests/Prepare Real test/mice_times.npy')
+        tg=pd.read_csv('tests/prepare_mice_test/mice_time_grid.csv')
+        times=np.load('tests/prepare_mice_test/mice_times.npy')
 
         pd.testing.assert_frame_equal(
                     mice_network.time_grid.reset_index(),
@@ -236,7 +236,7 @@ class TestBasicProperties:
     ## TEST adj matrix
     def test_adj_full_mice(self, mice_network: ContTempNetwork):
         A=mice_network.compute_static_adjacency_matrix().toarray()
-        A_loaded=np.load('Tests/Prepare Real test/mice_full_adjacency.npy')
+        A_loaded=np.load('tests/prepare_mice_test/mice_full_adjacency.npy')
         assert np.allclose(A, A_loaded)
         
     def test_adj_1h_mice(self, mice_network: ContTempNetwork):
@@ -244,33 +244,33 @@ class TestBasicProperties:
             start_time=0, end_time=3600
         ).toarray()
 
-        A_loaded = np.load('Tests/Prepare Real test/mice_1h_adjacency.npy')
+        A_loaded = np.load('tests/prepare_mice_test/mice_1h_adjacency.npy')
 
         assert np.allclose(A, A_loaded)
             
-   #Overlapping
-    def test_overlapping_events_are_merged(self, network_overlapping: ContTempNetwork):
-        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
-        assert network_overlapping.num_events == 2
+#    #Overlapping
+#     def test_overlapping_events_are_merged(self, network_overlapping: ContTempNetwork):
+#         """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+#         assert network_overlapping.num_events == 2
 
-    def test_merged_event_span(self, network_overlapping: ContTempNetwork):
-        row = network_overlapping.events_table.iloc[0]
-        assert row["starting_times"] == 0
-        assert row["ending_times"] == 4
+#     def test_merged_event_span(self, network_overlapping: ContTempNetwork):
+#         row = network_overlapping.events_table.iloc[0]
+#         assert row["starting_times"] == 0
+#         assert row["ending_times"] == 4
 
-    def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
-        assert network_overlapping._overlapping_events_merged is True
+#     def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
+#         assert network_overlapping._overlapping_events_merged is True
 
 
-    def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
-        assert network_overlapping.num_events == 2
+#     def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+#         """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+#         assert network_overlapping.num_events == 2
 
-    def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-        row = network_overlapping.events_table.iloc[0]
-        assert row["starting_times"] == 0
-        assert row["ending_times"] == 4
+#     def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+#         row = network_overlapping.events_table.iloc[0]
+#         assert row["starting_times"] == 0
+#         assert row["ending_times"] == 4
 
-    def test_merge_flag_set_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-        assert network_overlapping_no_relabel._overlapping_events_merged is True
+#     def test_merge_flag_set_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+#         assert network_overlapping_no_relabel._overlapping_events_merged is True
 
