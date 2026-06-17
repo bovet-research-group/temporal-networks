@@ -1494,7 +1494,10 @@ class ContTempNetwork:
         plt.tight_layout()
         plt.show()
 
-    return indices
+        #start_end_times
+        start_end_times=[(self.times[i], self.times[i+1]) for i in indices]
+        return start_end_times
+    
     def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
                                           t_stop=None, fix_tau_k=False,
                                           use_sparse_stoch=False,
@@ -1540,6 +1543,7 @@ class ContTempNetwork:
             inter transition matrices. Especially useful for large networks as
             the matrix exponential is then computed on each connected component
             separately (more memory efficient). The default is False.
+
         dense_expm : bool, optional
             Whether to use the dense version of the matrix exponential
             algorithm at each time steps.
@@ -1547,6 +1551,7 @@ class ContTempNetwork:
             The inter trans. matrices are still saved as sparse scipy matrices
             as they usually have many zero values. The default is True. Has no
             effect is use_sparse_stoch is True.
+
 
         Returns
         -------
