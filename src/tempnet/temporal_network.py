@@ -1784,24 +1784,21 @@ class ContTempNetwork:
         return stored_start <= req_start and req_stop <= stored_stop
 
 
-    def _compute_single_T(L, tau_k, lamda, num_nodes, method, tol):
+    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, tol):
         """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
         if L.getnnz() == 0:
             # expm of the zero matrix is the identity
             return eye(num_nodes, format="csr")
         if method == "dense_expm":
             # densify the Laplacian, expm, store back as sparse
-            res=csr_matrix(expm(-tau_k * lamda * L.toarray()))
-            return set_to_zeroes(res, tol)
+            T=csr_matrix(expm(-tau_k * lamda * L.toarray()))
         if method == "sparse_expm":
             # expm directly on the sparse Laplacian
-            res=expm(-tau_k * lamda * L).tocsr()
-            return set_to_zeroes(res, tol)
+            T=expm(-tau_k * lamda * L).tocsr()
         if method == "mfp_exp":
             return NotImplementedError
-        
-        raise ValueError(f"Unknown method {method!r}")
-
+         
+        return set_to_zeroes(T, tol)
 
     def compute_inter_transition_matrices_new(self, *, lamda=None, t_start=None,
                                         t_stop=None, fix_tau_k=False,
