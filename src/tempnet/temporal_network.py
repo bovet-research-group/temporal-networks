@@ -47,6 +47,8 @@ from .parallel_expm import compute_subspace_expm_parallel
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from .logger import get_logger
+from matplotlib import pyplot as plt
+import seaborn as sns
 
 # get the logger
 logger = get_logger()
@@ -1461,6 +1463,38 @@ class ContTempNetwork:
         """
         pass
 
+    def create_density_of_laplacians(self):
+
+        # density per slice: nnz normalized by N^2
+        density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
+
+        # quantile values and the indices of the slices closest to them
+        quantiles = np.quantile(density, [0, 0.25, 0.50, 0.75, 1])
+        indices = [np.argmin(np.abs(density - q)) for q in quantiles]
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6, 4), dpi=200)
+        sns.histplot(density, ax=ax, bins=np.logspace(-5, 0, 21),
+                    fill=False, element='step')
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel('Density of Laplacians')
+        ax.set_ylabel('Count')
+
+        # interquartile range (25th–75th) shaded
+        ax.axvspan(density[indices[1]], density[indices[3]], alpha=0.1, color='r')
+        ax.axvline(density[indices[1]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[3]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[2]], color='r', linestyle='--', label='Median')
+
+        # min and max
+        ax.axvline(density[indices[0]], color='b', linestyle=':', linewidth=1, label='Min/Max')
+        ax.axvline(density[indices[-1]], color='b', linestyle=':', linewidth=1)
+
+        ax.legend(frameon=False)
+        plt.tight_layout()
+        plt.show()
+
+    return indices
     def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
                                           t_stop=None, fix_tau_k=False,
                                           use_sparse_stoch=False,
