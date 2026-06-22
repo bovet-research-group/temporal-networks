@@ -1854,8 +1854,7 @@ class ContTempNetwork:
             logger.debug(
                 f"Interevent transition matrices already computed for {lamda=}"
             )
-
-       
+    
     def compute_inter_transition_matrices_new(self, *, lamda=None, t_start=None,
                                         t_stop=None, fix_tau_k=False,
                                         method="dense_expm", n_jobs=1, tol=1e-8, force_csr=False):

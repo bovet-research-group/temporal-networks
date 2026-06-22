@@ -251,7 +251,7 @@ indices = tempo.plot_density_of_laplacians()
 # Benchmarking the matrix-exponential methods
 # -------------------------------------------
 # Computing a transition matrix requires a matrix exponential, and
-# ``flowstab`` offers more than one strategy for this. :meth:`print_report`
+# ``tempnet`` offers more than one strategy for this. :meth:`print_report`
 # times each method across a range of diffusion scales and the representative
 # Laplacians selected above, then recommends the fastest option for this
 # dataset.
