@@ -28,7 +28,6 @@ from joblib import Parallel, delayed
 import gc
 from dataclasses import dataclass
 from functools import partial
-
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -43,9 +42,11 @@ from scipy.sparse import (
     isspmatrix_csr,
     lil_matrix,
 )
+
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import eigsh, expm
 
+from .expm_with_tol import mfp_exp
 from .parallel_expm import compute_subspace_expm_parallel
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
@@ -1471,7 +1472,7 @@ class ContTempNetwork:
         """
         pass
 
-    def create_density_of_laplacians(self):
+    def plot_density_of_laplacians(self):
 
         # density per slice: nnz normalized by N^2
         density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
@@ -1501,11 +1502,54 @@ class ContTempNetwork:
         ax.legend(frameon=False)
         plt.tight_layout()
         plt.show()
+        return indices
 
-        #start_end_times
-        start_end_times=[(self.times[i], self.times[i+1]) for i in indices]
-        return start_end_times
-    
+            
+    def print_report(self, indices, scales, force_csr=True, tol=1e-10):
+        labels = ['min', 'q25', 'median', 'q75', 'max']
+        laplacians = {
+            label: {
+                'L': self.laplacians[idx],
+                'tau': self.times[idx + 1] - self.times[idx],
+            }
+            for label, idx in zip(labels, indices)
+        }
+        methods = ['dense_expm', 'sparse_expm', 'mfp_exp']
+        num_nodes = self.num_nodes
+
+        results = {}  # (method, label) -> list of per-scale times
+        for method in methods:
+            for label, data in laplacians.items():
+                times = []
+                for lamda in scales:
+                    t = time.perf_counter()
+                    self._compute_single_T(
+                        L=data['L'], tau_k=data['tau'], lamda=lamda,
+                        num_nodes=num_nodes, method=method,
+                        force_csr=force_csr, tol=tol,
+                    )
+                    times.append(time.perf_counter() - t)
+                results[(method, label)] = times
+
+        # Report
+        for method in methods:
+            print(f"\n=== {method} ===")
+            method_total = 0.0
+            for label in laplacians:
+                times = results[(method, label)]
+                method_total += sum(times)
+                print(f"  L_{label:<7} avg={np.mean(times):.4f}s  "
+                    f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
+            print(f"  total: {method_total:.4f}s")
+
+        totals = {
+            m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
+            for m in methods
+        }
+        best = min(totals, key=totals.get)
+        print(f"\nRecommended method: {best} "
+            f"({totals[best]:.4f}s total, fastest of the three)")
+
     def compute_lin_inter_transition_matrices(self,
                                               lamda=None,
                                               t_start=None,
@@ -1656,21 +1700,18 @@ class ContTempNetwork:
         if L.getnnz() == 0:
             # expm of the zero matrix is the identity
             return eye(num_nodes, format="csr")
-        if method == "dense_expm":
+        elif method == "dense_expm":
             # densify the Laplacian, expm, store back as sparse
             T=csr_matrix(expm(-tau_k * lamda * L.toarray()))
-        if method == "sparse_expm":
+        elif method == "sparse_expm":
             # expm directly on the sparse Laplacian
             T=expm(-tau_k * lamda * L).tocsr()
-        
+
+        elif method == "mfp_exp":
+            return mfp_exp(-tau_k * lamda * L, err=tol, non_norm=0)
+
         if method in ['dense_expm', 'sparse_expm']:
-            return self.prep(T, force_csr, tol)
-
-        if method == "mfp_exp":
-            return NotImplementedError
-            #return self.prep(T, force_csr, tol=None)
-
-         
+            return self._prep(T, force_csr, tol)
 
     def _prep(self, M, force_csr=False, tol=None):
             M = M.tocsr() if force_csr else M
@@ -1787,13 +1828,12 @@ class ContTempNetwork:
             ]
 
         if n_jobs == 1:
-            T_list = [
-                self._compute_single_T(L, tau, lamda, self.num_nodes, method, tol)
+            T_list = [self._compute_single_T(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
                 for L, tau in tqdm(zip(Ls, taus), total=len(Ls), desc=f"expm λ={lamda:.2e}")
             ]
         else:
             results_gen = Parallel(n_jobs=n_jobs, return_as="generator")(
-                delayed(self._compute_single_T)(L, tau, lamda, self.num_nodes, method, tol)
+                delayed(self._compute_single_T)(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
                 for L, tau in zip(Ls, taus)
             )
             T_list = list(tqdm(results_gen, total=len(Ls), desc=f"expm λ={lamda:.2e}"))

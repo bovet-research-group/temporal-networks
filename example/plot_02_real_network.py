@@ -209,13 +209,13 @@ plt.show()
 # Mouse contact timeline
 # ---------------------------
 # The activity of events and nodes depends on the time of day. We can also
-# investigate the network in the first hour.
+# investigate the network in the first half an hour.
 # Each contact is drawn as a horizontal bar; rows correspond to individual
 # mice.
 
 fig, ax = plt.subplots(figsize=(10, 5))
 et = tempo.events_table
-et = et[et['ending_times'] <= 3600]
+et = et[et['ending_times'] <= 1800]
 
 for _, row in et.iterrows():
     tgt = row[tempo._TARGETS]
@@ -225,7 +225,7 @@ for _, row in et.iterrows():
 
 ax.set_xlabel('Time (s)')
 ax.set_ylabel('Mouse ID')
-ax.set_title('Mouse contact timeline — first 1 hour')
+ax.set_title('Mouse contact timeline — first 30 minutes')
 plt.tight_layout()
 plt.show()
 # %%
@@ -236,15 +236,57 @@ plt.show()
 # to keep the example fast enough.
 
 tempo = tn.ContTempNetwork(events_table=et)
+
 tempo.compute_laplacian_matrices()
 
 # %%
-# We then proceed to computing the forward transition matrix for 3 time
+# Inspecting the density of the Laplacians
+# ----------------------------------------
+# Different intervals produce Laplacians of very different sparsity. The
+# helper below plots the distribution of densities and returns a set of
+# representative indices (the min, lower-quartile, median, upper-quartile, and
+# max-density snapshots) that we reuse for benchmarking.
+
+indices = tempo.plot_density_of_laplacians()
+
+# %%
+# Benchmarking the matrix-exponential methods
+# -------------------------------------------
+# Computing a transition matrix requires a matrix exponential, and
+# ``flowstab`` offers more than one strategy for this. :meth:`print_report`
+# times each method across a range of diffusion scales and the representative
+# Laplacians selected above, then recommends the fastest option for this
+# dataset.
+
+scales = np.logspace(-6, 6, 10)
+tempo.print_report(indices, scales, force_csr=False, tol=1e-8)
+
+# %%
+# Computing the inter-transition matrices
+# ---------------------------------------
+# Finally we build the inter-transition matrices that the flow-stability
+# clustering consumes. We first lay out the time grid, then compute the
+# matrices for a chosen diffusion scale ``lamda``. The ``n_jobs`` argument
+# parallelizes the (independent) per-interval exponentials.
+
+tempo._compute_time_grid()
+
+
+
+# %%
+# We then proceed to computing the forward transition matrix for 2 time
 # scales. It may take few minutes to run this.
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
-    tempo.compute_inter_transition_matrices(lamda=s)
+    tempo.compute_inter_transition_matrices_new(
+    lamda=s,
+    t_start=None,
+    t_stop=None,
+    method="mfp_exp",
+    n_jobs=10,
+    tol=1e-8,
+)
 
 forward_transition_matrices = [
     reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
