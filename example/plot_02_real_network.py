@@ -213,7 +213,7 @@ plt.show()
 
 fig, ax = plt.subplots(figsize=(10, 5))
 et = tempo.events_table
-et = et[et['ending_times'] <= 100]
+et = et[et['ending_times'] <= 1800]
 
 for _, row in et.iterrows():
     tgt = row[tempo._TARGETS]
@@ -275,7 +275,7 @@ tempo._compute_time_grid()
 # We then proceed to computing the forward transition matrix for 2 time
 # scales. It may take few minutes to run this.
 
-scales = [1e-3]
+scales = [1e-6, 1]
 for i, s in enumerate(scales):
     tempo.compute_inter_transition_matrices_new(
     lamda=s,
