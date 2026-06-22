@@ -3,6 +3,7 @@ name = "tempnet"
 authors = [
     {name="Alexandre Bovet", email="alexandre.bovet@uzh.ch"},
     {name="Yasaman Asgari", email="yasaman.asgari@uzh.ch"},
+     {name="Juni Schindler", email="juni.schindler@uzh.ch"},
     {name="Jonas I. Liechti", email="j-i-l@t4d.ch"},
 ]
 description = "A library for analyzing temporal networks."
@@ -21,6 +22,7 @@ dependencies = [
     "pandas>=2.3.3",
     "scipy>=1.15.3",
     "stochmat>=1.0.0",
+    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
