@@ -57,6 +57,12 @@ from .temporal_network import (  # noqa: F401
     set_to_zeroes,
 )
 
+from .synth_temp_network import (  # noqa: F401
+    SynthTempNetwork,
+    Individual,
+    make_step_block_probs,
+)
+
 def set_log_level(level):
     """
     Set the logging level for the package.
