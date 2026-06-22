@@ -57,7 +57,6 @@ def mfp_exp(H, err, non_norm):
         sc = S.nnz / (Nh**2)
         T = T + S
     
-    # Note: Don't delete in Python, just let garbage collection handle it
     
     rn = []
     mt = 1
@@ -83,7 +82,7 @@ def mfp_exp(H, err, non_norm):
     
     T = Ih + T
     
-    return T, rn
+    return T
 
 
 def flitoutA2(A, eg, m):

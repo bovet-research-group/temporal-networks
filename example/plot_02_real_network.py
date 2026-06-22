@@ -55,8 +55,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # We round the times, and keep only the
 # first day of activity.
 
-event_table = event_table.round(2)
-
 # filter 1 hour
 event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
     drop=True
@@ -215,7 +213,7 @@ plt.show()
 
 fig, ax = plt.subplots(figsize=(10, 5))
 et = tempo.events_table
-et = et[et['ending_times'] <= 1800]
+et = et[et['ending_times'] <= 100]
 
 for _, row in et.iterrows():
     tgt = row[tempo._TARGETS]
@@ -277,7 +275,7 @@ tempo._compute_time_grid()
 # We then proceed to computing the forward transition matrix for 2 time
 # scales. It may take few minutes to run this.
 
-scales = [1e-6, 1]
+scales = [1e-3]
 for i, s in enumerate(scales):
     tempo.compute_inter_transition_matrices_new(
     lamda=s,
