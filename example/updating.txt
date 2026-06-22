@@ -1,2 +1,0 @@
-! pip uninstall -y tempnet
-!pip install -e C:/Users/Yasaman/temporal-networks/
