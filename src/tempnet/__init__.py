@@ -13,13 +13,14 @@ The package sets up a default logger on import. You can adjust the logging level
 
 Author
 ------
-Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+Alexandre Bovet <alexandre.bovet@uzh.ch>
 
 
 Contributors
 ............
 
 - Jonas I. Liechti <j-i-l@t4d.ch>
+- Yasaman Asgari <yasaman.asgari@uzh.ch>
 
 License
 -------
@@ -43,7 +44,6 @@ setup_logger()  # Set up the logger with the default level
 from .temporal_network import (  # noqa: F401
     ContTempNetwork,
     ContTempInstNetwork,
-    lin_approx_trans_matrix,
     compute_stationary_transition,
     compute_subspace_expm,
     csc_row_normalize,
