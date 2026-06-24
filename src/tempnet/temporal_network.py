@@ -1776,9 +1776,35 @@ class ContTempNetwork:
 
         else:
             logger.info("PID %s : delta_inter_T_lin has not been computed", os.getpid())
-    def active_nodes(self, t_start, t_end):
-        """Return the nodes active within the given time window."""
-        assert t_start < t_end , \
+    
+    
+    def active_nodes(self, t_start=None, t_end=None):
+
+        """Return the nodes that are active within a given time window.
+
+        A node is considered active if it is an endpoint of at least one event
+        that overlaps the interval ``[t_start, t_end]``. An event overlaps the
+        window when it starts before ``t_end`` and ends after ``t_start``.
+
+        Parameters
+        ----------
+        t_start : float or int (default is None)
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int (default is None)
+            End of the time window.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of unique node ids active within the window. Empty if no events overlap.
+        """
+
+        if not t_start: 
+            t_start=self.start_time
+        if not t_end: 
+            t_end=self.end_time
+            
+        assert t_start < t_end, \
             "t_end should be bigger than t_start"
 
         t_start=max(self.start_time, t_start)
@@ -1786,24 +1812,69 @@ class ContTempNetwork:
         mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
         edges = self.events_table[mask]
         nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
-        return np.array(list(nodes))
+        return np.sort(np.array(list(nodes)))
 
-    def num_active_nodes(self, t_start, t_end):
-        """Return the number of nodes active within the given time window."""
+    def num_active_nodes(self, t_start=None, t_end=None):
+        """Return the number of nodes active within a given time window.
+
+        A node is active if it is an endpoint of at least one event overlapping
+        ``[t_start, t_end]``. 
+
+        Parameters
+        ----------
+        t_start : float or int (default: None)
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int (default: None)
+            End of the time window.
+
+        Returns
+        -------
+        int
+            Number of active nodes in the window. Zero if no events
+            overlap.
+        """        
         nodes=self.active_nodes(t_start, t_end)
         return len(nodes)
 
 
-    def num_active_edges(self, t_start, t_end):
-        """Return the number of edges active within the given time window."""
-        assert t_start < t_end , \
+def num_active_edges(self, t_start, t_end):
+        """Return the number of edges active within a given time window.
+
+        An edge (event) is counted as active if it overlaps the interval
+        ``[t_start, t_end]``, that is, it starts before ``t_end`` and ends
+        after ``t_start``. 
+
+        Note that this counts *events*, so if the same node pair interacts
+        multiple times within the window, each interaction is counted
+        separately.
+
+        Parameters
+        ----------
+        t_start : float or int
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int
+            End of the time window.
+
+        Returns
+        -------
+        int
+            Number of active events overlapping the window. Zero if none.
+        """
+        if not t_start: 
+            t_start=self.start_time
+        if not t_end: 
+            t_end=self.end_time
+
+        assert t_start < t_end, \
             "t_end should be bigger than t_start"
 
-        t_start=max(self.start_time, t_start)
-        t_end=min(self.end_time, t_end)   
-        
-        mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
-        return mask.sum()
+        t_start = max(self.start_time, t_start)
+        t_end = min(self.end_time, t_end)
+
+        mask = (self.events_table["starting_times"] < t_end) & \
+               (self.events_table["ending_times"] > t_start)
+        return int(mask.sum())
+
 
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
