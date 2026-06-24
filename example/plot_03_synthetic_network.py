@@ -3,18 +3,28 @@ Synthetic temporal network with community structure
 ====================================================
 
 This example uses :class:`~tempnet.synth_temp_network.SynthTempNetwork` to
-generate a synthetic continuous-time temporal network of 12 agents organised
-into three communities of four.  Within-community contacts are more frequent
-than cross-community ones (block probability structure).
+generate a synthetic continuous-time temporal network.
 
-The simulation produces a stream of time-stamped contact events that are
-then loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
+The model works as follows:
 
-Two plots are produced:
+1. We first define a set of nodes for the network. In this example, 12 agents
+   are organized into communities.
+2. Each node is assigned an activation rate, ``lambda_activation``.
+3. Each node activates on its own (Poissonian) clock, with a waiting time drawn
+   from a (shifted) exponential — mean ``1 / lambda_activation`` when ``loc=0``.
+4. Each time a node activates, it chooses ``num_partner_per_activation``
+   partner(s) according to the selection strategy (uniform, within-group, or
+   block-probability based).
+5. Each resulting interaction gets a duration drawn from another exponential
+   with rate ``lambda_duration``. When the edge ends, the partner becomes
+   available again for that node's future activations.
 
-1. **Contact timeline** — each contact is drawn as a horizontal bar coloured
-   by community membership of the source node.
-2. **Event-duration distribution** — histogram of all contact durations.
+In the simulation below, agents are organized into three communities of four.
+Within-community contacts are more frequent than cross-community ones (a block
+probability structure).
+
+The simulation produces a stream of time-stamped contact events that are then
+loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
 """
 
 # %%
@@ -24,6 +34,7 @@ Two plots are produced:
 # three equal communities (groups 0, 1, 2).  Interaction durations are drawn
 # from an exponential distribution with mean ``inter_tau``; inter-activation
 # waiting times use mean ``activ_tau``.
+
 
 import matplotlib.pyplot as plt
 import numpy as np
