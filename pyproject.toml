@@ -16,16 +16,17 @@ license.file = "LICENSE"
 # Use git tags for versioning
 dynamic = ["version"]
 
+
 dependencies = [
     # pin (== or ~= with patches) when developing scripts, minimal (>=) for packages
     "numpy>=2.2.6",
     "pandas>=2.3.3",
     "scipy>=1.15.3",
     "stochmat>=1.0.0",
-        "joblib>=1.5.3",
-            "tqdm>=4.67.1",
-
-
+    "joblib>=1.5.3",
+    "tqdm>=4.67.1",
+    "matplotlib>=3.10.0",
+    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]
