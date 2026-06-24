@@ -55,8 +55,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # %%
 # Filter the events
 # -----------------
-# We round the times, and keep only the
-# first day of activity.
+# We keep only the first day of activity.
 
 # filter 1 day
 event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
@@ -95,10 +94,6 @@ sns.histplot(data=tempo.events_table, x='durations', ax=ax[0],
              log_scale=(True, False))
 sns.histplot(data=tempo.events_table, x='durations', ax=ax[1],
              log_scale=(True, True))
-ax[0].axvline(0.25, color='k', linestyle='--')
-ax[0].axvline(2, color='k', linestyle='--')
-ax[0].axvline(200, color='k', linestyle='--')
-
 plt.tight_layout()
 plt.show()
 
