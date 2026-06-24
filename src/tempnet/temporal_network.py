@@ -201,7 +201,10 @@ class ContTempNetwork:
                     f" '{self._ENDINGS}'. For instantaneous temporal"
                     " networks use ContTempInstNetwork."
                 )
-            
+
+        self.num_nodes = pd.unique(
+            self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
+        ).size      
         if node_to_label_dict: 
             if not relabel_nodes: 
                             raise ValueError("node_to_label_dict given but relabel_nodes is False")
@@ -229,7 +232,6 @@ class ContTempNetwork:
                                "target_nodes"]].values.ravel("K")
         ))
 
-        self.num_nodes = self.node_array.shape[0]
 
         self.num_events = self.events_table.shape[0]
 
