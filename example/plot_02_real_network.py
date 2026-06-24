@@ -17,6 +17,9 @@ and finally the forward transition matrices at several time scales.
 # %%
 # Load libraries
 # --------------
+#%load_ext autoreload
+#%autoreload 2
+
 import tempfile
 from functools import reduce
 from pathlib import Path
@@ -55,7 +58,7 @@ with tempfile.TemporaryDirectory() as tmpdir:
 # We round the times, and keep only the
 # first day of activity.
 
-# filter 1 hour
+# filter 1 day
 event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
     drop=True
 )
@@ -176,7 +179,7 @@ print("End:", tempo.end_time)
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
 n_active = [tempo.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
-fig, ax = plt.subplots(nrows=1, ncols=1)
+fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 ax.plot(t[:-1], n_active, marker='.')
 
 ax.set_xticks(t)
@@ -211,7 +214,7 @@ plt.show()
 # Each contact is drawn as a horizontal bar; rows correspond to individual
 # mice.
 
-fig, ax = plt.subplots(figsize=(10, 5))
+fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
 et = tempo.events_table
 et = et[et['ending_times'] <= 1800]
 
@@ -232,10 +235,7 @@ plt.show()
 # Now we want to compute the forward transition matrices by
 # first computing the Laplacians for the 1st hour
 # to keep the example fast enough.
-
-tempo = tn.ContTempNetwork(events_table=et)
-
-tempo.compute_laplacian_matrices()
+tempo.compute_laplacian_matrices(t_start=None, t_stop=1800)
 
 # %%
 # Inspecting the density of the Laplacians
@@ -279,8 +279,6 @@ scales = [1e-6, 1]
 for i, s in enumerate(scales):
     tempo.compute_inter_transition_matrices_new(
     lamda=s,
-    t_start=None,
-    t_stop=None,
     method="mfp_exp",
     n_jobs=10,
     tol=1e-8,
@@ -294,7 +292,7 @@ forward_transition_matrices = [
 # Visualise the forward transition matrices for each time scale.
 
 norm = LogNorm(vmin=1e-6, vmax=1)
-fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4), dpi=500)
 for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
     sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
                 norm=norm)
