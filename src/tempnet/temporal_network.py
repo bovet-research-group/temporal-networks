@@ -517,11 +517,9 @@ class ContTempNetwork:
         skipping = False
         if os.path.exists(file):
             if replace_existing:
-                # TODO: move to logger usage
-                print("PID ", os.getpid(), f" : , file {file} already exists, replacing it.")
+                logger.info("PID %s : file %s already exists, replacing it.", os.getpid(), file)
             else:
-                # TODO: move to logger usage
-                print("PID ", os.getpid(), f" : , file {file} already exists, skipping.")
+                logger.info(f"PID {os.getpid()} : file {file} already exists, skipping.")
                 skipping = True
 
         if not skipping:
@@ -612,12 +610,12 @@ class ContTempNetwork:
                 text = "sparse stoch trans mats"
 
             if compressed:
-                logger.info("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
                 with gzip.open(file, "wb", compresslevel=2) as fopen:
                     pickle.dump(save_dict, fopen)
             else:
-                logger.info("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
                 with open(file, "wb") as fopen:
                     pickle.dump(save_dict, fopen)
@@ -794,8 +792,8 @@ class ContTempNetwork:
 
             if ext != ".gz":
                 file += ".gz"
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+            logger.info(f"PID {os.getpid()} : saving {text} to {file}")
+
 
             with gzip.open(file, "wb", compresslevel=2) as fopen:
                 pickle.dump(save_dict, fopen)
@@ -803,8 +801,7 @@ class ContTempNetwork:
             ext = os.path.splitext(filename)[-1]
             if ext != ".pickle":
                 file += ".pickle"
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+            logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
             with open(file, "wb") as fopen:
                 pickle.dump(save_dict, fopen)
@@ -1747,13 +1744,10 @@ class ContTempNetwork:
                         set_to_zeroes(M, tol=tol)
 
             else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), " : ",
-                      f"delta_inter_T has already been computed with lamda={lamda}")
-
+                logger.info("PID %s : delta_inter_T has already been computed with lamda=%s",
+                            os.getpid(), lamda)
         else:
-            # TODO: switch to logger
-            print("PID ", os.getpid(), " : ", "delta_inter_T has not been computed")
+            logger.info(f"PID {os.getpid()} : delta_inter_T has not been computed")
 
         if hasattr(self, "inter_T_lin") and lamda in self.inter_T_lin.keys():
 
@@ -1777,13 +1771,11 @@ class ContTempNetwork:
                             set_to_zeroes(M, tol=tol)
 
             else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), " : ",
-                      f"delta_inter_T_lin has already been computed with lamda={lamda}")
+                logger.info("PID %s : delta_inter_T_lin has already been computed with lamda=%s",
+                            os.getpid(), lamda)
 
         else:
-            # TODO: switch to logger
-            print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
+            logger.info("PID %s : delta_inter_T_lin has not been computed", os.getpid())
     def active_nodes(self, t_start, t_end):
         """Return the nodes active within the given time window."""
         assert t_start < t_end , \
