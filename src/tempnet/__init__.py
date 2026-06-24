@@ -51,7 +51,6 @@ from .temporal_network import (  # noqa: F401
     remove_nnz_rowcol,
     numpy_rebuild_nnz_rowcol,
     sparse_lapl_expm,
-    sparse_lin_approx,
     sparse_stationary_trans,
     set_to_ones,
     set_to_zeroes,

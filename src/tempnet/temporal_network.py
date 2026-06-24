@@ -202,12 +202,12 @@ class ContTempNetwork:
                     " networks use ContTempInstNetwork."
                 )
             
-        if relabel_nodes:
+        if relabel_nodes and node_to_label_dict: 
+            self.node_to_label_dict = node_to_label_dict
+        else:
             # build a local label -> integer index map
             labels = sorted(set(self.events_table[self._SOURCES]) | set(self.events_table[self._TARGETS]))
             self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
-        else:
-            self.node_to_label_dict = node_to_label_dict
 
         self.events_table[self._SOURCES] = self.events_table[
             self._SOURCES
