@@ -1679,7 +1679,10 @@ class ContTempNetwork:
                     logger.debug(f"n1,n2 ({n1},{n2}): {merged} merged")
 
         num_merged = (events_to_keep == False).sum()
-        logger.info(f"Merged {num_merged} events.")
+        if num_merged !=0: 
+            logger.info(f"Merged {num_merged} events.")
+        else: 
+            logger.debug(f"Merged {num_merged} events.")
 
         self.events_table = self.events_table.loc[events_to_keep]
 
