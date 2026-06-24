@@ -83,17 +83,17 @@ t_end = 3 * (40 * activ_tau + (9 / 2 * m1 - 3 / 2) * 40 * activ_tau / (2 * p1 - 
 # Run the simulation
 # ------------------
 
-sim = SynthTempNetwork(
+tnet = SynthTempNetwork(
     individuals=individuals,
     t_start=0,
     t_end=t_end,
     next_event_method='block_probs_mod',
     block_prob_mod_func=block_prob_mod_func,
 )
-sim.run()
+tnet.run()
 
 print(
-    f"Simulation produced {len(sim.indiv_sources)} contact events "
+    f"Simulation produced {len(tnet.indiv_sources)} contact events "
     f"over t ∈ [0, {t_end:.1f}]."
 )
 
@@ -102,10 +102,10 @@ print(
 # -----------------------
 
 network = ContTempNetwork(
-    source_nodes=sim.indiv_sources,
-    target_nodes=sim.indiv_targets,
-    starting_times=sim.start_times,
-    ending_times=sim.end_times,
+    source_nodes=tnet.indiv_sources,
+    target_nodes=tnet.indiv_targets,
+    starting_times=tnet.start_times,
+    ending_times=tnet.end_times,
 )
 
 print(f"Nodes : {network.nodes}")
