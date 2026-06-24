@@ -71,18 +71,18 @@ print(event_table.head())
 # Build the continuous-time temporal network
 # ------------------------------------------
 
-tempo = tn.ContTempNetwork(events_table=event_table)
+tnet = tn.ContTempNetwork(events_table=event_table)
 
 # %%
 # Now we find the number of nodes and number of events.
 
-print(tempo)
+print(tnet)
 
 # %%
 # We can also access the variables directly from the object:
 
-print('Number of mice', tempo.num_nodes)
-print('Number of events', tempo.num_events)
+print('Number of mice', tnet.num_nodes)
+print('Number of events', tnet.num_events)
 
 # %%
 # Event-duration distribution
@@ -90,9 +90,9 @@ print('Number of events', tempo.num_events)
 # Histogram of contact durations on log-linear and log-log axes.
 
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), dpi=200)
-sns.histplot(data=tempo.events_table, x='durations', ax=ax[0],
+sns.histplot(data=tnet.events_table, x='durations', ax=ax[0],
              log_scale=(True, False))
-sns.histplot(data=tempo.events_table, x='durations', ax=ax[1],
+sns.histplot(data=tnet.events_table, x='durations', ax=ax[1],
              log_scale=(True, True))
 plt.tight_layout()
 plt.show()
@@ -103,7 +103,7 @@ plt.show()
 # We aggregate the temporal network into a static weighted adjacency matrix
 # and display it on linear and logarithmic colour scales.
 
-A = tempo.compute_static_adjacency_matrix()
+A = tnet.compute_static_adjacency_matrix()
 A_dense = A.toarray()
 
 fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, dpi=200, figsize=(12, 5))
@@ -164,8 +164,8 @@ plt.show()
 # minimum start time and maximum end time -- we can query the network
 # directly:
 
-print("Start:", tempo.start_time)
-print("End:", tempo.end_time)
+print("Start:", tnet.start_time)
+print("End:", tnet.end_time)
 
 # %%
 # Active nodes over time
@@ -173,7 +173,7 @@ print("End:", tempo.end_time)
 # Number of active nodes in each one-hour window across a full day.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_active = [tempo.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
+n_active = [tnet.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 ax.plot(t[:-1], n_active, marker='.')
 
@@ -189,7 +189,7 @@ plt.show()
 # Number of active edges/events in each one-hour window.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_edge_active = [tempo.num_active_edges(t[i], t[i + 1])
+n_edge_active = [tnet.num_active_edges(t[i], t[i + 1])
                  for i in range(len(t) - 1)]
 
 fig, ax = plt.subplots(nrows=1, ncols=1)
@@ -210,13 +210,13 @@ plt.show()
 # mice.
 
 fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
-et = tempo.events_table
+et = tnet.events_table
 et = et[et['ending_times'] <= 1800]
 
 for _, row in et.iterrows():
-    tgt = row[tempo._TARGETS]
-    t0 = row[tempo._STARTS]
-    t1 = row[tempo._ENDINGS]
+    tgt = row[tnet._TARGETS]
+    t0 = row[tnet._STARTS]
+    t1 = row[tnet._ENDINGS]
     ax.barh(tgt, t1 - t0, left=t0, height=0.6, color='steelblue', alpha=0.6)
 
 ax.set_xlabel('Time (s)')
@@ -230,7 +230,7 @@ plt.show()
 # Now we want to compute the forward transition matrices by
 # first computing the Laplacians for the 1st hour
 # to keep the example fast enough.
-tempo.compute_laplacian_matrices(t_start=None, t_stop=1800)
+tnet.compute_laplacian_matrices(t_start=None, t_stop=1800)
 
 # %%
 # Inspecting the density of the Laplacians
@@ -240,7 +240,7 @@ tempo.compute_laplacian_matrices(t_start=None, t_stop=1800)
 # representative indices (the min, lower-quartile, median, upper-quartile, and
 # max-density snapshots) that we reuse for benchmarking.
 
-indices = tempo.plot_density_of_laplacians()
+indices = tnet.plot_density_of_laplacians()
 
 # %%
 # Benchmarking the matrix-exponential methods
@@ -252,7 +252,7 @@ indices = tempo.plot_density_of_laplacians()
 # dataset.
 
 scales = np.logspace(-6, 6, 10)
-tempo.print_report(indices, scales, force_csr=False, tol=1e-8)
+tnet.print_report(indices, scales, force_csr=False, tol=1e-8)
 
 # %%
 # Computing the inter-transition matrices
@@ -262,7 +262,7 @@ tempo.print_report(indices, scales, force_csr=False, tol=1e-8)
 # matrices for a chosen diffusion scale ``lamda``. The ``n_jobs`` argument
 # parallelizes the (independent) per-interval exponentials.
 
-tempo._compute_time_grid()
+tnet._compute_time_grid()
 
 
 
@@ -272,7 +272,7 @@ tempo._compute_time_grid()
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
-    tempo.compute_inter_transition_matrices_new(
+    tnet.compute_inter_transition_matrices_new(
     lamda=s,
     method="mfp_exp",
     n_jobs=10,
@@ -280,7 +280,7 @@ for i, s in enumerate(scales):
 )
 
 forward_transition_matrices = [
-    reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
+    reduce(lambda a, b: a @ b, tnet.inter_T[s]) for s in scales
 ]
 
 # %%
