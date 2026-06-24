@@ -593,14 +593,12 @@ class ContTempNetwork:
                 text = "sparse stoch trans mats"
 
             if compressed:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
                 with gzip.open(file, "wb", compresslevel=2) as fopen:
                     pickle.dump(save_dict, fopen)
             else:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info("PID ", os.getpid(), " : "," saving " + text + " to " + file)
 
                 with open(file, "wb") as fopen:
                     pickle.dump(save_dict, fopen)
