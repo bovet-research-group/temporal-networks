@@ -35,7 +35,6 @@ loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
 # from an exponential distribution with mean ``inter_tau``; inter-activation
 # waiting times use mean ``activ_tau``.
 
-
 import matplotlib.pyplot as plt
 import numpy as np
 
