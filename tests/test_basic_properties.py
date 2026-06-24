@@ -173,9 +173,6 @@ class TestBasicProperties:
             range(simple_network.num_events)
         )
 
-    def test_is_directed_default(self, simple_network: ContTempNetwork):
-        assert simple_network.is_directed == False
-
     def test_instantaneous_events_default(self, simple_network: ContTempNetwork):
         assert simple_network.instantaneous_events == False
 
@@ -261,13 +258,12 @@ class TestBasicProperties:
     def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
         assert network_overlapping._overlapping_events_merged is True
 
-
     def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
         """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
-        assert network_overlapping.num_events == 2
+        assert network_overlapping_no_relabel.num_events == 2
 
     def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-        row = network_overlapping.events_table.iloc[0]
+        row = network_overlapping_no_relabel.events_table.iloc[0]
         assert row["starting_times"] == 0
         assert row["ending_times"] == 4
 

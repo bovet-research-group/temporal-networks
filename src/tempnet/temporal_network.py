@@ -203,19 +203,26 @@ class ContTempNetwork:
                 )
             
         if node_to_label_dict: 
-            self.node_to_label_dict = node_to_label_dict
-        else:
-            # build a local label -> integer index map
-            labels = sorted(set(self.events_table[self._SOURCES]) | set(self.events_table[self._TARGETS]))
-            self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
+            if not relabel_nodes: 
+                            raise ValueError("node_to_label_dict given but relabel_nodes is False")
+            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
+            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
-        if relabel_nodes:
-            self.events_table[self._SOURCES] = self.events_table[
-                self._SOURCES
-            ].map(self.label_to_node_dict)
-            self.events_table[self._TARGETS] = self.events_table[
-                self._TARGETS
-            ].map(self.label_to_node_dict)
+            self.node_to_label_dict = node_to_label_dict
+            self.label_to_node_dict = {v: k for k, v in node_to_label_dict.items()}
+               
+        elif not self._is_canonical(self.events_table[self._SOURCES],
+                                    self.events_table[self._TARGETS]):
+            logger.info("Nodes not labeled 0..num_nodes-1; relabeling...")
+            labels = sorted(set(self.events_table[self._SOURCES]) |
+                            set(self.events_table[self._TARGETS]))
+            self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
+            self.node_to_label_dict = {i: name for name, i in self.label_to_node_dict.items()}
+            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
+            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
+        else:
+            self.label_to_node_dict = {i: i for i in range(self.num_nodes)}
+            self.node_to_label_dict = {i: i for i in range(self.num_nodes)}
 
         self.node_array = np.sort(pd.unique(
             self.events_table[["source_nodes",
@@ -245,6 +252,15 @@ class ContTempNetwork:
             self._overlapping_events_merged = True
 
         self.instantaneous_events = False
+
+    def _is_canonical(self, src, tgt):
+        " This functions checks whether the nodes are indexed from 0 to n-1"
+        vals = np.unique(np.concatenate([src.to_numpy(), tgt.to_numpy()]))
+        num_nodes=len(vals)
+        return (vals.dtype.kind in "iu"
+                and vals.min() == 0
+                and vals.max() == num_nodes - 1
+                and len(vals) == num_nodes)
 
     def __repr__(self):
         return str(self.__class__) + \
@@ -907,8 +923,8 @@ class ContTempNetwork:
             data.append(
                 min(ev.ending_times, end_time) - max(ev.starting_times, start_time)
             )
-            rows.append(self.label_to_node_dict[ev.source_nodes])
-            cols.append(self.label_to_node_dict[ev.target_nodes])
+            rows.append(ev.source_nodes)
+            cols.append(ev.target_nodes)
 
         A = coo_matrix((data, (rows, cols)), shape=(self.num_nodes, self.num_nodes))
         return A + A.T
@@ -1070,6 +1086,8 @@ class ContTempNetwork:
             # starting or ending events
             is_starts = time_ev.is_start.values
 
+
+
             events_k = [self.events_table.loc[
                 mid,
                 ["source_nodes", "target_nodes"]
@@ -1111,7 +1129,7 @@ class ContTempNetwork:
 
         t_end = time.time()-t0
         self._compute_times["laplacians"] = t_end
-        logger.info(f"Finished in {t_end}")
+        logger.info(f"Finished computing laplacians in {t_end:.2f}")
 
     # ------------------------------------------------------------------
     # Laplacian-loop extension hooks.
@@ -1411,12 +1429,12 @@ class ContTempNetwork:
 
                 self._compute_times["inter_T_" + str(lamda)] = t_end
 
-                logger.debug(
-                    f"Finished computing interevent transition matrices in {t_end}"
+                logger.info(
+                    f"Finished computing interevent transition matrices in {t_end:3f} seconds."
                 )
-            logger.debug(
-                f"Interevent transition matrices already computed for {lamda=}"
-            )
+            else: 
+                logger.info(
+                    f"Interevent transition matrices already computed for lamda={lamda}")
 
 
     def _compute_single_T(self, L, tau_k, lamda, num_nodes, method,force_csr,  tol):
@@ -1589,7 +1607,7 @@ class ContTempNetwork:
 
         self.T[lamda] = chain
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
-        logger.info("Finished")
+        logger.info(f"Finished computing the transition matrices for lambda ={lamda}")
 
     def _compute_stationary_transition(self,
                                        t_start=None,
