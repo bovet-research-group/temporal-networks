@@ -2130,10 +2130,10 @@ class ContTempNetwork:
         A = self.compute_static_adjacency_matrix()
 
         # loop over nodes
+
         for i, n1 in enumerate(self.node_array):
-
-            for n2 in (A[n1, :] > 0).nonzero()[1]:
-
+            for j in (A[i, :] > 0).nonzero()[1]:
+                n2 = self.node_array[j]
                 mask_12 = np.logical_and(
                     self.events_table.source_nodes.values == n1,
                     self.events_table.target_nodes.values == n2

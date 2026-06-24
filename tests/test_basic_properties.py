@@ -248,29 +248,29 @@ class TestBasicProperties:
 
         assert np.allclose(A, A_loaded)
             
-#    #Overlapping
-#     def test_overlapping_events_are_merged(self, network_overlapping: ContTempNetwork):
-#         """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
-#         assert network_overlapping.num_events == 2
+   #Overlapping
+    def test_overlapping_events_are_merged(self, network_overlapping: ContTempNetwork):
+        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+        assert network_overlapping.num_events == 2
 
-#     def test_merged_event_span(self, network_overlapping: ContTempNetwork):
-#         row = network_overlapping.events_table.iloc[0]
-#         assert row["starting_times"] == 0
-#         assert row["ending_times"] == 4
+    def test_merged_event_span(self, network_overlapping: ContTempNetwork):
+        row = network_overlapping.events_table.iloc[0]
+        assert row["starting_times"] == 0
+        assert row["ending_times"] == 4
 
-#     def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
-#         assert network_overlapping._overlapping_events_merged is True
+    def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
+        assert network_overlapping._overlapping_events_merged is True
 
 
-#     def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-#         """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
-#         assert network_overlapping.num_events == 2
+    def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+        assert network_overlapping.num_events == 2
 
-#     def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-#         row = network_overlapping.events_table.iloc[0]
-#         assert row["starting_times"] == 0
-#         assert row["ending_times"] == 4
+    def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        row = network_overlapping.events_table.iloc[0]
+        assert row["starting_times"] == 0
+        assert row["ending_times"] == 4
 
-#     def test_merge_flag_set_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
-#         assert network_overlapping_no_relabel._overlapping_events_merged is True
+    def test_merge_flag_set_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        assert network_overlapping_no_relabel._overlapping_events_merged is True
 
