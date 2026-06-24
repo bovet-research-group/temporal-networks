@@ -63,18 +63,6 @@ print("num_nodes, num_events:", tnet.num_nodes, tnet.num_events)
 print(tnet.events_table)
 
 # %%
-# Distribution of edge activation durations
-# -----------------------------------------
-# The ``durations`` column lets us inspect the distribution of edge activation
-# periods, shown here in both linear and log scale.
-
-fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), dpi=200)
-sns.histplot(data=tnet.events_table, x="durations", ax=ax[0], discrete=True)
-sns.histplot(data=tnet.events_table, x="durations", ax=ax[1], log_scale=(True, True))
-plt.tight_layout()
-plt.show()
-
-# %%
 # Aggregating into a static network
 # ---------------------------------
 # We can collapse the time dimension entirely, aggregating the temporal network
@@ -189,14 +177,14 @@ plt.show()
 # With the random-walk Laplacians computed, we simulate the continuous-time
 # random walk by computing the **matrix exponential** of each Laplacian, scaled
 # by the duration of the corresponding interval and the walker's transition
-# rate. For two consecutive timestamps :math:`t_i` and :math:`t_{i+1}`,
+# rate. For two consecutive timestamps :math:`t_1` and :math:`t_2`,
 #
 # .. math::
-#   (t_1, t_2; \tau_w) = e^{-\frac{t_2 - t_1}\lambda_{\mathrm{RW}} L}
-
-# where :math:`\lambda_{\mathrm{RW}}` is the rate of the random walker. 
-# The entry :math:`T_{jk}^{(i)}` gives the probability that a walker starting at node :math:`j` at time :math:`t_i`
-# reaches node :math:`k` at time :math:`t_{i+1}`.
+#   \hat{T}(t_1, t_2; \tau_w) = e^{-(t_2 - t_1)\lambda_{\mathrm{RW}} L_{\mathrm{RW}}}
+#
+# where :math:`\lambda_{\mathrm{RW}}` is the rate of the random walker.
+# The entry :math:`\hat{T}_{jk}` gives the probability that a walker starting at node
+# :math:`j` at time :math:`t_1` reaches node :math:`k` at time :math:`t_2`.
 
 tnet.compute_inter_transition_matrices(lamda=1)
 inter_transition_matrices = tnet.inter_T[1]
@@ -228,11 +216,14 @@ plt.show()
 # matrices:
 #
 # .. math::
-# T(t_1, t_2) = \hat{T}(t_1, t_m) \left[ \prod_{k=m}^{n-1} \hat{T}(t_k, t_{k+1}) \right] \hat{T}(t_n, t_2) \tag{7}
-#with $m < n$, $t_m \geq t_1$ being the time of the first event after, or at, $t_1$ and $t_n < t_2$ the time of the last 
-# event before $t_2$. To compute the transition matrix corresponding to the time-reversed evolution of the network, from $t_2$ to $t_1$,
-# we perform the matrix product in the reversed order#
-
+#   T(t_1, t_2) = \hat{T}(t_1, t_m) \left[ \prod_{k=m}^{n-1} \hat{T}(t_k, t_{k+1}) \right] \hat{T}(t_n, t_2)
+#
+# with :math:`m < n`, :math:`t_m \geq t_1` being the time of the first event
+# after, or at, :math:`t_1` and :math:`t_n < t_2` the time of the last event
+# before :math:`t_2`. To compute the transition matrix corresponding to the
+# time-reversed evolution of the network, from :math:`t_2` to :math:`t_1`, we
+# perform the matrix product in the reversed order.
+#
 # The entry :math:`T_{jk}` gives the probability that a walker with rate
 # :math:`\lambda_{\mathrm{RW}}`, starting at node :math:`j` at the beginning of
 # the network, arrives at node :math:`k` by the end. The rate controls the
@@ -242,6 +233,7 @@ plt.show()
 #   so :math:`T` remains close to the identity matrix.
 # - **High rate** (:math:`\lambda_{\mathrm{RW}} \gg 1`): the walker mixes
 #   rapidly, washing out temporal structure.
+
 
 fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
 for i, lamda in enumerate([1e-2, 0.1, 10]):
