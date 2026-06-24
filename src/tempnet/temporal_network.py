@@ -1676,42 +1676,6 @@ class ContTempNetwork:
                          f"matrices in {t_end}")
             
 
-    def _laplacians_cover(self, t_start, t_stop):
-        """True if already-computed Laplacians span [t_start, t_stop]."""
-        if not hasattr(self, "laplacians"):
-            return False
-        if t_start is not None: 
-            t_start=max(self.start_time,t_start)
-        if t_stop is not None: 
-            t_stop=min(self.end_time, t_stop)
-
-        stored_start = self._t_start_laplacians
-        stored_stop = self._t_stop_laplacians
-
-        # a None request means "use the full extent" --> only covered if stored is also full
-        req_start = t_start if t_start is not None else stored_start
-        req_stop = t_stop if t_stop is not None else stored_stop
-
-        return stored_start <= req_start and req_stop <= stored_stop
-
-
-    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method,force_csr,  tol):
-        """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
-        if L.getnnz() == 0:
-            # expm of the zero matrix is the identity
-            return eye(num_nodes, format="csr")
-        elif method == "dense_expm":
-            # densify the Laplacian, expm, store back as sparse
-            T=csr_matrix(expm(-tau_k * lamda * L.toarray()))
-        elif method == "sparse_expm":
-            # expm directly on the sparse Laplacian
-            T=expm(-tau_k * lamda * L).tocsr()
-
-        elif method == "mfp_exp":
-            return mfp_exp(-tau_k * lamda * L, err=tol, non_norm=0)
-
-        if method in ['dense_expm', 'sparse_expm']:
-            return self._prep(T, force_csr, tol)
 
     def _prep(self, M, force_csr=False, tol=None):
             M = M.tocsr() if force_csr else M
@@ -1854,9 +1818,28 @@ class ContTempNetwork:
             logger.debug(
                 f"Interevent transition matrices already computed for {lamda=}"
             )
-    
-    def compute_inter_transition_matrices_new(self, *, lamda=None, t_start=None,
-                                        t_stop=None, fix_tau_k=False,
+
+
+    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method,force_csr,  tol):
+        """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
+        if L.getnnz() == 0:
+            # expm of the zero matrix is the identity
+            return eye(num_nodes, format="csr")
+        elif method == "dense_expm":
+            # densify the Laplacian, expm, store back as sparse
+            T=csr_matrix(expm(-tau_k * lamda * L.toarray()))
+        elif method == "sparse_expm":
+            # expm directly on the sparse Laplacian
+            T=expm(-tau_k * lamda * L).tocsr()
+
+        elif method == "mfp_exp":
+            return mfp_exp(-tau_k * lamda * L, err=tol, non_norm=0)
+
+        if method in ['dense_expm', 'sparse_expm']:
+            return self._prep(T, force_csr, tol)
+        
+
+    def compute_inter_transition_matrices_new(self, *, lamda=None, fix_tau_k=False,
                                         method="dense_expm", n_jobs=1, tol=1e-8, force_csr=False):
         """
         Compute inter-event transition matrices for a set of lamdas.
@@ -1872,15 +1855,10 @@ class ContTempNetwork:
 
         Parameters
         ----------
-        lamdas : float or iterable of float, optional
+        lamda : float or iterable of float, optional
             Random-walk rate(s) / dynamical resolution parameter(s).
             The default (None) is 1 over the median inter-event time.
             A single float is accepted and treated as a one-element sequence.
-        t_start, t_stop : float or int, optional
-            Requested time window. If the already-computed Laplacians do not
-            cover this window, they (and any cached transition matrices) are
-            recomputed. If they DO cover it, the relevant sub-range is reused.
-            Default None means the full extent of times.
         fix_tau_k : bool, optional
             If True, all inter-event times (tau_k) are set to 1, decoupling the
             dynamic scale from event length (useful for instantaneous events).
@@ -1910,36 +1888,16 @@ class ContTempNetwork:
         if method not in VALID:
             raise ValueError(f"method must be one of {VALID}, got {method!r}")
 
+        if not hasattr(self, "laplacians"):
+            raise RuntimeError('First compute the laplacians')
+
         if lamda is None:
             logger.info("Taking lamda as 1/tau_w with tau_w = median "
                         "inter-event time")
             lamda = 1.0 / np.median(np.diff(self.times))
 
-        if not self._laplacians_cover(t_start, t_stop):
-            self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
-            self.inter_T = dict()
-            ind_start_laplacians = self._k_start_laplacians
-            ind_stop_laplacians = self._k_stop_laplacians
-        else:
-
-            if t_start is None:
-                ind_start_laplacians = self._k_start_laplacians
-            else:
-                ind_start_laplacians = int(
-                    np.searchsorted(self.times, t_start, side="left")
-                )
-            if t_stop is None:
-                ind_stop_laplacians = self._k_stop_laplacians
-            else:
-                ind_stop_laplacians = int(
-                    np.searchsorted(self.times, t_stop, side="right")
-                )
-
         if not hasattr(self, "inter_T"):
             self.inter_T = dict()
-
-        n_steps = ind_stop_laplacians - ind_start_laplacians
-
 
         if lamda in self.inter_T:
             logger.debug(
@@ -1950,28 +1908,29 @@ class ContTempNetwork:
         logger.info(f"Computing inter-event transition matrices for {lamda=}")
         t0 = time.time()
 
-
-        Ls = [self.laplacians[ind_start_laplacians + k] for k in range(n_steps)]
-
+        n_steps = len(self.laplacians)
+        if len(self.times) < n_steps + 1:
+            raise ValueError(
+                f"need len(self.times) >= {n_steps + 1}, got {len(self.times)}"
+            )
         if fix_tau_k:
             taus = [1.0] * n_steps
         else:
             taus = [
-                self.times[ind_start_laplacians + k + 1]
-                - self.times[ind_start_laplacians + k]
+                self.times[k + 1]
+                - self.times[ k]
                 for k in range(n_steps)
             ]
-
         if n_jobs == 1:
             T_list = [self._compute_single_T(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
-                for L, tau in tqdm(zip(Ls, taus), total=len(Ls), desc=f"expm λ={lamda:.2e}")
+                for L, tau in tqdm(zip(self.laplacians, taus), total=n_steps, desc=f"expm λ={lamda:.2e}")
             ]
         else:
             results_gen = Parallel(n_jobs=n_jobs, return_as="generator")(
                 delayed(self._compute_single_T)(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
-                for L, tau in zip(Ls, taus)
+                for L, tau in zip(self.laplacians, taus)
             )
-            T_list = list(tqdm(results_gen, total=len(Ls), desc=f"expm λ={lamda:.2e}"))
+            T_list = list(tqdm(results_gen, total=n_steps, desc=f"expm λ={lamda:.2e}"))
 
         if len(T_list) == 0:
             logger.debug("no events, trans. matrix = identity")
