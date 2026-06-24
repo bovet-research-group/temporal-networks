@@ -1803,7 +1803,7 @@ class ContTempNetwork:
             t_start=self.start_time
         if not t_end: 
             t_end=self.end_time
-            
+
         assert t_start < t_end, \
             "t_end should be bigger than t_start"
 
@@ -1837,7 +1837,7 @@ class ContTempNetwork:
         return len(nodes)
 
 
-def num_active_edges(self, t_start, t_end):
+    def num_active_edges(self, t_start=None, t_end=None):
         """Return the number of edges active within a given time window.
 
         An edge (event) is counted as active if it overlaps the interval
