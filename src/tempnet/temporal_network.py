@@ -1141,6 +1141,7 @@ class ContTempNetwork:
         del load_dict
         return return_dict
 
+
     def compute_static_adjacency_matrix(self, start_time=None, end_time=None):
         """Returns the adjacency matrix of the static network built from the
         aggregagted edge activity between `start_time` and `end_time`.
@@ -1164,29 +1165,29 @@ class ContTempNetwork:
         """
         if start_time is None:
             start_time = self.start_time
-
         if end_time is None:
             end_time = self.end_time
 
         mask = np.logical_and(self.events_table.starting_times < end_time,
-                              self.events_table.ending_times > start_time)
+                            self.events_table.ending_times > start_time)
 
-        # loop on events
-        data = []
-        cols = []
-        rows = []
-        for ev in self.events_table.loc[mask].itertuples():
+        sub = self.events_table.loc[mask]
+
+        # build a local label -> integer index map
+        labels = sorted(set(sub.source_nodes) | set(sub.target_nodes))
+        idx = {name: i for i, name in enumerate(labels)}
+
+        data, rows, cols = [], [], []
+        for ev in sub.itertuples():
             data.append(
-                min(ev.ending_times,
-                    end_time) - max(ev.starting_times, start_time)
+                min(ev.ending_times, end_time) - max(ev.starting_times, start_time)
             )
-            rows.append(ev.source_nodes)
-            cols.append(ev.target_nodes)
+            rows.append(idx[ev.source_nodes])
+            cols.append(idx[ev.target_nodes])
 
-        A = coo_matrix((data, (rows, cols)),
-                       shape=(self.num_nodes, self.num_nodes))
-
+        A = coo_matrix((data, (rows, cols)), shape=(len(labels), len(labels)))
         return A + A.T
+
 
     def _compute_time_grid(self):
         """Create `self.time_grid`, a dataframe with ('times', 'id') as index,
