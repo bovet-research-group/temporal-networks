@@ -1815,6 +1815,252 @@ class ContTempNetwork:
             f"Transition matrices already computed for lamda={lamda}"
         )
 
+    @staticmethod
+    def _conditional_entropy_of_transition_matrix(T, p0):
+        """Return H(X_t | X_0) for transition matrix ``T`` and weights ``p0``."""
+        if not isspmatrix_csr(T):
+            T = T.tocsr()
+
+        p0 = np.asarray(p0, dtype=np.float64)
+        data = T.data
+        indptr = T.indptr
+
+        if data.size == 0:
+            return 0.0
+
+        xlogx = np.zeros_like(data, dtype=np.float64)
+        mask = data > 0
+        xlogx[mask] = data[mask] * np.log(data[mask])
+
+        row_lengths = np.diff(indptr)
+        row_sums = np.zeros(T.shape[0], dtype=np.float64)
+        nonempty = row_lengths > 0
+        if np.any(nonempty):
+            starts = indptr[:-1][nonempty]
+            row_sums[nonempty] = np.add.reduceat(xlogx, starts)
+
+        return float(-np.dot(p0, row_sums))
+
+    def _compute_cumulative_transition_sequence(self, lamda, reverse_time=False,
+                                                force_csr=True, tol=None):
+        """Build cumulative transition matrices without changing ``self.T``."""
+        if not hasattr(self, "inter_T") or lamda not in self.inter_T.keys():
+            raise Exception("Compute inter_T first.")
+
+        if reverse_time:
+            k_init = len(self.inter_T[lamda]) - 1
+            k_range = reversed(range(k_init))
+        else:
+            k_init = 0
+            k_range = range(1, len(self.inter_T[lamda]))
+
+        if force_csr:
+            cumulative = self.inter_T[lamda][k_init].tocsr().copy()
+        else:
+            cumulative = self.inter_T[lamda][k_init].copy()
+
+        if tol is not None:
+            set_to_zeroes(cumulative, tol)
+            inplace_csr_row_normalize(cumulative)
+
+        transition_sequence = [cumulative]
+        for k in k_range:
+            Tk = self.inter_T[lamda][k]
+            if force_csr:
+                Tk = Tk.tocsr()
+            if tol is not None:
+                Tk = Tk.copy()
+                set_to_zeroes(Tk, tol)
+                inplace_csr_row_normalize(Tk)
+
+            cumulative = cumulative @ Tk
+            if tol is not None:
+                set_to_zeroes(cumulative, tol)
+            inplace_csr_row_normalize(cumulative)
+            transition_sequence.append(cumulative)
+
+        return transition_sequence
+
+    def compute_entropy(self, lamda=None, t_start=None, t_stop=None,
+                        verbose=False, reverse_time=False, force_csr=True,
+                        tol=None, alpha_sampling=None):
+        """Compute global conditional entropy of cumulative transitions.
+
+        The entropy at cumulative transition matrix ``T`` is
+        ``-sum_i p0_i sum_j T_ij log(T_ij)`` with a uniform initial
+        distribution ``p0`` over nodes.
+
+        If ``alpha_sampling`` is ``None``, the full forward entropy signal is
+        computed and cached in ``self.S[lamda]``. Reverse-time full signals are
+        cached separately in ``self.S_reverse[lamda]``. If provided,
+        ``alpha_sampling`` must be a fraction in ``(0, 1]`` and only
+        deterministic grid-sampled indices are evaluated.
+
+        Returns
+        -------
+        numpy.ndarray
+            Two-column array with sampled transition indices in the first
+            column and conditional entropy values in the second column.
+        """
+        if not force_csr:
+            raise Exception("Use force_csr=True")
+
+        if not hasattr(self, "time_grid"):
+            self._compute_time_grid()
+
+        if lamda is None:
+            if verbose:
+                logger.info("Taking lamda as 1/tau_w with tau_w = median "
+                            "interevent time")
+            lamda = 1 / np.median(np.diff(self.times))
+
+        if not hasattr(self, "laplacians"):
+            self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
+
+        if not hasattr(self, "inter_T") or lamda not in self.inter_T.keys():
+            self.compute_inter_transition_matrices(
+                lamda=lamda,
+                t_start=t_start,
+                t_stop=t_stop,
+            )
+
+        if not hasattr(self, "S"):
+            self.S = dict()
+
+        if reverse_time and not hasattr(self, "S_reverse"):
+            self.S_reverse = dict()
+
+        entropy_cache = self.S_reverse if reverse_time else self.S
+
+        if alpha_sampling is None and lamda in entropy_cache.keys():
+            entropy_values = np.asarray(entropy_cache[lamda], dtype=np.float64)
+            sampled_indices = np.arange(entropy_values.size, dtype=int)
+            if reverse_time:
+                sampled_indices = sampled_indices[::-1]
+            return np.column_stack((
+                sampled_indices.astype(np.float64),
+                entropy_values,
+            ))
+
+        transition_matrices = None
+        if not reverse_time:
+            if not hasattr(self, "T") or lamda not in self.T.keys():
+                self.compute_transition_matrices(
+                    lamda=lamda,
+                    save_intermediate=True,
+                    reverse_time=reverse_time,
+                    force_csr=force_csr,
+                    tol=tol,
+                )
+
+            if (
+                hasattr(self, "T")
+                and lamda in self.T.keys()
+                and isinstance(self.T[lamda], list)
+            ):
+                transition_matrices = self.T[lamda]
+
+        if transition_matrices is None:
+            transition_matrices = self._compute_cumulative_transition_sequence(
+                lamda,
+                reverse_time=reverse_time,
+                force_csr=force_csr,
+                tol=tol,
+            )
+
+        num_points = len(transition_matrices)
+        all_indices = np.arange(num_points, dtype=int)
+
+        if alpha_sampling is None:
+            sampled_indices = all_indices
+        else:
+            alpha = float(alpha_sampling)
+            if alpha <= 0 or alpha > 1:
+                raise ValueError("alpha_sampling must be in (0, 1].")
+
+            num_samples = max(1, int(np.ceil(alpha * num_points)))
+            if num_samples >= num_points:
+                sampled_indices = all_indices
+            else:
+                time_start = getattr(self, "_k_start_laplacians", 0)
+                time_stop = time_start + num_points
+                if hasattr(self, "times") and len(self.times) >= time_stop:
+                    candidate_times = np.asarray(
+                        self.times[time_start:time_stop],
+                        dtype=np.float64,
+                    )
+                    target_times = np.linspace(
+                        float(candidate_times[0]),
+                        float(candidate_times[-1]),
+                        num_samples,
+                    )
+                    sampled_indices = np.searchsorted(
+                        candidate_times,
+                        target_times,
+                        side="left",
+                    )
+                    sampled_indices = np.clip(
+                        sampled_indices,
+                        0,
+                        num_points - 1,
+                    )
+                    sampled_indices = np.unique(sampled_indices).astype(int)
+                else:
+                    sampled_indices = np.unique(
+                        np.round(
+                            np.linspace(0, num_points - 1, num_samples)
+                        ).astype(int)
+                    )
+
+        if reverse_time:
+            sampled_indices = sampled_indices[::-1]
+
+        if num_points == 0:
+            entropy_signal = np.empty((0, 2), dtype=np.float64)
+            if alpha_sampling is None:
+                entropy_cache[lamda] = []
+            return entropy_signal
+
+        p0 = np.full(self.num_nodes, 1 / self.num_nodes, dtype=np.float64)
+
+        if verbose:
+            if reverse_time:
+                logger.info("Reversed time computation.")
+            logger.info("Computing entropy")
+
+        t0 = time.time()
+        entropy_values = np.empty(len(sampled_indices), dtype=np.float64)
+        for pos, k in enumerate(sampled_indices):
+            if verbose and not pos % 1000:
+                logger.info(f"{pos} over {len(sampled_indices)}")
+                logger.info(f"{time.time()-t0:.2f}s")
+
+            entropy_values[pos] = \
+                self._conditional_entropy_of_transition_matrix(
+                    transition_matrices[k],
+                    p0,
+                )
+
+        t_end = time.time() - t0
+
+        if alpha_sampling is None:
+            entropy_cache[lamda] = entropy_values.tolist()
+            self._compute_times[
+                f"entropy_{lamda}_rev{reverse_time}"
+            ] = t_end
+        else:
+            self._compute_times[
+                f"entropy_{lamda}_rev{reverse_time}_alpha{alpha_sampling}"
+            ] = t_end
+
+        if verbose:
+            logger.info(f"Finished computing entropy in {t_end:.2f}s")
+
+        return np.column_stack((
+            sampled_indices.astype(np.float64),
+            entropy_values,
+        ))
+
     def compute_lin_transition_matrices(self,
                                         lamda=None,
                                         t_start=None,
