@@ -11,13 +11,13 @@ The model works as follows:
    are organized into communities.
 2. Each node is assigned an activation rate, ``lambda_activation``.
 3. Each node activates on its own (Poissonian) clock, with a waiting time drawn
-   from a (shifted) exponential — mean ``1 / lambda_activation`` when ``loc=0``.
+   from an exponential distribution with mean ``inter_tau=1/lambda_activation``. 
 4. Each time a node activates, it chooses ``num_partner_per_activation``
    partner(s) according to the selection strategy (uniform, within-group, or
-   block-probability based).
+   block-probability based, here we do an example with blocks).
 5. Each resulting interaction gets a duration drawn from another exponential
-   with rate ``lambda_duration``. When the edge ends, the partner becomes
-   available again for that node's future activations.
+   with rate ``activ_distro_scale=1/lambda_duration``. When the edge ends, the partner 
+   becomes available again for that node's future activations.
 
 In the simulation below, agents are organized into three communities of four.
 Within-community contacts are more frequent than cross-community ones (a block
