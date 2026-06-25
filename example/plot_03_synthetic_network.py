@@ -100,12 +100,25 @@ print(
 # %%
 # Build a ContTempNetwork
 # -----------------------
+# The simulated synthetic network is inherently **directed**: the connection
+# from ``u`` to ``v`` is generated independently of the one from ``v`` to
+# ``u``. As a result, there can be moments where both the ``u → v`` and
+# ``v → u`` edges are active simultaneously.
+#
+# The ``tnet`` package, however, works with **undirected** networks. When the
+# network is constructed, overlapping reciprocal edges are merged into a single
+# undirected edge, and the Laplacians are then built from this undirected
+# representation.
+#
+# Note that the Markov property of the resulting process still holds well as
+# long as edge durations are short compared to the inter-event times.
 
 network = ContTempNetwork(
     source_nodes=tnet.indiv_sources,
     target_nodes=tnet.indiv_targets,
     starting_times=tnet.start_times,
     ending_times=tnet.end_times,
+    merge_overlapping_events=True
 )
 
 print(f"Nodes : {network.nodes}")
