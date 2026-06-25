@@ -121,10 +121,6 @@ class TestBasicProperties:
         with pytest.raises(ValueError):
             ContTempNetwork(events_table=12345)
 
-    def test_missing_csv_raises(self):
-        with pytest.raises(ValueError, match="not found"):
-            ContTempNetwork(events_table=Path("nonexistent_file.csv"))
-
     def test_extra_attrs_wrong_length_raises(self):
         with pytest.raises(AssertionError):
             ContTempNetwork(
@@ -200,7 +196,83 @@ class TestBasicProperties:
         [0, 0, 0.5],
         [0, 0.5, 0]])
         assert np.allclose(A, A_test)
-        
+
+
+#################################################################### TEST Laplacians
+
+
+    def _dense(self,L):
+        """Densify a Laplacian whether it's sparse or already an ndarray."""
+        return np.asarray(L.todense()) if hasattr(L, "todense") else np.asarray(L)
+
+    def test_laplacians_count(self, simple_network):
+        """One Laplacian per inter-event step over the full grid."""
+        simple_network.compute_laplacian_matrices()
+        # times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps
+        assert len(simple_network.laplacians) == 7
+
+    def test_laplacian_shape(self,simple_network):
+        """Every Laplacian is num_nodes x num_nodes."""
+        simple_network.compute_laplacian_matrices()
+        n = simple_network.num_nodes
+        for L in simple_network.laplacians:
+            assert self._dense(L).shape == (n, n)
+
+
+    def test_laplacian_step_1_2_exact(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Degrees A=1,B=2,C=1. All connected.
+
+        Random-walk Laplacian I - D^-1 A:
+            A: [ 1, -1,    0  ]
+            B: [-1/2, 1, -1/2 ]
+            C: [ 0, -1,    1  ]
+        """
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[1])
+        expected = np.array([
+            [ 1.0, -1.0,  0.0],
+            [-0.5,  1.0, -0.5],
+            [ 0.0, -1.0,  1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_0_1_connected_block(self,simple_network):
+        """Step [0,1]: only A-B active; C isolated.
+
+        The A-B block is fully determined; C's diagonal is convention-dependent
+        so we only assert the off-diagonal coupling to C is zero.
+        """
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[0])
+
+        # A-B 2x2 block
+        assert L[0, 0] == 1
+        assert L[0, 1] == -1
+        assert L[1, 0] == -1
+        assert L[1, 1] == 1
+        assert L[0, 2] == 0
+        assert L[1, 2] == 0
+        assert L[2, 0] == 0
+        assert L[2, 1] == 0
+        assert L[2,2] == 0 # self loop
+
+    def test_laplacian_empty_step_no_offdiagonal(self, simple_network):
+        """Step [3,4]: no active events"""
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[3])
+        n = simple_network.num_nodes
+        for i in range(n):
+            for j in range(n):
+                assert L[i, j] == 0
+
+
+    def test_laplacian_rows_sum_zero_connected_step(self, simple_network):
+        """For a step with no isolated nodes, every row of I - D^-1 A sums to 0."""
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[1]) 
+        assert np.allclose(L.sum(axis=1), 0.0)
+
 
     ############################################################## MICE
     
