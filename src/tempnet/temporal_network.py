@@ -3,6 +3,8 @@
 #
 # Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
 #
+# Contributors: Yasaman Asgari <yasaman.asgari@uzh.ch>
+# Juni Schindler <juni.schindler@uzh.ch>
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
 # Software Foundation; either version 3 of the License, or (at your option) any
@@ -1215,7 +1217,26 @@ class ContTempNetwork:
         """
         pass
 
+    
     def plot_density_of_laplacians(self):
+        """Plot the distribution of Laplacian densities across time slices.
+
+        For each Laplacian ``L`` in ``self.laplacians``, the density is computed
+        as the number of stored (non-zero) entries divided by ``num_nodes ** 2``.
+        The densities are shown as a histogram on log-log axes.
+
+        The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
+        100th (max) percentiles of the density distribution, and returns their indices. These
+        can be used to choose a proper method for scale selection and finding a method optimized
+        for computing transition matrices. 
+
+        Returns
+        -------
+        list of int
+            Indices into ``self.laplacians`` of the slices closest to the
+            0th, 25th, 50th, 75th, and 100th percentiles of density, in that
+            order.
+        """
 
         # density per slice: nnz normalized by N^2
         density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])

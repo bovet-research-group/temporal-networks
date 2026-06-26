@@ -257,18 +257,9 @@ tnet.print_report(indices, scales, force_csr=False, tol=1e-8)
 # %%
 # Computing the inter-transition matrices
 # ---------------------------------------
-# Finally we build the inter-transition matrices that the flow-stability
-# clustering consumes. We first lay out the time grid, then compute the
-# matrices for a chosen diffusion scale ``lamda``. The ``n_jobs`` argument
-# parallelizes the (independent) per-interval exponentials.
-
-tnet._compute_time_grid()
-
-
-
-# %%
-# We then proceed to computing the forward transition matrix for 2 time
-# scales. It may take few minutes to run this.
+# Finally we build the inter-transition matrices for 2 time
+# scales that the flow-stability clustering consumes. 
+# It may take few minutes to run this.
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
