@@ -264,12 +264,15 @@ plt.show()
 # where we use the uniform initial distribution over nodes. Calling
 # ``compute_entropy`` computes the cumulative transition matrices when needed,
 # stores the full entropy signal in ``tnet.S[lambda]``, and returns a two-column
-# array with transition indices and entropy values.
+# array with transition indices and entropy values. We can also compute a
+# component-size upper bound for the same curve from the connected components
+# of the cumulative static graph.
 
 entropy_lamda = 1
 entropy_curve = tnet.compute_entropy(lamda=entropy_lamda)
 entropy_indices = entropy_curve[:, 0].astype(int)
 entropy_values = np.asarray(tnet.S[entropy_lamda])
+entropy_upper_bound = tnet.compute_entropy_upper_bound(return_times=True)
 
 # Each cumulative transition index k corresponds to the random walk after the
 # interval ending at times[k + 1].
@@ -279,9 +282,17 @@ entropy_times = time_values[
 ]
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
-ax.plot(entropy_times, entropy_values, marker="o")
+ax.plot(entropy_times, entropy_values, marker="o", label="Entropy")
+ax.plot(
+    entropy_upper_bound[:, 0],
+    entropy_upper_bound[:, 1],
+    color="black",
+    linestyle="--",
+    label="Component-size upper bound",
+)
 ax.set_xlabel("Time")
 ax.set_ylabel("Conditional entropy")
 ax.set_title(rf"Entropy curve for $\lambda={entropy_lamda}$")
 ax.grid(True, alpha=0.3)
+ax.legend()
 plt.show()

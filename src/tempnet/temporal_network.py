@@ -2061,6 +2061,152 @@ class ContTempNetwork:
             entropy_values,
         ))
 
+    def compute_entropy_upper_bound(self, t_start=None, t_stop=None,
+                                    aggregation_start_time=None,
+                                    alpha_sampling=None, return_times=False,
+                                    verbose=False):
+        """Compute a component-size upper bound for the entropy curve.
+
+        For each cumulative entropy sample, the bound is computed from the
+        connected components of the static graph aggregated from
+        ``aggregation_start_time`` to that sample's interval end time:
+        ``sum_c (|c| / N) log(|c|)``.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Starting time used to select the entropy sample range. The default
+            is the first time in ``self.times``.
+        t_stop : float or int, optional
+            Stopping time used to select the entropy sample range. The default
+            is the last time in ``self.times``.
+        aggregation_start_time : float or int, optional
+            Start time for the cumulative static graph. The default is the
+            selected ``t_start``.
+        alpha_sampling : float, optional
+            Fraction of samples to evaluate, in ``(0, 1]``. The deterministic
+            grid sampling matches ``compute_entropy``.
+        return_times : bool, optional
+            If ``False`` (default), the first returned column contains entropy
+            sample indices. If ``True``, it contains the corresponding interval
+            end times.
+        verbose : bool, optional
+            Log progress information.
+
+        Returns
+        -------
+        numpy.ndarray
+            Two-column array with sample indices or times in the first column
+            and upper-bound values in the second column.
+        """
+        if not hasattr(self, "time_grid"):
+            self._compute_time_grid()
+
+        if self.num_nodes == 0:
+            return np.empty((0, 2), dtype=np.float64)
+
+        if t_start is None:
+            selected_t_start = self.times[0]
+            k_start = 0
+        else:
+            selected_t_start, k_start = self._get_closest_time(t_start)
+
+        if t_stop is None:
+            k_stop = len(self.times) - 1
+        else:
+            _, k_stop = self._get_closest_time(t_stop)
+
+        num_points = max(0, k_stop - k_start)
+        if num_points == 0:
+            return np.empty((0, 2), dtype=np.float64)
+
+        if aggregation_start_time is None:
+            aggregation_start_time = selected_t_start
+
+        all_indices = np.arange(num_points, dtype=int)
+        if alpha_sampling is None:
+            sampled_indices = all_indices
+        else:
+            alpha = float(alpha_sampling)
+            if alpha <= 0 or alpha > 1:
+                raise ValueError("alpha_sampling must be in (0, 1].")
+
+            num_samples = max(1, int(np.ceil(alpha * num_points)))
+            if num_samples >= num_points:
+                sampled_indices = all_indices
+            else:
+                candidate_times = np.asarray(
+                    self.times[k_start:k_stop],
+                    dtype=np.float64,
+                )
+                target_times = np.linspace(
+                    float(candidate_times[0]),
+                    float(candidate_times[-1]),
+                    num_samples,
+                )
+                sampled_indices = np.searchsorted(
+                    candidate_times,
+                    target_times,
+                    side="left",
+                )
+                sampled_indices = np.clip(
+                    sampled_indices,
+                    0,
+                    num_points - 1,
+                )
+                sampled_indices = np.unique(sampled_indices).astype(int)
+
+        sample_times = np.asarray(
+            self.times[k_start + sampled_indices + 1],
+            dtype=np.float64,
+        )
+        values = np.empty(len(sampled_indices), dtype=np.float64)
+
+        if verbose:
+            logger.info("Computing entropy upper bound")
+        t0 = time.time()
+
+        for pos, end_time in enumerate(sample_times):
+            if verbose and not pos % 1000:
+                logger.info(f"{pos} over {len(sampled_indices)}")
+                logger.info(f"{time.time()-t0:.2f}s")
+
+            if float(aggregation_start_time) >= float(end_time):
+                adjacency = csr_matrix(
+                    (self.num_nodes, self.num_nodes),
+                    dtype=np.float64,
+                )
+            else:
+                adjacency = self.compute_static_adjacency_matrix(
+                    start_time=float(aggregation_start_time),
+                    end_time=float(end_time),
+                ).tocsr()
+
+            n_components, labels = connected_components(
+                adjacency,
+                directed=False,
+                return_labels=True,
+            )
+            component_sizes = np.bincount(
+                labels,
+                minlength=n_components,
+            ).astype(np.float64)
+            weights = component_sizes / float(self.num_nodes)
+            values[pos] = float(np.sum(weights * np.log(component_sizes)))
+
+        self._compute_times["entropy_upper_bound"] = time.time() - t0
+        if verbose:
+            logger.info(
+                "Finished computing entropy upper bound in "
+                f"{self._compute_times['entropy_upper_bound']:.2f}s"
+            )
+
+        x_values = sample_times if return_times else sampled_indices
+        return np.column_stack((
+            np.asarray(x_values, dtype=np.float64),
+            values,
+        ))
+
     def compute_lin_transition_matrices(self,
                                         lamda=None,
                                         t_start=None,
