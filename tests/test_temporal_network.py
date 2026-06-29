@@ -292,12 +292,6 @@ def test_ContTempInstNetwork():
     pass
 
 
-def test_lin_approx_trans_matrix():
-    """
-    """
-    from tempnet.temporal_network import lin_approx_trans_matrix
-    pass
-
 
 def test_compute_stationary_transition():
     """
@@ -338,20 +332,6 @@ def test_rebuild_nnz_rowcol():
     """
     """
     from tempnet.temporal_network import numpy_rebuild_nnz_rowcol
-    pass
-
-
-def test_sparse_lapl_expm():
-    """
-    """
-    from tempnet.temporal_network import sparse_lapl_expm
-    pass
-
-
-def test_sparse_lin_approx():
-    """
-    """
-    from tempnet.temporal_network import sparse_lin_approx
     pass
 
 

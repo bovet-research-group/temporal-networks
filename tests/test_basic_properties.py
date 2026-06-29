@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import sys
+from scipy.sparse import issparse
+
 sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
 
 from tempnet.temporal_network import ContTempNetwork
@@ -198,12 +200,18 @@ class TestBasicProperties:
         assert np.allclose(A, A_test)
 
 
-#################################################################### TEST Laplacians
-
-
-    def _dense(self,L):
-        """Densify a Laplacian whether it's sparse or already an ndarray."""
-        return np.asarray(L.todense()) if hasattr(L, "todense") else np.asarray(L)
+# #################################################################### TEST Laplacians
+    @staticmethod
+    def _dense(M):
+        """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
+        # SparseStochMat (from the stochmat package)
+        if hasattr(M, "to_full_mat"):
+            M = M.to_full_mat()
+        # scipy sparse
+        if hasattr(M, "toarray"):
+            return M.toarray()
+        return np.asarray(M)
+    
 
     def test_laplacians_count(self, simple_network):
         """One Laplacian per inter-event step over the full grid."""
@@ -273,6 +281,72 @@ class TestBasicProperties:
         L = self._dense(simple_network.laplacians[1]) 
         assert np.allclose(L.sum(axis=1), 0.0)
 
+######################################################################## Test transition matrices
+ 
+    @pytest.fixture
+    def prepared_network(self, simple_network):
+        """simple_network with laplacians computed, ready for T computation."""
+        simple_network.compute_laplacian_matrices()  
+        return simple_network
+
+    EXPM_METHODS = ["sparse_expm","parallel_expm", "mfp_exp"]
+
+
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    @pytest.mark.parametrize("lamda", [0.1, 1.0, 5.0])
+    def test_method_matches_dense_exact(self,prepared_network, method, lamda):
+        """other methods should match dense_expm to near machine precision."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+
+        for k, L in enumerate(net.laplacians):
+            tau = net.times[k + 1] - net.times[k]
+
+            T_ref = self._dense(net._compute_single_T(
+                L, tau, lamda, num_nodes, "dense_expm"))
+            T = self._dense(net._compute_single_T(
+                L, tau, lamda, num_nodes, method))
+
+            np.testing.assert_allclose(
+                T, T_ref, rtol=1e-6, atol=1e-6,
+                err_msg=f"{method} != dense_expm at step {k}, lamda={lamda}",
+            )
+
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    def test_transition_matrix_is_stochastic(self,prepared_network, method, lamda=1.0):
+        """expm of a (negative) Laplacian gives row-stochastic matrices."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+
+        for k, L in enumerate(net.laplacians):
+            tau = net.times[k + 1] - net.times[k]
+            T = self._dense(net._compute_single_T(L, tau, lamda, num_nodes, method))
+
+            np.testing.assert_allclose(T.sum(axis=1), np.ones(num_nodes), atol=1e-10)
+            # nonnegative entries
+            assert (T >= -1e-12).all(), f"{method} produced negative entries at step {k}"
+
+
+    def test_mfp_exp_error_decreases_with_tighter_tolerance(self,prepared_network):
+        """Smaller err in mfp_exp should not increase the gap to dense_expm."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+        lamda = 1.0
+        L = net.laplacians[0]
+        tau = net.times[1] - net.times[0]
+
+        T_ref = self._dense(
+            net._compute_single_T(L, tau, lamda, num_nodes, "dense_expm"))
+
+        T_loose =self._dense(net._compute_single_T(
+            L, tau, lamda, num_nodes, "mfp_exp", err=1e-4))
+        T_tight = self._dense(net._compute_single_T(
+            L, tau, lamda, num_nodes, "mfp_exp", err=1e-10))
+
+        mae_loose = np.mean(np.abs(T_loose - T_ref))
+        mae_tight = np.mean(np.abs(T_tight - T_ref))
+
+        assert mae_tight <= mae_loose + 1e-12
 
     ############################################################## MICE
     
