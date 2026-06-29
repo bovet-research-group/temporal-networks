@@ -1962,12 +1962,11 @@ class ContTempInstNetwork(ContTempNetwork):
         state.Dm1.data.fill(1.0)
         state.degrees.fill(0.0)
 
-    def compute_inter_transition_matrices(self,
-                                          lamda=None,
-                                          t_start=None,
-                                          t_stop=None,
-                                          use_sparse_stoch=False,
-                                          dense_expm=True):
+
+    def compute_inter_transition_matrices(self, *, lamda=None,
+                                            method="dense_expm", n_jobs=1,
+                                            **kwargs):
+
         """Compute interevent transition matrices.
 
         T_k(lamda) = expm(-lamda*L_k).
@@ -1985,14 +1984,9 @@ class ContTempInstNetwork(ContTempNetwork):
         the transition matrix at step k, is the probability transition matrix
         between times[k] and times[k+1].
         """
-        super().compute_inter_transition_matrices(
-            lamda=lamda,
-            t_start=t_start,
-            t_stop=t_stop,
-            fix_tau_k=True,
-            use_sparse_stoch=use_sparse_stoch,
-            dense_expm=dense_expm
-        )
+        super().compute_inter_transition_matrices( lamda=lamda, fix_tau_k=True,
+                                            method=method, n_jobs=n_jobs,
+                                            **kwargs)
 
 
 def compute_stationary_transition(T):
