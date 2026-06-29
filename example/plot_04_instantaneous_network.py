@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 from tempnet.temporal_network import ContTempInstNetwork
 from functools import reduce
+from scipy.cluster.hierarchy import linkage, leaves_list
 
 import seaborn as sns
 from matplotlib.colors import LogNorm
@@ -97,17 +98,19 @@ forward_transition_matrices = [
 
 # %%
 # Visualise the forward transition matrices for each time scale.
+# derive a single shared ordering from a reference matrix
+ref = forward_transition_matrices[0].toarray()
+# symmetric ordering: cluster rows, reuse for cols 
+order = leaves_list(linkage(ref, method='ward'))
+
 norm = LogNorm(vmin=1e-6, vmax=1)
 fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), dpi=500)
-ax=ax.flat
+ax = ax.flat
 for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
-    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
-                norm=norm)
+    m = matrix.toarray()[np.ix_(order, order)] 
+    sns.heatmap(m, ax=ax[i], square=True, cbar=False, norm=norm)
     ax[i].set_title(rf'$\lambda$={lamda}')
     ax[i].set_xticks([])
     ax[i].set_yticks([])
-
-#fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
-    #         fraction=0.046, pad=0.04)
 plt.show()
 
