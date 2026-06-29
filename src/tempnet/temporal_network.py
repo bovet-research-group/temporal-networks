@@ -1268,26 +1268,19 @@ class ContTempNetwork:
         plt.show()
         return indices
 
-            
-    def print_report(self, indices, scales, force_csr=True, threshold=1e-10):
+    def print_report(self, indices, scales, method_kwargs=None, **kwargs):
         """Benchmark and compare matrix-exponential computation methods.
-
-        Times three methods for computing the heat-kernel / diffusion
-        operator T = exp(-lamda * tau_k * L) across a set of Laplacians
-        (selected by ``densities``) and diffusion scales (``scales``), then
-        prints per-method timing statistics and a recommended method.
 
         Args:
             indices: Iterable of 5 integer indices into ``self.laplacians`` /
                 ``self.times``, mapped to the labels
-                ['min', 'q25', 'median', 'q75', 'max']. For each index the
-                time step ``tau`` is ``self.times[idx + 1] - self.times[idx]``.
+                ['min', 'q25', 'median', 'q75', 'max'].
             scales: Iterable of diffusion scale factors (``lamda``) to sweep.
-            force_csr: If True, force CSR sparse format where applicable.
-            threshold: Tolerance passed as ``tol`` to ``mfp_exp`` only;
-                other methods receive ``tol=None``.
-
+            method_kwargs: Optional dict mapping a method name to a dict of
+                extra keyword args for that method, e.g.
+                ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
         """
+        method_kwargs = method_kwargs or {}
         labels = ['min', 'q25', 'median', 'q75', 'max']
         laplacians = {
             label: {
@@ -1296,21 +1289,18 @@ class ContTempNetwork:
             }
             for label, idx in zip(labels, indices)
         }
-        methods = ['dense_expm', 'sparse_expm', 'mfp_exp']
+        methods = ['dense_expm', 'sparse_expm', 'mfp_exp', 'parallel_expm']
         num_nodes = self.num_nodes
-        reference = 'dense_expm' 
+        reference = 'dense_expm'
 
         scales = list(scales)
         min_scale_idx = int(np.argmin(scales))
         max_scale_idx = int(np.argmax(scales))
 
-        results = {}  # (method, label) -> list of per-scale times
-        outputs = {}  # (method, label) -> list of per-scale T matrices
+        results = {}
+        outputs = {}
         for method in methods:
-            if method == 'mfp_exp':
-                tol = threshold
-            else:
-                tol = None
+            this_kwargs = {**kwargs, **method_kwargs.get(method, {})}
             for label, data in laplacians.items():
                 times = []
                 mats = []
@@ -1319,14 +1309,13 @@ class ContTempNetwork:
                     T = self._compute_single_T(
                         L=data['L'], tau_k=data['tau'], lamda=lamda,
                         num_nodes=num_nodes, method=method,
-                        force_csr=force_csr, tol=tol,
+                        **this_kwargs
                     )
                     times.append(time.perf_counter() - t)
                     mats.append(T)
                 results[(method, label)] = times
                 outputs[(method, label)] = mats
 
-        # Compute MAE of mfp_exp vs reference, per scale, for each label
         def _to_dense(M):
             return M.toarray() if hasattr(M, 'toarray') else np.asarray(M)
 

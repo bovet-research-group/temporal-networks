@@ -252,8 +252,13 @@ indices = tnet.plot_density_of_laplacians()
 # dataset. 
 
 scales = np.logspace(-6, 6, 10)
-tnet.print_report(indices, scales, force_csr=False, threshold=1e-8)
-
+tnet.print_report(
+    indices, scales,
+    method_kwargs={
+        'mfp_exp': {'err': 1e-6},
+        'parallel_expm': {'nproc': 4, 'normalize_rows': True},
+    },
+)
 # %%
 # Computing the inter-transition matrices
 # ---------------------------------------
@@ -263,12 +268,10 @@ tnet.print_report(indices, scales, force_csr=False, threshold=1e-8)
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
-    tnet.compute_inter_transition_matrices_new(
+    tnet.compute_inter_transition_matrices(
     lamda=s,
-    method="mfp_exp",
-    n_jobs=10,
-    tol=1e-8,
-)
+    method="parallel_expm",
+    n_jobs=1,nproc= 4, normalize_rows= True)
 
 forward_transition_matrices = [
     reduce(lambda a, b: a @ b, tnet.inter_T[s]) for s in scales
