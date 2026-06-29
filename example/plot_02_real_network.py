@@ -249,10 +249,10 @@ indices = tnet.plot_density_of_laplacians()
 # ``tempnet`` offers more than one strategy for this. :meth:`print_report`
 # times each method across a range of diffusion scales and the representative
 # Laplacians selected above, then recommends the fastest option for this
-# dataset.
+# dataset. 
 
 scales = np.logspace(-6, 6, 10)
-tnet.print_report(indices, scales, force_csr=False, tol=1e-8)
+tnet.print_report(indices, scales, force_csr=False, threshold=1e-8)
 
 # %%
 # Computing the inter-transition matrices

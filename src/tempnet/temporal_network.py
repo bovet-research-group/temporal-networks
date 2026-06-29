@@ -1269,7 +1269,25 @@ class ContTempNetwork:
         return indices
 
             
-    def print_report(self, indices, scales, force_csr=True, tol=1e-10):
+    def print_report(self, indices, scales, force_csr=True, threshold=1e-10):
+        """Benchmark and compare matrix-exponential computation methods.
+
+        Times three methods for computing the heat-kernel / diffusion
+        operator T = exp(-lamda * tau_k * L) across a set of Laplacians
+        (selected by ``densities``) and diffusion scales (``scales``), then
+        prints per-method timing statistics and a recommended method.
+
+        Args:
+            indices: Iterable of 5 integer indices into ``self.laplacians`` /
+                ``self.times``, mapped to the labels
+                ['min', 'q25', 'median', 'q75', 'max']. For each index the
+                time step ``tau`` is ``self.times[idx + 1] - self.times[idx]``.
+            scales: Iterable of diffusion scale factors (``lamda``) to sweep.
+            force_csr: If True, force CSR sparse format where applicable.
+            threshold: Tolerance passed as ``tol`` to ``mfp_exp`` only;
+                other methods receive ``tol=None``.
+
+        """
         labels = ['min', 'q25', 'median', 'q75', 'max']
         laplacians = {
             label: {
@@ -1280,20 +1298,53 @@ class ContTempNetwork:
         }
         methods = ['dense_expm', 'sparse_expm', 'mfp_exp']
         num_nodes = self.num_nodes
+        reference = 'dense_expm' 
+
+        scales = list(scales)
+        min_scale_idx = int(np.argmin(scales))
+        max_scale_idx = int(np.argmax(scales))
 
         results = {}  # (method, label) -> list of per-scale times
+        outputs = {}  # (method, label) -> list of per-scale T matrices
         for method in methods:
+            if method == 'mfp_exp':
+                tol = threshold
+            else:
+                tol = None
             for label, data in laplacians.items():
                 times = []
+                mats = []
                 for lamda in scales:
                     t = time.perf_counter()
-                    self._compute_single_T(
+                    T = self._compute_single_T(
                         L=data['L'], tau_k=data['tau'], lamda=lamda,
                         num_nodes=num_nodes, method=method,
                         force_csr=force_csr, tol=tol,
                     )
                     times.append(time.perf_counter() - t)
+                    mats.append(T)
                 results[(method, label)] = times
+                outputs[(method, label)] = mats
+
+        # Compute MAE of mfp_exp vs reference, per scale, for each label
+        def _to_dense(M):
+            return M.toarray() if hasattr(M, 'toarray') else np.asarray(M)
+
+        mfp_mae = {}  # label -> list of per-scale MAE
+        for label in laplacians:
+            errs = []
+            for T_ref, T_approx in zip(
+                outputs[(reference, label)], outputs[('mfp_exp', label)]
+            ):
+                errs.append(
+                    np.mean(np.abs(_to_dense(T_ref) - _to_dense(T_approx)))
+                )
+            mfp_mae[label] = errs
+
+        # Aggregate MAE across labels, per scale
+        mae_avg = np.mean([np.mean(mfp_mae[lbl]) for lbl in laplacians])
+        mae_min_scale = np.mean([mfp_mae[lbl][min_scale_idx] for lbl in laplacians])
+        mae_max_scale = np.mean([mfp_mae[lbl][max_scale_idx] for lbl in laplacians])
 
         # Report
         for method in methods:
@@ -1302,9 +1353,20 @@ class ContTempNetwork:
             for label in laplacians:
                 times = results[(method, label)]
                 method_total += sum(times)
-                print(f"  L_{label:<7} avg={np.mean(times):.4f}s  "
-                    f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
+                line = (f"  L_{label:<7} avg={np.mean(times):.4f}s  "
+                        f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
+                if method == 'mfp_exp':
+                    errs = mfp_mae[label]
+                    line += (f"  MAE(avg={np.mean(errs):.3e}, "
+                            f"min_scale={errs[min_scale_idx]:.3e}, "
+                            f"max_scale={errs[max_scale_idx]:.3e})")
+                print(line)
             print(f"  total: {method_total:.4f}s")
+            if method == 'mfp_exp':
+                print(f"  overall MAE vs {reference}:  "
+                    f"avg={mae_avg:.3e}  "
+                    f"min_scale(={scales[min_scale_idx]:g})={mae_min_scale:.3e}  "
+                    f"max_scale(={scales[max_scale_idx]:g})={mae_max_scale:.3e}")
 
         totals = {
             m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
