@@ -98,7 +98,6 @@ forward_transition_matrices = [
 
 # %%
 # Visualise the forward transition matrices for each time scale.
-# derive a single shared ordering from a reference matrix
 ref = forward_transition_matrices[0].toarray()
 # symmetric ordering: cluster rows, reuse for cols 
 order = leaves_list(linkage(ref, method='ward'))
