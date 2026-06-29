@@ -1382,272 +1382,151 @@ class ContTempNetwork:
                 set_to_zeroes(M, tol)
                 inplace_csr_row_normalize(M)
             return M
-    def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
-                                            t_stop=None, fix_tau_k=False,
-                                            use_sparse_stoch=False,
-                                            dense_expm=True):
+    
+    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, **kwargs):
+            """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
+            if L.getnnz() == 0:
+                # expm of the zero matrix is the identity
+                return eye(num_nodes, format="csr")
+            elif method == "dense_expm":
+                T = csr_matrix(expm(-tau_k * lamda * L.toarray()))
+            elif method == "sparse_expm":
+                T = expm(-tau_k * lamda * L).tocsr()
+            elif method == 'parallel_expm':
+                params = dict(dense_expm=True, nproc=1, thresh_ratio=None, normalize_rows=True)
+                params.update(kwargs)
+                T = sparse_lapl_expm(L, fact=tau_k * lamda, **params)
+            elif method == "mfp_exp":
+                params = dict(err=1e-8, non_norm=0)
+                params.update(kwargs)
+                T = mfp_exp(-tau_k * lamda * L, **params)
+            return T
+
+    def compute_inter_transition_matrices(self, *, lamda=None, fix_tau_k=False,
+                                            method="dense_expm", n_jobs=1,
+                                            **kwargs):
             """
-            Computes interevent transition matrices.
+            Compute inter-event transition matrices for a lambda.
 
-            T_k(lamda) = expm(-tau_k*lamda*L_k).
+                T_k(lamda) = expm(-tau_k * lamda * L_k).
 
-
-            The transition matrix T_k is saved in `self.inter_T[lamda][k]`, where
-            self.inter_T is a dictionary with lamda as keys and lists of transition
+            The transition matrices are saved in ``self.inter_T[lamda][k]``, where
+            ``self.inter_T`` is a dict keyed by lamda with lists of transition
             matrices as values.
 
-            will compute from self.times[self._k_start_laplacians] until
-            self.times[self._k_stop_laplacians-1]
-
-            the transition matrix at step k, is the probability transition matrix
-            between times[k] and times[k+1]
+            The transition matrix at step k is the probability transition matrix
+            between times[k] and times[k+1].
 
             Parameters
             ----------
             lamda : float, optional
-                Random walk rate, dynamical resolution parameter.
-                The default (None) is 1 over the median inter event time.
-            t_start : float or int, optional
-                Starting time, passed to `compute_laplacian_matrices` if the
-                Laplacians have not yet been computed.
-                Otherwise is not used.
-                The computation starts at self.times[self._k_start_laplacians].
-                The default is None, i.e. starts at the beginning of times.
-            t_stop : float or int, optional
-                Same than `t_start` but for the ending time of computations.
-                Computations stop at self.times[self._k_stop_laplacians-1].
-                Default is end of times.
+                Random-walk rate(s) / dynamical resolution parameter(s).
+                The default (None) is 1 over the median inter-event time.
+
             fix_tau_k : bool, optional
-                If true, all interevent times (tau_k) in the formula above are set
-                to 1. This decouples the dynamic scale from the length of event
-                which is useful for temporal networks with instantaneous events.
-                The default is False.
-            use_sparse_stoch : bool, optional
-                Whether to use custom sparse stochastic matrix format to save the
-                inter transition matrices. Especially useful for large networks as
-                the matrix exponential is then computed on each connected component
-                separately (more memory efficient). The default is False.
-            dense_expm : bool, optional
-                Whether to use the dense version of the matrix exponential
-                algorithm at each time steps.
-                Recommended for not too large networks.
-                The inter trans. matrices are still saved as sparse scipy matrices
-                as they usually have many zero values. The default is True. Has no
-                effect is use_sparse_stoch is True.
+                If True, all inter-event times (tau_k) are set to 1, decoupling the
+                dynamic scale from event length (useful for instantaneous events).
+                Default False.
+
+            method : str, optional
+                One of:
+                - "dense_expm"    : expm on the densified Laplacian (default).
+                                    Fast for small/medium N, but computes a
+                                    dense N x N array per step -- with n_jobs>1
+                                    memory scales with the number of workers, so
+                                    avoid for large N.
+
+                - "sparse_expm"   : expm directly on the sparse Laplacian.
+                                    Safer for large/sparse networks.
+
+                - "parallel_expm" : block/parallel sparse expm via sparse_lapl_expm.
+
+                - "mfp_exp"       : Truncated exponential via mfp_exp.
+
+            n_jobs : int, optional
+                Number of parallel workers for the inner transition-matrix computation.
+                Only the per-step matrix exponentials are parallelized. Default 1 (serial).
+        
+            **kwargs
+                Extra keyword arguments forwarded to the underlying per-step solver
+                in ``_compute_single_T``. Which keys are accepted depends on
+                ``method``:
+                - "parallel_expm" : passed to ``sparse_lapl_expm`` (e.g. ``dense_expm``,
+                                    ``nproc``, ``thresh_ratio``, ``normalize_rows``).
+                - "mfp_exp"       : passed to ``mfp_exp`` (e.g. ``err``, ``non_norm``).
+                Ignored for "dense_expm" and "sparse_expm".
 
             Returns
             -------
-            None.
-
+            None
+                Results are stored in ``self.inter_T[lamda]``.
             """
-            # NOTE: We might drop such tests if we check for process consistency
-            #       on a higher leverl (i.e. FlowStability)
+
+            VALID = {"dense_expm", "sparse_expm", 'mfp_exp', 'parallel_expm'}
+            if method not in VALID:
+                raise ValueError(f"method must be one of {VALID}, got {method!r}")
+
             if not hasattr(self, "laplacians"):
-                self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
-            if not hasattr(self, "inter_T"):
-                self.inter_T = dict()
+                raise RuntimeError('First compute the laplacians')
 
             if lamda is None:
                 logger.info("Taking lamda as 1/tau_w with tau_w = median "
-                            "interevent time")
-                lamda = 1/np.median(np.diff(self.times))
+                            "inter-event time")
+                lamda = 1.0 / np.median(np.diff(self.times))
 
-            # new value of lamda, we need to recompute
-            if lamda not in self.inter_T.keys():
+            if not hasattr(self, "inter_T"):
+                self.inter_T = dict()
 
+            if lamda in self.inter_T:
                 logger.debug(
-                    f"Computing interevent transition matrices for lamda={lamda}"
+                    f"Inter-event transition matrices already computed for {lamda=}"
                 )
-                self.inter_T[lamda] = []
+                return
 
-                t0 = time.time()
-                for k, tk in enumerate(self.times[self._k_start_laplacians:
-                                                self._k_stop_laplacians]):
-                    if not k % 1000:
-                        logger.debug(
-                            f"{k} over "
-                            f"{self._k_stop_laplacians-1-self._k_start_laplacians}"
-                        )
-                        logger.debug(f"{time.time()-t0:.2f}s")
+            logger.info(f"Computing inter-event transition matrices for {lamda=}")
+            t0 = time.time()
 
-                    if fix_tau_k:
-                        tau_k = 1.0
-                    else:
-                        tau_k = self.times[self._k_start_laplacians+k+1] - tk
-
-                    if use_sparse_stoch:
-                        self.inter_T[lamda].append(
-                            sparse_lapl_expm(self.laplacians[k],
-                                            tau_k*lamda,
-                                            dense_expm=dense_expm)
-                        )
-                    elif self.laplacians[k].getnnz() == 0:
-                        # expm of zero = identity
-                        self.inter_T[lamda].append(
-                            eye(self.num_nodes, format="csr")
-                        )
-                    elif dense_expm:
-                        self.inter_T[lamda].append(csr_matrix(
-                                expm(-tau_k * lamda * self.laplacians[k].toarray())
-                            ))
-                    else:
-                        self.inter_T[lamda].append(expm(
-                            -tau_k * lamda * self.laplacians[k]
-                        ).tocsr())
-
-                if len(self.inter_T[lamda]) == 0:
-                    logger.info("no events, trans. matrix = identity")
-                    # is there was no event, the transition is identity
-                    if use_sparse_stoch:
-                        self.inter_T[lamda].append(
-                            SparseStochMat.create_diag(size=self.num_nodes)
-                        )
-                    else:
-                        self.inter_T[lamda].append(eye(self.num_nodes,
-                                                    dtype=np.float64,
-                                                    format="csr"))
-
-                t_end = time.time()-t0
-
-                self._compute_times["inter_T_" + str(lamda)] = t_end
-
-                logger.info(
-                    f"Finished computing interevent transition matrices in {t_end:3f} seconds."
+            n_steps = len(self.laplacians)
+            if len(self.times) < n_steps + 1:
+                raise ValueError(
+                    f"need len(self.times) >= {n_steps + 1}, got {len(self.times)}"
                 )
-            else: 
-                logger.info(
-                    f"Interevent transition matrices already computed for lamda={lamda}")
+            if fix_tau_k:
+                taus = [1.0] * n_steps
+            else:
+                taus = [
+                    self.times[k + 1]
+                    - self.times[k]
+                    for k in range(n_steps)
+                ]
+            if n_jobs == 1:
+                T_list = [self._compute_single_T(L, tau, lamda, self.num_nodes, method, **kwargs)
+                    for L, tau in tqdm(zip(self.laplacians, taus), total=n_steps, desc=f"expm λ={lamda:.2e}")
+                ]
+            else:
+                results_gen = Parallel(n_jobs=n_jobs, return_as="generator")(
+                    delayed(self._compute_single_T)(L, tau, lamda, self.num_nodes, method, **kwargs)
+                    for L, tau in zip(self.laplacians, taus)
+                )
+                T_list = list(tqdm(results_gen, total=n_steps, desc=f"expm λ={lamda:.2e}"))
 
+            if len(T_list) == 0:
+                logger.debug("no events, trans. matrix = identity")
+                T_list.append(
+                    eye(self.num_nodes, dtype=np.float64, format="csr")
+                )
 
-    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method,force_csr,  tol):
-        """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
-        if L.getnnz() == 0:
-            # expm of the zero matrix is the identity
-            return eye(num_nodes, format="csr")
-        elif method == "dense_expm":
-            # densify the Laplacian, expm, store back as sparse
-            T=csr_matrix(expm(-tau_k * lamda * L.toarray()))
-        elif method == "sparse_expm":
-            # expm directly on the sparse Laplacian
-            T=expm(-tau_k * lamda * L).tocsr()
+            self.inter_T[lamda] = T_list
 
-        elif method == "mfp_exp":
-            return mfp_exp(-tau_k * lamda * L, err=tol, non_norm=0)
-
-        if method in ['dense_expm', 'sparse_expm']:
-            return self._prep(T, force_csr, tol)
-        
-
-    def compute_inter_transition_matrices_new(self, *, lamda=None, fix_tau_k=False,
-                                        method="dense_expm", n_jobs=1, tol=1e-8, force_csr=False):
-        """
-        Compute inter-event transition matrices for a set of lamdas.
-
-            T_k(lamda) = expm(-tau_k * lamda * L_k).
-
-        The transition matrices are saved in ``self.inter_T[lamda][k]``, where
-        ``self.inter_T`` is a dict keyed by lamda with lists of transition
-        matrices as values.
-
-        The transition matrix at step k is the probability transition matrix
-        between times[k] and times[k+1].
-
-        Parameters
-        ----------
-        lamda : float or iterable of float, optional
-            Random-walk rate(s) / dynamical resolution parameter(s).
-            The default (None) is 1 over the median inter-event time.
-            A single float is accepted and treated as a one-element sequence.
-        fix_tau_k : bool, optional
-            If True, all inter-event times (tau_k) are set to 1, decoupling the
-            dynamic scale from event length (useful for instantaneous events).
-            Default False.
-        
-        method : str, optional
-            One of:
-            - "dense_expm"          : expm on the densified Laplacian (default).
-                                        Fast for small/medium N, but materializes a
-                                        dense N x N array per step -- with n_jobs>1
-                                        memory scales with the number of workers, so
-                                        avoid for large N.
-            - "sparse_expm"         : expm directly on the sparse Laplacian.
-                                        Safer for large/sparse networks.
-            - "others" : not implemented yet.
-        
-        n_jobs : int, optional
-            Number of parallel workers for the inner transition-matrix computation.
-            The loop over lamdas stays sequential (to bound memory); only the
-            per-step matrix exponentials are parallelized. Default 1 (serial).
-
-        Returns
-        -------
-        """
-
-        VALID = {"dense_expm", "sparse_expm", 'mfp_exp'}
-        if method not in VALID:
-            raise ValueError(f"method must be one of {VALID}, got {method!r}")
-
-        if not hasattr(self, "laplacians"):
-            raise RuntimeError('First compute the laplacians')
-
-        if lamda is None:
-            logger.info("Taking lamda as 1/tau_w with tau_w = median "
-                        "inter-event time")
-            lamda = 1.0 / np.median(np.diff(self.times))
-
-        if not hasattr(self, "inter_T"):
-            self.inter_T = dict()
-
-        if lamda in self.inter_T:
+            # remove the object to reduce the memory usage and let gc to eat it:)
+            del T_list
+            gc.collect()
+            t_end = time.time() - t0
+            self._compute_times["inter_T_" + str(lamda)] = t_end
             logger.debug(
-                f"Inter-event transition matrices already computed for {lamda=}"
+                f"Finished inter-event transition matrices for {lamda=} "
+                f"in {t_end:.2f}s"
             )
-            return 
-
-        logger.info(f"Computing inter-event transition matrices for {lamda=}")
-        t0 = time.time()
-
-        n_steps = len(self.laplacians)
-        if len(self.times) < n_steps + 1:
-            raise ValueError(
-                f"need len(self.times) >= {n_steps + 1}, got {len(self.times)}"
-            )
-        if fix_tau_k:
-            taus = [1.0] * n_steps
-        else:
-            taus = [
-                self.times[k + 1]
-                - self.times[ k]
-                for k in range(n_steps)
-            ]
-        if n_jobs == 1:
-            T_list = [self._compute_single_T(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
-                for L, tau in tqdm(zip(self.laplacians, taus), total=n_steps, desc=f"expm λ={lamda:.2e}")
-            ]
-        else:
-            results_gen = Parallel(n_jobs=n_jobs, return_as="generator")(
-                delayed(self._compute_single_T)(L, tau, lamda, self.num_nodes, method,force_csr,  tol)
-                for L, tau in zip(self.laplacians, taus)
-            )
-            T_list = list(tqdm(results_gen, total=n_steps, desc=f"expm λ={lamda:.2e}"))
-
-        if len(T_list) == 0:
-            logger.debug("no events, trans. matrix = identity")
-            T_list.append(
-                eye(self.num_nodes, dtype=np.float64, format="csr")
-            )
-
-        self.inter_T[lamda] = T_list
-
-        # remove the object to reduce the memory usage and let gc to eat it:)
-        del T_list
-        gc.collect()
-        t_end = time.time() - t0
-        self._compute_times["inter_T_" + str(lamda)] = t_end
-        logger.debug(
-            f"Finished inter-event transition matrices for {lamda=} "
-            f"in {t_end:.2f}s"
-        )
 
     def compute_transition_matrices(self, lamda=None,
                                     save_intermediate=True, reverse_time=False,
