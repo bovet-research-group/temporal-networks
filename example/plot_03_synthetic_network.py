@@ -110,8 +110,8 @@ print(
 # undirected edge, and the Laplacians are then built from this undirected
 # representation.
 #
-# Note that the Markov property of the resulting process still holds well as
-# long as edge durations are short compared to the inter-event times.
+# Note that the Markov property of the resulting process still holds approximately, 
+# as long as edge durations are short compared to the inter-event times.
 
 network = ContTempNetwork(
     source_nodes=sim.indiv_sources,
