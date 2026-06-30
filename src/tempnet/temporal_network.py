@@ -119,12 +119,10 @@ class ContTempNetwork:
     _TARGETS = "target_nodes"
     _STARTS = "starting_times"
     _ENDINGS = "ending_times"
-    _MANDATORY = [_SOURCES, _TARGETS, _STARTS]
     _ESSENTIAL = [_SOURCES, _TARGETS, _STARTS, _ENDINGS]
-    # to hold endings - starts
+    # to hold endings - starts (only for continous time edges)
     _DURATIONS = "durations"
-    # for instantaneous event this is the duration to use
-    _DEFAULT_DURATION = 1
+
 
     def _build_label_maps(self, source_iter, target_iter):
         """Build label<->node id dicts from two iterables of node labels.
@@ -153,6 +151,7 @@ class ContTempNetwork:
                  node_to_label_dict=None,
                  merge_overlapping_events=False,
                  events_table=None,
+                 instantaneous_events=False,
                  **kwargs):
 
         if events_table is None:
@@ -235,15 +234,19 @@ class ContTempNetwork:
         ))
 
 
+        self.instantaneous_events = instantaneous_events
+
+
         self.num_events = self.events_table.shape[0]
 
         self.start_time = self.events_table.starting_times.min()
 
         self.end_time = self.events_table.ending_times.max()
-
-        self.events_table[
-            "durations"
-        ] = self.events_table.ending_times - self.events_table.starting_times
+        
+        if not self.instantaneous_events: 
+            self.events_table[
+                "durations"
+            ] = self.events_table.ending_times - self.events_table.starting_times
 
         # to record compute times
         self._compute_times = {}
@@ -255,8 +258,7 @@ class ContTempNetwork:
                 num_merged = self._merge_overlapping_events()
             self._overlapping_events_merged = True
 
-        self.instantaneous_events = False
-
+        
     def _is_canonical(self, src, tgt):
         " This functions checks whether the nodes are indexed from 0 to n-1"
         vals = np.unique(np.concatenate([src.to_numpy(), tgt.to_numpy()]))
@@ -1833,10 +1835,6 @@ class ContTempInstNetwork(ContTempNetwork):
     This is a subclass of ContTempNetwork for continuous time temporal
     networks where events do not have a duration.
 
-    In practice, it is implemented as a ContTempNetwork where 
-    ending_times_k = starting_times_k+1 and where durations (tau_k) = 1  
-    for all events for the computation of the transition matrices.
-
     Parameters
     ----------
     source_nodes: Python list
@@ -1869,24 +1867,22 @@ class ContTempInstNetwork(ContTempNetwork):
                  starting_times=[],
                  relabel_nodes=True,
                  node_to_label_dict=None,
-                 events_table=None):
+                 events_table=None,
+                 ):
 
         if events_table is None:
-            ending_times = [t + self._DEFAULT_DURATION
+            ending_times = [t
                             for t in starting_times]
         else:
             # Instant networks store events_tables without an ending_times
             # column. The parent constructor's events_table branch requires
-            # ending_times, so we synthesize it here as start + default
-            # duration. For CSV inputs we read the file first, then forward a
-            # DataFrame to the parent.
-            if isinstance(events_table, (str, Path)):
-                events_table = pd.read_csv(str(events_table))
+            # ending_times, so we synthesize it here as start. 
+
             if isinstance(events_table, pd.DataFrame) and \
                     self._ENDINGS not in events_table.columns:
                 events_table = events_table.copy()
                 events_table[self._ENDINGS] = (
-                    events_table[self._STARTS] + self._DEFAULT_DURATION
+                    events_table[self._STARTS]
                 )
             ending_times = []  # ignored when events_table is provided
 
@@ -1897,10 +1893,9 @@ class ContTempInstNetwork(ContTempNetwork):
                          relabel_nodes=relabel_nodes,
                          node_to_label_dict=node_to_label_dict,
                          merge_overlapping_events=False,
-                         events_table=events_table)
+                         events_table=events_table, 
+                         instantaneous_events=True)
 
-        self.events_table["durations"] = [1.0]*self.events_table.shape[0]
-        self.instantaneous_events = True
 
     def compute_laplacian_matrices(self,
                                    *,
