@@ -1933,9 +1933,6 @@ class ContTempInstNetwork(ContTempNetwork):
 
         T_k(lamda) = expm(-lamda*L_k).
 
-        Here, for instantaneous events, all events are assumed to have the 
-        same duration of unit time (i.e. tau_k =1 for all k).
-
         The transition matrix T_k is saved in `self.inter_T[lamda][k]`,
         where self.inter_T is a dictionary with lamda as keys and
         lists of transition matrices as values.
@@ -1949,8 +1946,7 @@ class ContTempInstNetwork(ContTempNetwork):
         super().compute_inter_transition_matrices( lamda=lamda, fix_tau_k=True,
                                             method=method, n_jobs=n_jobs,
                                             **kwargs)
-
-
+        
 def compute_stationary_transition(T):
     """Compute the transition matrix at stationarity for matrix `T`
 
