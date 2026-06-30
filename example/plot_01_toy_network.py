@@ -238,9 +238,9 @@ plt.show()
 fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
 for i, lamda in enumerate([1e-2, 0.1, 10]):
     tnet.compute_inter_transition_matrices(lamda=lamda)
-    matrix = reduce(lambda a, b: a @ b, tnet.inter_T[lamda])
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=True)
     sns.heatmap(
-        matrix.toarray(),
+        tnet.T[lamda].toarray(),
         ax=ax[i],
         square=True,
         annot=True,

@@ -270,18 +270,15 @@ for i, s in enumerate(scales):
     lamda=s,
     method="parallel_expm",
     n_jobs=1,nproc= 4, normalize_rows= True)
-
-forward_transition_matrices = [
-    reduce(lambda a, b: a @ b, tnet.inter_T[s]) for s in scales
-]
+    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False)
 
 # %%
 # Visualise the forward transition matrices for each time scale.
 
 norm = LogNorm(vmin=1e-6, vmax=1)
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4), dpi=500)
-for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
-    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
+for i, lamda in enumerate(scales):
+    sns.heatmap(tnet.T[lamda], ax=ax[i], square=True, cbar=False,
                 norm=norm)
     ax[i].set_title(rf'$\lambda$={lamda}')
     ax[i].set_xticks([])

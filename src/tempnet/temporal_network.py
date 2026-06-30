@@ -1293,9 +1293,6 @@ class ContTempNetwork:
                 results[(method, label)] = times
                 outputs[(method, label)] = mats
 
-        def _to_dense(M):
-            return M.toarray() if hasattr(M, 'toarray') else np.asarray(M)
-
         mfp_mae = {}  # label -> list of per-scale MAE
         for label in laplacians:
             errs = []
@@ -1303,7 +1300,7 @@ class ContTempNetwork:
                 outputs[(reference, label)], outputs[('mfp_exp', label)]
             ):
                 errs.append(
-                    np.mean(np.abs(_to_dense(T_ref) - _to_dense(T_approx)))
+                    np.mean(np.abs(_dense(T_ref) - _dense(T_approx)))
                 )
             mfp_mae[label] = errs
 
@@ -1367,6 +1364,8 @@ class ContTempNetwork:
                 params.update(kwargs)
                 T = mfp_exp(-tau_k * lamda * L, **params)
             return T
+
+
 
     def compute_inter_transition_matrices(self, *, lamda=None, fix_tau_k=False,
                                             method="dense_expm", n_jobs=1,
@@ -1494,10 +1493,11 @@ class ContTempNetwork:
                 f"in {t_end:.2f}s"
             )
 
+
     def compute_transition_matrices(self, lamda=None,
                                     save_intermediate=True, reverse_time=False,
                                     force_csr=False, tol=None):
-        
+
         if not hasattr(self, "inter_T") or lamda not in self.inter_T:
             raise Exception("Compute inter_T first.")
         if not hasattr(self, "T"):
@@ -1514,19 +1514,27 @@ class ContTempNetwork:
         else:
             k_init, k_range = 0, range(1, n)
 
-
-        current = inter[k_init]
+        current = _csr(inter[k_init]) if force_csr else inter[k_init]
         chain = [current] if save_intermediate else current
 
         t0 = time.time()
         for k in k_range:
             if not k % 1000:
                 logger.info(f"{k} over {n}  {time.time()-t0:.2f}s")
+
             prev = chain[-1] if save_intermediate else chain
-            nxt = prev @ inter[k]
-            if tol is not None:
-                set_to_zeroes(nxt, tol)
-            inplace_csr_row_normalize(nxt)
+
+            if force_csr:
+                # multiplication done in CSR: prev stays CSR across iterations
+                nxt = prev @ _csr(inter[k])
+                if tol is not None:
+                    set_to_zeroes(nxt, tol)
+                inplace_csr_row_normalize(nxt)
+            else:
+                nxt = prev @ _dense(inter[k])
+                if tol is not None:
+                    set_to_zeroes(nxt, tol)
+
             if save_intermediate:
                 chain.append(nxt)
             else:
@@ -2354,4 +2362,20 @@ def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
                 Tcsr.eliminate_zeros()
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
+def _dense(M):
+        """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
+        # SparseStochMat (from the stochmat package)
+        if hasattr(M, "to_full_mat"):
+            M = M.to_full_mat()
+        # scipy sparse
+        if hasattr(M, "toarray"):
+            return M.toarray()
+        return np.asarray(M)
 
+def _csr(M):
+    """Coerce SparseStochMat, scipy sparse, or dense matrix-like to a CSR matrix."""
+    if hasattr(M, "to_full_mat"):        # SparseStochMat (stochmat package)
+        M = M.to_full_mat()
+    if hasattr(M, "tocsr"):              # scipy sparse
+        return M.tocsr()
+    return csr_matrix(np.asarray(M))     # dense
