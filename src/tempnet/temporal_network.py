@@ -95,14 +95,8 @@ class ContTempNetwork:
         {attr_name: list_of_values}, where list_of_values has the same order
         and length as `source_nodes`.
 
-    relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in
-        self.node_to_label_dict. Default is `True`
-
-    node_to_label_dict: Python dict
-        If `relabel_nodes` is `False, this can be used to save the original
-        labels of the nodes.
-
+    label_to_node_dict: Python dict
+        The user can input this dictionary to map the labels in an arbitary order. 
     merge_overlapping_events: boolean
         Check for overlapping events (between the same pair of nodes)
         and merges them. Default is `False`.
@@ -123,32 +117,13 @@ class ContTempNetwork:
     # to hold endings - starts (only for continous time edges)
     _DURATIONS = "durations"
 
-
-    def _build_label_maps(self, source_iter, target_iter):
-        """Build label<->node id dicts from two iterables of node labels.
-
-        Sets `self.label_to_node_dict` (original label -> contiguous
-        0..N-1 node id) and `self.node_to_label_dict` (its inverse).
-        Does not modify the input iterables.
-        """
-        all_nodes = set()
-        all_nodes.update(source_iter)
-        all_nodes.update(target_iter)
-        self.label_to_node_dict = {
-            m: n for n, m in enumerate(sorted(all_nodes))
-        }
-        self.node_to_label_dict = {
-            n: m for m, n in self.label_to_node_dict.items()
-        }
-
     def __init__(self, *,
                  source_nodes=[],
                  target_nodes=[],
                  starting_times=[],
                  ending_times=[],
                  extra_attrs=None,
-                 relabel_nodes=True,
-                 node_to_label_dict=None,
+                 label_to_node_dict=None,
                  merge_overlapping_events=False,
                  events_table=None,
                  instantaneous_events=False,
@@ -189,8 +164,7 @@ class ContTempNetwork:
         else:
             if isinstance(events_table, pd.DataFrame):
                 # copy to avoid mutating caller's DataFrame when relabeling
-                self.events_table = events_table.copy() if relabel_nodes \
-                    else events_table
+                self.events_table = events_table.copy()
             else:
                 raise ValueError(
                     "`events_table` must be a pandas DataFrame. "
@@ -206,16 +180,14 @@ class ContTempNetwork:
         self.num_nodes = pd.unique(
             self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
         ).size      
-        if node_to_label_dict: 
-            if not relabel_nodes: 
-                            raise ValueError("node_to_label_dict given but relabel_nodes is False")
+        if label_to_node_dict: 
             self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
-            self.node_to_label_dict = node_to_label_dict
-            self.label_to_node_dict = {v: k for k, v in node_to_label_dict.items()}
+            self.label_to_node_dict = label_to_node_dict
+            self.node_to_label_dict = {v: k for k, v in label_to_node_dict.items()}
                
-        elif not self._is_canonical(self.events_table[self._SOURCES],
+        if not self._is_canonical(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
             logger.info("Nodes not labeled 0..num_nodes-1; relabeling...")
             labels = sorted(set(self.events_table[self._SOURCES]) |
@@ -235,7 +207,6 @@ class ContTempNetwork:
 
 
         self.instantaneous_events = instantaneous_events
-
 
         self.num_events = self.events_table.shape[0]
 
@@ -302,7 +273,7 @@ class ContTempNetwork:
         attributes_list: list of strings
             List of attribute names to save.
             The default list is:
-                `attributes_list = ['node_to_label_dict',
+                `attributes_list = ['label_to_node_dict',
                                     'events_table',
                                     'times',
                                     'time_grid',
@@ -330,7 +301,7 @@ class ContTempNetwork:
         if matrices_list is None:
             matrices_list = matrices
 
-        attributes = ["node_to_label_dict",
+        attributes = ["label_to_node_dict",
                       "events_table",
                       "times",
                       "time_grid",
@@ -383,7 +354,7 @@ class ContTempNetwork:
         attributes_list: list of strings
             List of attribute names to load.
             The default list is:
-                `attributes_list = ['node_to_label_dict',
+                `attributes_list = ['label_to_node_dict',
                                     'events_table',
                                     'times',
                                     'time_grid',
@@ -409,7 +380,7 @@ class ContTempNetwork:
         if matrices_list is None:
             matrices_list = matrices
 
-        attributes = ["node_to_label_dict",
+        attributes = ["label_to_node_dict",
                       "events_table",
                       "times",
                       "time_grid",
@@ -431,7 +402,7 @@ class ContTempNetwork:
 
         net = cls(events_table=events_table,
                   relabel_nodes=False,
-                  node_to_label_dict=graph_dict.pop("node_to_label_dict"))
+                  label_to_node_dict=graph_dict.pop("label_to_node_dict"))
 
         for k, val in graph_dict.items():
             if k in matrices_list:
@@ -1847,13 +1818,9 @@ class ContTempInstNetwork(ContTempNetwork):
     starting_times: Python list
         List of starting times of each event
 
-    relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in 
-        self.node_to_label_dict. Default is `True`
 
-    node_to_label_dict: Python dict
-        If `relabel_nodes` is `False, this can be used to save the original labels
-        of the nodes.
+    label_to_node_dict: Python dict
+        User may input this to map the nodes in arbitary order. 
 
     events_table: Pandas Dataframe
         Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
@@ -1866,7 +1833,7 @@ class ContTempInstNetwork(ContTempNetwork):
                  target_nodes=[],
                  starting_times=[],
                  relabel_nodes=True,
-                 node_to_label_dict=None,
+                 label_to_node_dict=None,
                  events_table=None,
                  ):
 
@@ -1891,7 +1858,7 @@ class ContTempInstNetwork(ContTempNetwork):
                          starting_times=starting_times,
                          ending_times=ending_times,
                          relabel_nodes=relabel_nodes,
-                         node_to_label_dict=node_to_label_dict,
+                         label_to_node_dict=label_to_node_dict,
                          merge_overlapping_events=False,
                          events_table=events_table, 
                          instantaneous_events=True)
