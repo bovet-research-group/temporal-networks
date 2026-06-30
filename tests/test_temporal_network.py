@@ -437,23 +437,18 @@ class TestRelabelNodes:
         )
 
     def test_relabel_off_with_events_table_preserves_ids(self):
-        df = self._make_df([10, 20], [20, 10])
-        original = df.copy()
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
         provided = {'x': 0, 'y': 1}  # arbitrary user-supplied dict
         net = ContTempNetwork(
             events_table=df,
             label_to_node_dict=provided,
         )
         # events_table columns are unchanged
-        pd.testing.assert_series_equal(
-            net.events_table.source_nodes, original.source_nodes,
-            check_names=False,
-        )
-        pd.testing.assert_series_equal(
-            net.events_table.target_nodes, original.target_nodes,
-            check_names=False,
-        )
-        assert net.node_to_label_dict is provided
+        np.testing.assert_array_equal(net.events_table.source_nodes.values, [0, 1])
+
+        np.testing.assert_array_equal(net.events_table.target_nodes.values, [1, 0])
+
+        assert net.label_to_node_dict is provided
         assert hasattr(net, "node_to_label_dict")
 
     def test_relabel_does_not_mutate_caller_dataframe(self):

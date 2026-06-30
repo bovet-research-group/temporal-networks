@@ -188,7 +188,7 @@ class ContTempNetwork:
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
 
-        if not self._is_canonical(self.events_table[self._SOURCES],
+        elif not self._is_canonical(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
             logger.info("Nodes not labeled 0..num_nodes-1; relabeling...")
             labels = sorted(set(self.events_table[self._SOURCES]) |

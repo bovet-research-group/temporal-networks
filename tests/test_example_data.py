@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
+EXAMPLES_DIR = Path(__file__).parent.parent / "example"
 
 RECORD_ID = "4725155"
 FILE_NAME = "mice_contact_sequence.csv.gz"
