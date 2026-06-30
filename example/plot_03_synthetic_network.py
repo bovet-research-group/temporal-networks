@@ -83,17 +83,17 @@ t_end = 3 * (40 * activ_tau + (9 / 2 * m1 - 3 / 2) * 40 * activ_tau / (2 * p1 - 
 # Run the simulation
 # ------------------
 
-tnet = SynthTempNetwork(
+sim = SynthTempNetwork(
     individuals=individuals,
     t_start=0,
     t_end=t_end,
     next_event_method='block_probs_mod',
     block_prob_mod_func=block_prob_mod_func,
 )
-tnet.run()
+sim.run()
 
 print(
-    f"Simulation produced {len(tnet.indiv_sources)} contact events "
+    f"Simulation produced {len(sim.indiv_sources)} contact events "
     f"over t ∈ [0, {t_end:.1f}]."
 )
 
@@ -105,7 +105,7 @@ print(
 # ``u``. As a result, there can be moments where both the ``u → v`` and
 # ``v → u`` edges are active simultaneously.
 #
-# The ``tnet`` package, however, works with **undirected** networks. When the
+# The ``tempnet`` package, however, works with **undirected** networks. When the
 # network is constructed, overlapping reciprocal edges are merged into a single
 # undirected edge, and the Laplacians are then built from this undirected
 # representation.
@@ -114,10 +114,10 @@ print(
 # long as edge durations are short compared to the inter-event times.
 
 network = ContTempNetwork(
-    source_nodes=tnet.indiv_sources,
-    target_nodes=tnet.indiv_targets,
-    starting_times=tnet.start_times,
-    ending_times=tnet.end_times,
+    source_nodes=sim.indiv_sources,
+    target_nodes=sim.indiv_targets,
+    starting_times=sim.start_times,
+    ending_times=sim.end_times,
     merge_overlapping_events=True
 )
 
