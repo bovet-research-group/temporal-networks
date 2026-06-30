@@ -53,16 +53,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
     event_table = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
 
 # %%
-# Filter the events
-# -----------------
-# We keep only the first day of activity.
-
-# filter 1 day
-event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
-    drop=True
-)
-
-# %%
 # Inspect the first few rows of the event table.
 
 print(event_table.head())
@@ -101,9 +91,10 @@ plt.show()
 # Static aggregated adjacency matrix
 # ----------------------------------
 # We aggregate the temporal network into a static weighted adjacency matrix
-# and display it on linear and logarithmic colour scales.
+# and display it on linear and logarithmic colour scales, filtered for the first 
+# day of the network. 
 
-A = tnet.compute_static_adjacency_matrix()
+A = tnet.compute_static_adjacency_matrix( start_time=None, end_time=24*3600)
 A_dense = A.toarray()
 
 fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, dpi=200, figsize=(12, 5))
@@ -132,29 +123,36 @@ plt.show()
 # Convert to a NetworkX graph
 # ---------------------------
 # We then transform it into a NetworkX object to visualise and perform other
-# algorithms and measure computation.
+# algorithms. 
 
 static = nx.from_numpy_array(A.toarray())
 
 # %%
 # Check whether the aggregated network is connected.
+# And because it is not, retrieve the largest connected component. 
 
 print(nx.is_connected(static))
 
+# nodes of the largest connected component
+gcc_nodes = max(nx.connected_components(static), key=len)
+
+# subgraph induced by those nodes
+gcc = static.subgraph(gcc_nodes).copy()
+
 # %%
-# Draw the aggregated static network, with edge widths scaled by weight.
+# Draw the largest connected network, with edge widths scaled by weight.
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 
-pos = nx.spring_layout(static, seed=412)
-weights = [static[u][v]["weight"] for u, v in static.edges()]
+pos = nx.spring_layout(gcc, seed=412)
+weights = [gcc[u][v]["weight"] for u, v in gcc.edges()]
 max_w = max(weights)
 widths = [2 * np.log10(w) / np.log10(max_w) for w in weights]
 
-nx.draw(static, pos, with_labels=False, width=widths, node_color="teal",
+nx.draw(gcc, pos, with_labels=False, width=widths, node_color="teal",
         node_size=5)
 
-plt.title("Aggregated Static Network")
+plt.title("Aggregated Static Network\n Day 1")
 plt.show()
 
 # %%
@@ -214,9 +212,9 @@ et = tnet.events_table
 et = et[et['ending_times'] <= 1800]
 
 for _, row in et.iterrows():
-    tgt = row[tnet._TARGETS]
-    t0 = row[tnet._STARTS]
-    t1 = row[tnet._ENDINGS]
+    tgt = row['target_nodes']
+    t0 = row['starting_times']
+    t1 = row['ending_times']
     ax.barh(tgt, t1 - t0, left=t0, height=0.6, color='steelblue', alpha=0.6)
 
 ax.set_xlabel('Time (s)')
