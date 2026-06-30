@@ -1196,7 +1196,7 @@ class ContTempNetwork:
 
     
     def plot_density_of_laplacians(self):
-        """Plot the distribution of Laplacian densities across time slices.
+        """Plot the distribution of Laplacian densities.
 
         For each Laplacian ``L`` in ``self.laplacians``, the density is computed
         as the number of stored (non-zero) entries divided by ``num_nodes ** 2``.
