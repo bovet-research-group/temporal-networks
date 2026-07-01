@@ -141,10 +141,10 @@ fig, ax = plt.subplots(figsize=(10, 5))
 
 et = tnet.events_table
 for _, row in et.iterrows():
-    src = int(row[ContTempNetwork._SOURCES])
-    tgt = int(row[ContTempNetwork._TARGETS])
-    t0 = row[ContTempNetwork._STARTS]
-    t1 = row[ContTempNetwork._ENDINGS]
+    src = int(row['source_nodes'])
+    tgt = int(row['target_nodes'])
+    t0 = row['starting_times']
+    t1 = row['ending_times']
     color = GROUP_COLORS[node_to_group[src]]
     ax.barh(tgt, t1 - t0, left=t0, height=0.6, color=color, alpha=0.7)
 
