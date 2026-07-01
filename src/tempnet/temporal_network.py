@@ -195,12 +195,14 @@ class ContTempNetwork:
             self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
-
-        if not self._is_canonical(self.events_table[self._SOURCES],
+            if not self._is_canonical(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
-            if label_to_node_dict: 
-                raise ValueError( "Nodes not labeled 0..num_nodes-1.")
-            logger.info("Nodes not labeled 0..num_nodes-1; relabeling...")
+                raise ValueError(
+                    "Nodes not labeled 0..num_nodes-1 after relabeling."
+                )
+
+        elif not self._is_canonical(self.events_table[self._SOURCES],
+                                    self.events_table[self._TARGETS]):
             labels = sorted(set(self.events_table[self._SOURCES]) |
                             set(self.events_table[self._TARGETS]))
             self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
@@ -208,6 +210,7 @@ class ContTempNetwork:
             self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
         else:
+
             self.label_to_node_dict = {i: i for i in range(self.num_nodes)}
             self.node_to_label_dict = {i: i for i in range(self.num_nodes)}
 
@@ -230,7 +233,7 @@ class ContTempNetwork:
 
         # to record compute times
         self._compute_times = {}
-
+        self.instantaneous_events=False
         self._overlapping_events_merged = False
         if merge_overlapping_events:
             num_merged = 1
@@ -1881,7 +1884,7 @@ class ContTempInstNetwork(ContTempNetwork):
                          )
         #remove duration column as it doesnt make sense for instantaneous events
         self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
-
+        self.instantaneous_events=True
 
     def compute_laplacian_matrices(self,
                                    *,
