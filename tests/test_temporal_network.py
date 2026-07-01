@@ -247,7 +247,7 @@ class TestTempNetwork:
             temp_network._compute_time_grid()
 
     def test_inst_events_table_matches_start_plus_one_interval(self):
-        """ContTempInstNetwork synthesizes ending_times = start + 1.
+        """ContTempInstNetwork synthesizes ending_times = start 
 
         The resulting events_table must equal that of an interval
         ContTempNetwork explicitly constructed with the same
@@ -264,7 +264,7 @@ class TestTempNetwork:
             source_nodes=self.minimal.source_nodes,
             target_nodes=self.minimal.target_nodes,
             starting_times=starts,
-            ending_times=[s + 1 for s in starts],
+            ending_times=starts,
         )
         inst = ContTempInstNetwork(
             source_nodes=self.minimal.source_nodes,
@@ -272,7 +272,7 @@ class TestTempNetwork:
             starting_times=starts,
         )
         pd.testing.assert_frame_equal(
-            interval.events_table.reset_index(drop=True),
+            interval.events_table.drop(columns=['durations']).reset_index(drop=True),
             inst.events_table.reset_index(drop=True),
         )
 
@@ -291,12 +291,6 @@ def test_ContTempInstNetwork():
     from tempnet.temporal_network import ContTempInstNetwork
     pass
 
-
-def test_lin_approx_trans_matrix():
-    """
-    """
-    from tempnet.temporal_network import lin_approx_trans_matrix
-    pass
 
 
 def test_compute_stationary_transition():
@@ -338,20 +332,6 @@ def test_rebuild_nnz_rowcol():
     """
     """
     from tempnet.temporal_network import numpy_rebuild_nnz_rowcol
-    pass
-
-
-def test_sparse_lapl_expm():
-    """
-    """
-    from tempnet.temporal_network import sparse_lapl_expm
-    pass
-
-
-def test_sparse_lin_approx():
-    """
-    """
-    from tempnet.temporal_network import sparse_lin_approx
     pass
 
 
@@ -457,37 +437,37 @@ class TestRelabelNodes:
         )
 
     def test_relabel_off_with_events_table_preserves_ids(self):
-        df = self._make_df([10, 20], [20, 10])
-        original = df.copy()
-        provided = {0: "x", 1: "y"}  # arbitrary user-supplied dict
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
+        provided = {'x': 0, 'y': 1}  # arbitrary user-supplied dict
         net = ContTempNetwork(
             events_table=df,
-            relabel_nodes=False,
-            node_to_label_dict=provided,
+            label_to_node_dict=provided,
         )
         # events_table columns are unchanged
-        pd.testing.assert_series_equal(
-            net.events_table.source_nodes, original.source_nodes,
-            check_names=False,
-        )
-        pd.testing.assert_series_equal(
-            net.events_table.target_nodes, original.target_nodes,
-            check_names=False,
-        )
-        # provided node_to_label_dict preserved; no label_to_node_dict built
-        assert net.node_to_label_dict is provided
-        assert not hasattr(net, "label_to_node_dict")
+        np.testing.assert_array_equal(net.events_table.source_nodes.values, [0, 1])
 
-    def test_events_table_from_csv_path_relabels(self, tmp_path):
-        df = self._make_df([10, 20, 30], [20, 30, 10])
-        csv_path = tmp_path / "events.csv"
-        df.to_csv(csv_path, index=False)
+        np.testing.assert_array_equal(net.events_table.target_nodes.values, [1, 0])
 
-        net = ContTempNetwork(events_table=csv_path)
-        used = set(net.events_table.source_nodes.tolist()) | \
-            set(net.events_table.target_nodes.tolist())
-        assert used == {0, 1, 2}
-        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
+        assert net.label_to_node_dict is provided
+        assert hasattr(net, "node_to_label_dict")
+
+    def test_relabel_off_with_nonUnique_labels(self):
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
+        provided = {'x': 0, 'y': 0}  # arbitrary user-supplied dict with non-unique values
+        with pytest.raises(ValueError):
+            net = ContTempNetwork(
+                events_table=df,
+                label_to_node_dict=provided,
+            )
+    def test_relabel_off_with_noncanonical_labels(self):
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
+        provided = {'x': 0, 'y': 2}  # arbitrary user-supplied dict with non-unique values
+        with pytest.raises(ValueError):
+            net = ContTempNetwork(
+                events_table=df,
+                label_to_node_dict=provided,
+            )
+
 
     def test_relabel_does_not_mutate_caller_dataframe(self):
         df = self._make_df([10, 20, 30], [20, 30, 10])
@@ -523,26 +503,9 @@ class TestContTempInstNetwork:
         net = ContTempInstNetwork(events_table=df)
 
         assert "ending_times" in net.events_table.columns
-        # ending_times derived from sorted unique starts; last one += 1
-        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
-        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+        # ending_times derived from sorted unique starts; last one 
+        assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
         assert net.instantaneous_events is True
-
-    def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path):
-        df = self._make_inst_df([10, 20, 30], [20, 30, 10],
-                                starts=[0.0, 1.0, 2.0])
-        csv_path = tmp_path / "inst_events.csv"
-        df.to_csv(csv_path, index=False)
-
-        net = ContTempInstNetwork(events_table=csv_path)
-
-        assert "ending_times" in net.events_table.columns
-        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
-        # default relabel_nodes=True remaps 10/20/30 to 0/1/2
-        used = set(net.events_table.source_nodes.tolist()) | \
-            set(net.events_table.target_nodes.tolist())
-        assert used == {0, 1, 2}
-        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
 
     def test_init_from_positional_args(self):
         net = ContTempInstNetwork(
@@ -551,8 +514,6 @@ class TestContTempInstNetwork:
             starting_times=[0.0, 1.0, 2.0],
         )
         assert net.instantaneous_events is True
-        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
-        # Should be runnable end-to-end
         net.compute_laplacian_matrices()
         assert len(net.laplacians) > 0
 
@@ -571,8 +532,8 @@ class TestContTempInstNetwork:
         ContTempInstNetwork(events_table=df)
         pd.testing.assert_frame_equal(df, df_before)
 
-    def test_uneven_starts_use_start_plus_one(self):
-        """Synthesized ending_times must be start + 1 for each event,
+    def test_uneven_starts_use_start(self):
+        """Synthesized ending_times must be startfor each event,
         independent of the spacing or uniqueness of starting times.
         """
         net = ContTempInstNetwork(
@@ -580,14 +541,13 @@ class TestContTempInstNetwork:
             target_nodes=[1, 2, 0],
             starting_times=[0.0, 0.5, 5.0],
         )
-        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
-        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+        assert net.events_table.ending_times.tolist() == [0.0, 0.5, 5.0]
 
-    def test_uneven_starts_via_dataframe_use_start_plus_one(self):
+    def test_uneven_starts_via_dataframe_use_start(self):
         df = self._make_inst_df([0, 1, 2], [1, 2, 0],
                                 starts=[0.0, 0.5, 5.0])
         net = ContTempInstNetwork(events_table=df)
-        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+        assert net.events_table.ending_times.tolist() ==[0.0, 0.5, 5.0]
 
 
 class TestContTempNetworkEndingTimesRequired:

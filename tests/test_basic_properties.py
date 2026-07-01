@@ -1,0 +1,418 @@
+import pytest
+import numpy as np
+import pandas as pd
+from pathlib import Path
+import sys
+from scipy.sparse import issparse
+
+sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
+
+from tempnet.temporal_network import ContTempNetwork
+
+@pytest.fixture
+def simple_network():
+    """
+    3-node, 4-event network whose properties are verified by hand.
+
+    Events (source, target, start, end):
+        0: (A, B, 0, 2)
+        1: (B, C, 1, 3)
+        2: (A, C, 4, 5)
+        3: (A, B, 6, 7)
+    """
+    return ContTempNetwork(
+        source_nodes=["A", "B", "A", "A"],
+        target_nodes=["B", "C", "C", "B"],
+        starting_times=[0, 1, 4, 6],
+        ending_times=[2, 3, 5, 7],
+        relabel_nodes=True,
+    )
+
+@pytest.fixture
+def mice_network():
+    """
+    Load mice data 
+    """
+    url = 'https://zenodo.org/record/4725155/files/'\
+                        'mice_contact_sequence.csv.gz'
+    cut_after = 24*3600 
+
+    raw_df = pd.read_csv(url,compression='gzip')
+    raw_df = raw_df[raw_df['ending_times'] < cut_after]
+        
+    source_nodes = raw_df['source_nodes'].tolist()
+    target_nodes = raw_df['target_nodes'].tolist()
+    starting_times = raw_df['starting_times'].round(3).tolist()
+    ending_times = raw_df['ending_times'].round(3).tolist()
+    return ContTempNetwork(\
+        source_nodes=source_nodes,\
+        target_nodes=target_nodes,\
+        starting_times=starting_times,\
+        ending_times=ending_times,\
+        relabel_nodes=True
+    )
+
+@pytest.fixture
+def network_overlapping():
+        """Two overlapping events between the same node pair/Three nodes no relabeling."""
+        return ContTempNetwork(
+            source_nodes=["A","B","A"],
+            target_nodes=["B", "C", "B"],
+            starting_times=[0, 1, 1],
+            ending_times=[3, 2, 4],
+            relabel_nodes=True,
+            merge_overlapping_events=True
+        )
+@pytest.fixture
+def network_overlapping_no_relabel():
+        """Two overlapping events between the same node pair/Three nodes no relabeling."""
+        return ContTempNetwork(
+            source_nodes=["A","B","A"],
+            target_nodes=["B", "C", "B"],
+            starting_times=[0, 1, 1],
+            ending_times=[3, 2, 4],
+            relabel_nodes=False,
+            merge_overlapping_events=True
+        )
+class TestBasicProperties:
+
+  # By Jonas
+    def test_init_without_source_nodes(self, mice_network: ContTempNetwork, simple_network: ContTempNetwork):
+        for network in [mice_network, simple_network]:
+            with pytest.raises(AssertionError):
+                ContTempNetwork(target_nodes=network.events_table['target_nodes'].values)
+
+    def test_init_without_target_nodes(self, mice_network: ContTempNetwork, simple_network: ContTempNetwork):
+        for network in [mice_network, simple_network]:
+            with pytest.raises(AssertionError):
+                ContTempNetwork(source_nodes=network.events_table['source_nodes'].values)
+
+    def test_init_inconsistent_event_numbers_type(self):
+        """Make sure we detect variable numbers of events
+        """
+        with pytest.raises(AssertionError):
+            # error in source and target nodes
+            ContTempNetwork(source_nodes=[1, 2, 3], target_nodes=[1, 2],
+                            starting_times = [0, 0], ending_times = [1, 1])
+            # not enough ending times
+            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2],
+                            starting_times = [0, 0], ending_times = [1])
+
+    def test_init_missing_params(self):
+        """Make sure we detect variable numbers of events
+        """
+        with pytest.raises(AssertionError):
+            # missing starting times
+            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2],)
+
+    def test_init_with_inconsistent_node_type(self):
+        with pytest.raises(TypeError):
+            # int and str cannot be compared > type error
+            ContTempNetwork(source_nodes=[0, 1], target_nodes=['a', 'b'],
+                         starting_times = [0, 0], ending_times = [1, 1])
+    def test_mismatched_lengths_raise(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(
+                source_nodes=["A", "B"],
+                target_nodes=["B"],           # wrong length
+                starting_times=[0, 1],
+                ending_times=[1, 2],
+            )
+
+    def test_invalid_events_table_type_raises(self):
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table=12345)
+
+    def test_extra_attrs_wrong_length_raises(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(
+                source_nodes=["A"],
+                target_nodes=["B"],
+                starting_times=[0],
+                ending_times=[1],
+                extra_attrs={"weight": [1.0, 2.0]},  # too long
+            )
+
+    #By yas
+
+    def test_num_nodes(self, simple_network: ContTempNetwork):
+        assert simple_network.num_nodes == 3
+
+    def test_num_events(self, simple_network: ContTempNetwork):
+        assert simple_network.num_events == 4
+
+    def test_start_time(self, simple_network: ContTempNetwork):
+        assert simple_network.start_time == 0
+
+    def test_end_time(self, simple_network: ContTempNetwork):
+        assert simple_network.end_time == 7
+
+    def test_node_array_sorted(self, simple_network: ContTempNetwork):
+        assert list(simple_network.node_array) == [0, 1, 2]
+
+    def test_durations_column_exists(self, simple_network: ContTempNetwork):
+        assert "durations" in simple_network.events_table.columns
+
+    def test_durations_values(self, simple_network: ContTempNetwork):
+        expected = [2, 2, 1, 1]
+        assert list(simple_network.events_table["durations"]) == expected
+
+    def test_events_sorted_by_start(self, simple_network: ContTempNetwork):
+        starts = simple_network.events_table["starting_times"].tolist()
+        assert starts == sorted(starts)
+
+    def test_required_columns_present(self, simple_network: ContTempNetwork):
+        for col in ["source_nodes", "target_nodes", "starting_times",
+                    "ending_times", "durations"]:
+            assert col in simple_network.events_table.columns
+
+    def test_index_reset(self, simple_network: ContTempNetwork):
+        assert list(simple_network.events_table.index) == list(
+            range(simple_network.num_events)
+        )
+
+    def test_instantaneous_events_default(self, simple_network: ContTempNetwork):
+        assert simple_network.instantaneous_events == False
+
+    ## TEST adj matrix
+    def test_adj_full(self, simple_network: ContTempNetwork):
+        A_full=simple_network.compute_static_adjacency_matrix().toarray()
+        A_test = np.array([
+        [0, 3, 1],
+        [3, 0, 2],
+        [1, 2, 0]])
+        assert np.allclose(A_full, A_test)
+
+    def test_adj_simple1(self , simple_network: ContTempNetwork):
+        A=simple_network.compute_static_adjacency_matrix(start_time=0, end_time=2).toarray()
+        A_test = np.array([
+        [0, 2, 0],
+        [2, 0, 1],
+        [0, 1, 0]])
+        assert np.allclose(A, A_test)
+
+    def test_adj_simple2(self , simple_network: ContTempNetwork):
+        A=simple_network.compute_static_adjacency_matrix(start_time=2.5, end_time=3).toarray()
+        A_test = np.array([
+        [0, 0, 0],
+        [0, 0, 0.5],
+        [0, 0.5, 0]])
+        assert np.allclose(A, A_test)
+
+
+# #################################################################### TEST Laplacians
+    @staticmethod
+    def _dense(M):
+        """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
+        # SparseStochMat (from the stochmat package)
+        if hasattr(M, "to_full_mat"):
+            M = M.to_full_mat()
+        # scipy sparse
+        if hasattr(M, "toarray"):
+            return M.toarray()
+        return np.asarray(M)
+    
+
+    def test_laplacians_count(self, simple_network):
+        """One Laplacian per inter-event step over the full grid."""
+        simple_network.compute_laplacian_matrices()
+        # times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps
+        assert len(simple_network.laplacians) == 7
+
+    def test_laplacian_shape(self,simple_network):
+        """Every Laplacian is num_nodes x num_nodes."""
+        simple_network.compute_laplacian_matrices()
+        n = simple_network.num_nodes
+        for L in simple_network.laplacians:
+            assert self._dense(L).shape == (n, n)
+
+
+    def test_laplacian_step_1_2_exact(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Degrees A=1,B=2,C=1. All connected.
+
+        Random-walk Laplacian I - D^-1 A:
+            A: [ 1, -1,    0  ]
+            B: [-1/2, 1, -1/2 ]
+            C: [ 0, -1,    1  ]
+        """
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[1])
+        expected = np.array([
+            [ 1.0, -1.0,  0.0],
+            [-0.5,  1.0, -0.5],
+            [ 0.0, -1.0,  1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_0_1_connected_block(self,simple_network):
+        """Step [0,1]: only A-B active; C isolated.
+
+        The A-B block is fully determined; C's diagonal is convention-dependent
+        so we only assert the off-diagonal coupling to C is zero.
+        """
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[0])
+
+        # A-B 2x2 block
+        assert L[0, 0] == 1
+        assert L[0, 1] == -1
+        assert L[1, 0] == -1
+        assert L[1, 1] == 1
+        assert L[0, 2] == 0
+        assert L[1, 2] == 0
+        assert L[2, 0] == 0
+        assert L[2, 1] == 0
+        assert L[2,2] == 0 # self loop
+
+    def test_laplacian_empty_step_no_offdiagonal(self, simple_network):
+        """Step [3,4]: no active events"""
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[3])
+        n = simple_network.num_nodes
+        for i in range(n):
+            for j in range(n):
+                assert L[i, j] == 0
+
+
+    def test_laplacian_rows_sum_zero_connected_step(self, simple_network):
+        """For a step with no isolated nodes, every row of I - D^-1 A sums to 0."""
+        simple_network.compute_laplacian_matrices()
+        L = self._dense(simple_network.laplacians[1]) 
+        assert np.allclose(L.sum(axis=1), 0.0)
+
+######################################################################## Test transition matrices
+ 
+    @pytest.fixture
+    def prepared_network(self, simple_network):
+        """simple_network with laplacians computed, ready for T computation."""
+        simple_network.compute_laplacian_matrices()  
+        return simple_network
+
+    EXPM_METHODS = ["sparse_expm","parallel_expm", "mfp_exp"]
+
+
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    @pytest.mark.parametrize("lamda", [0.1, 1.0, 5.0])
+    def test_method_matches_dense_exact(self,prepared_network, method, lamda):
+        """other methods should match dense_expm to near machine precision."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+
+        for k, L in enumerate(net.laplacians):
+            tau = net.times[k + 1] - net.times[k]
+
+            T_ref = self._dense(net._compute_single_T(
+                L, tau, lamda, num_nodes, "dense_expm"))
+            T = self._dense(net._compute_single_T(
+                L, tau, lamda, num_nodes, method))
+
+            np.testing.assert_allclose(
+                T, T_ref, rtol=1e-6, atol=1e-6,
+                err_msg=f"{method} != dense_expm at step {k}, lamda={lamda}",
+            )
+
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    def test_transition_matrix_is_stochastic(self,prepared_network, method, lamda=1.0):
+        """expm of a (negative) Laplacian gives row-stochastic matrices."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+
+        for k, L in enumerate(net.laplacians):
+            tau = net.times[k + 1] - net.times[k]
+            T = self._dense(net._compute_single_T(L, tau, lamda, num_nodes, method))
+
+            np.testing.assert_allclose(T.sum(axis=1), np.ones(num_nodes), atol=1e-10)
+            # nonnegative entries
+            assert (T >= -1e-12).all(), f"{method} produced negative entries at step {k}"
+
+
+    def test_mfp_exp_error_decreases_with_tighter_tolerance(self,prepared_network):
+        """Smaller err in mfp_exp should not increase the gap to dense_expm."""
+        net = prepared_network
+        num_nodes = net.num_nodes
+        lamda = 1.0
+        L = net.laplacians[0]
+        tau = net.times[1] - net.times[0]
+
+        T_ref = self._dense(
+            net._compute_single_T(L, tau, lamda, num_nodes, "dense_expm"))
+
+        T_loose =self._dense(net._compute_single_T(
+            L, tau, lamda, num_nodes, "mfp_exp", err=1e-4))
+        T_tight = self._dense(net._compute_single_T(
+            L, tau, lamda, num_nodes, "mfp_exp", err=1e-10))
+
+        mae_loose = np.mean(np.abs(T_loose - T_ref))
+        mae_tight = np.mean(np.abs(T_tight - T_ref))
+
+        assert mae_tight <= mae_loose + 1e-12
+
+    ############################################################## MICE
+    
+    def test_num_node_real(self, mice_network: ContTempNetwork):
+        n_array=np.load('tests/prepare_mice_test/mice_node_array.npy')
+        assert mice_network.num_nodes == len(n_array)
+
+    def test_node_array_real(self, mice_network: ContTempNetwork):
+        n_array=np.load('tests/prepare_mice_test/mice_node_array.npy')
+        assert sorted(mice_network.node_array) ==sorted(n_array)
+
+    def test_event_table_real(self, mice_network: ContTempNetwork):
+        et=pd.read_csv('tests/prepare_mice_test/mice_event_table.csv')
+        pd.testing.assert_frame_equal(
+            mice_network.events_table.reset_index(drop=True),
+            et.reset_index(drop=True)
+        )
+    def test_compute_time_grid_real(self, mice_network: ContTempNetwork):
+        mice_network._compute_time_grid()
+        tg=pd.read_csv('tests/prepare_mice_test/mice_time_grid.csv')
+        times=np.load('tests/prepare_mice_test/mice_times.npy')
+
+        pd.testing.assert_frame_equal(
+                    mice_network.time_grid.reset_index(),
+                    tg.reset_index(drop=True)
+                )        
+        assert list(times)==list(mice_network.times)
+
+
+    ## TEST adj matrix
+    def test_adj_full_mice(self, mice_network: ContTempNetwork):
+        A=mice_network.compute_static_adjacency_matrix().toarray()
+        A_loaded=np.load('tests/prepare_mice_test/mice_full_adjacency.npy')
+        assert np.allclose(A, A_loaded)
+        
+    def test_adj_1h_mice(self, mice_network: ContTempNetwork):
+        A = mice_network.compute_static_adjacency_matrix(
+            start_time=0, end_time=3600
+        ).toarray()
+
+        A_loaded = np.load('tests/prepare_mice_test/mice_1h_adjacency.npy')
+
+        assert np.allclose(A, A_loaded)
+            
+   #Overlapping
+    def test_overlapping_events_are_merged(self, network_overlapping: ContTempNetwork):
+        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+        assert network_overlapping.num_events == 2
+
+    def test_merged_event_span(self, network_overlapping: ContTempNetwork):
+        row = network_overlapping.events_table.iloc[0]
+        assert row["starting_times"] == 0
+        assert row["ending_times"] == 4
+
+    def test_merge_flag_set(self, network_overlapping: ContTempNetwork):
+        assert network_overlapping._overlapping_events_merged is True
+
+    def test_overlapping_events_are_merged_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        """(A,B,0,3) and (A,B,1,4) should collapse into a single event."""
+        assert network_overlapping_no_relabel.num_events == 2
+
+    def test_merged_event_span_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        row = network_overlapping_no_relabel.events_table.iloc[0]
+        assert row["starting_times"] == 0
+        assert row["ending_times"] == 4
+
+    def test_merge_flag_set_no_relabel(self, network_overlapping_no_relabel: ContTempNetwork):
+        assert network_overlapping_no_relabel._overlapping_events_merged is True
+

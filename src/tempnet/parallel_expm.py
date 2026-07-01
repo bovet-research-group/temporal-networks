@@ -1,7 +1,7 @@
 """#
-# flow stability
+# Temporal networks
 #
-# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -266,5 +266,3 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
         inplace_csr_row_normalize(expmA)
 
     return expmA
-
-

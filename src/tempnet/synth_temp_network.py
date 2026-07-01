@@ -1,7 +1,7 @@
 """#
 # flow stability
 #
-# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -26,7 +26,80 @@ import numpy as np
 from scipy.sparse import lil_matrix
 from scipy.stats import expon
 
-#%%
+from .logger import get_logger
+
+# get the logger
+logger = get_logger()
+
+def make_step_block_probs(
+    deltat1: float,
+    deltat2: float,
+    m1: float = 1.0,
+    p1: float = 1.0,
+):
+    """Return a time-dependent block-probability function for 3 groups.
+
+    The returned function cycles through three phases where different
+    community pairs have elevated cross-community interaction probability.
+
+    Parameters
+    ----------
+    deltat1 : float
+        Duration of each *within-community* (identity-block) phase.
+    deltat2 : float
+        Duration of each *cross-community exchange* phase.
+    m1 : float
+        Within-community interaction probability (default 1.0).
+    p1 : float
+        Cross-community interaction probability for the active pair
+        (default 1.0).
+
+    Returns
+    -------
+    block_mod_func : callable
+        A function ``block_mod_func(t)`` that accepts a float *t* and
+        returns a 3×3 numpy array of group-level interaction probabilities.
+    """
+    def block_mod_func(t: float) -> np.ndarray:
+        m2 = (1 - m1) / 2
+        p2 = (1 - p1)
+
+        ex12 = np.array([[p2, p1, 0],
+                         [p1, p2, 0],
+                         [0, 0, 0]])
+        ex23 = np.array([[0, 0, 0],
+                         [0, p2, p1],
+                         [0, p1, p2]])
+        ex13 = np.array([[p2, 0, p1],
+                         [0, 0, 0],
+                         [p1, 0, p2]])
+
+        within = np.array([[m1, m2, m2],
+                           [m2, m1, m2],
+                           [m2, m2, m1]])
+
+        if t >= 0 and t < deltat1:
+            return within
+        elif t >= deltat1 and t < deltat1 + deltat2:
+            return ex12
+        elif t >= deltat1 + deltat2 and t < 2 * deltat1 + deltat2:
+            return within
+        elif t >= 2 * deltat1 + deltat2 and t < 2 * (deltat1 + deltat2):
+            return ex23
+        elif (t >= 2 * (deltat1 + deltat2)
+              and t < 2 * (deltat1 + deltat2) + deltat1):
+            return within
+        elif (t >= 2 * (deltat1 + deltat2) + deltat1
+              and t <= 3 * (deltat1 + deltat2)):
+            return ex13
+        else:
+            logger.debug(
+                "Warning: t must be >=0 and <= 3*(deltat1+deltat2),"
+                f" t is {t}"
+            )
+            return within
+
+    return block_mod_func
 
 
 class Distro:
@@ -259,7 +332,7 @@ class SynthTempNetwork:
         
     """
 
-    def __init__(self, individuals, t_start=0, t_end=200,
+    def __init__(self, individuals, t_start: float = 0.0, t_end: float = 200.0,
                  num_interactions_per_activation=1,
                  next_event_method="random_uniform",
                  inter_group_probs=None,
@@ -283,7 +356,7 @@ class SynthTempNetwork:
         try:
             assert np.unique(self.indiv_ids_array).size == self.N
         except Exception as e:
-            print("Individuals ID must be unique.")
+            logger.debug("Individuals ID must be unique.")
             raise e
 
         # individuals group list
@@ -562,9 +635,9 @@ class SynthTempNetwork:
                 (time, event) = self.queue.get_nowait()
 
                 if verbose:
-                    print("treating event : ")
-                    print((time, event))
-                    print("--")
+                    logger.debug("treating event : ")
+                    logger.debug(f'{(time, event)}')
+                    logger.debug("--")
 
 
                 if not event[-1]: # not is_canceled
@@ -581,9 +654,9 @@ class SynthTempNetwork:
                             partner = self.get_new_partner(indiv_id)
 
                             if verbose>10:
-                                print("new interaction between : ", indiv_id, " and ", partner)
-                                print("starting at ", self.t)
-                                print("--")
+                                logger.debug(f"new interaction between : {indiv_id} and {partner}")
+                                logger.debug(f"starting at {self.t}")
+                                logger.debug("--")
 
                             if partner is not None:
                                 #update A and _last_times
@@ -632,101 +705,9 @@ class SynthTempNetwork:
                                 self._t_next_bin += self.dt
 
                                 if verbose:
-                                    print("t = ", self.t)
+                                    logger.debug(f"t = {self.t}")
 
 
             except Empty:
-                print("Priority queue is empty")
+                logger.debug("Priority queue is empty")
                 break
-
-
-#%%
-
-if __name__ == "__main__":
-    # Simple example
-    individuals = [Individual(i, group=0) for i in range(20)]
-    sim = SynthTempNetwork(individuals, t_start=0, t_end=50)
-
-    sim.run(save_all_states=True, save_dt_states=True, verbose=True)
-
-    # more advanced example
-    import time
-    inter_tau = 1
-    activ_tau = 2
-    t_start = 0
-    n_groups = 3
-    n_per_group = 9
-    individuals = []
-
-
-    def make_step_block_probs(deltat1, deltat2, m1=1, p1=1):
-        """`deltat1` is the length of the echanging step
-        
-        `deltat2` is the length of the within step
-            
-        `m1` is the prob of self-interaction
-            
-        `p1` is the prob of cross-interaction
-        """
-        def block_mod_func(t):
-
-            m2 = (1-m1)/2
-            p2 = (1-p1)
-
-            ex12 = np.array([[p2,p1,0],
-                             [p1,p2,0],
-                             [0,0,0]])
-            ex23 = np.array([[0,0,0],
-                             [0,p2,p1],
-                             [0,p1,p2]])
-            ex13 = np.array([[p2,0,p1],
-                             [0, 0, 0],
-                             [p1,0,p2]])
-
-            I = np.array([[m1,m2,m2],
-                          [m2,m1,m2],
-                          [m2,m2,m1]])
-            if t>=0 and  t < deltat1:
-                return I
-            elif t>=deltat1 and t<deltat1+deltat2:
-                return ex12
-            elif t>=deltat1+deltat2 and t < 2*deltat1+deltat2:
-                return I
-            elif t>= 2*deltat1+deltat2 and t < 2*(deltat1+deltat2):
-                return ex23
-            elif t>= 2*(deltat1+deltat2) and t < 2*(deltat1+deltat2)+deltat1:
-                return I
-            elif t>=2*(deltat1+deltat2)+deltat1 and t <= 3*(deltat1+deltat2):
-                return ex13
-            else:
-                print("Warning : t must be >=0 and <= 3*(deltat1+deltat2)" +\
-                      "t is ", t)
-                return I
-
-        return block_mod_func
-
-    m1=0.8
-    p1=0.8
-    deltat1 = 40*activ_tau
-    deltat2=(9/2*m1-3/2)*deltat1/(2*p1-1)
-
-    t_end = 3*(deltat1+deltat2)
-
-    block_prob_mod_func = make_step_block_probs(deltat1,deltat2,m1,p1)
-
-    for g in range(n_groups):
-
-        individuals.extend([Individual(i, inter_distro_scale=inter_tau,
-                                          activ_distro_scale=activ_tau,
-                                          group=g) for i in range(g*n_per_group,(g+1)*n_per_group)])
-
-
-    sim = SynthTempNetwork(individuals=individuals, t_start=t_start, t_end=t_end,
-                           next_event_method="block_probs_mod",
-                           block_prob_mod_func=block_prob_mod_func)
-
-    print("running simulation")
-    t0 = time.time()
-    sim.run(save_all_states=True, save_dt_states=True)
-    print("done in ", time.time()-t0)
-#%%
