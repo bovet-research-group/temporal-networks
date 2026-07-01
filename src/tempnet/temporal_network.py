@@ -117,7 +117,7 @@ class ContTempNetwork:
     _STARTS = "starting_times"
     _ENDINGS = "ending_times"
     _ESSENTIAL = [_SOURCES, _TARGETS, _STARTS, _ENDINGS]
-    # to hold endings - starts (only for continous time edges)
+    # to hold endings - starts
     _DURATIONS = "durations"
 
     def __init__(self, *,
