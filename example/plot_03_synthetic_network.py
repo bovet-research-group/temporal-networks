@@ -164,9 +164,7 @@ plt.show()
 # Plot 2: Event-duration distribution
 # ------------------------------------
 
-durations = (
-    et[ContTempNetwork._ENDINGS] - et[ContTempNetwork._STARTS]
-).values
+durations = et['durations'].values
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.hist(durations, bins=30, edgecolor='white')

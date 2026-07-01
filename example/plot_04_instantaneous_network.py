@@ -30,7 +30,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from tempnet.temporal_network import ContTempInstNetwork
-from functools import reduce
 from scipy.cluster.hierarchy import linkage, leaves_list
 
 import seaborn as sns
