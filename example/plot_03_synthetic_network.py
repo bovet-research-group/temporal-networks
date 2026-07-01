@@ -113,7 +113,7 @@ print(
 # Note that the Markov property of the resulting process still holds approximately, 
 # as long as edge durations are short compared to the inter-event times.
 
-network = ContTempNetwork(
+tnet = ContTempNetwork(
     source_nodes=sim.indiv_sources,
     target_nodes=sim.indiv_targets,
     starting_times=sim.start_times,
@@ -121,8 +121,8 @@ network = ContTempNetwork(
     merge_overlapping_events=True
 )
 
-print(f"Nodes : {network.nodes}")
-print(f"Events: {len(network.events_table)}")
+print(f"Nodes : {tnet.nodes}")
+print(f"Events: {len(tnet.events_table)}")
 
 # %%
 # Plot 1: Contact timeline
@@ -139,7 +139,7 @@ node_to_group = {
 
 fig, ax = plt.subplots(figsize=(10, 5))
 
-et = network.events_table
+et = tnet.events_table
 for _, row in et.iterrows():
     src = int(row[ContTempNetwork._SOURCES])
     tgt = int(row[ContTempNetwork._TARGETS])
