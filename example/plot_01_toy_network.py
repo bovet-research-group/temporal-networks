@@ -69,10 +69,10 @@ print(tnet.events_table)
 # into a static graph. This is visualized as a heatmap, where each cell's color
 # represents the total weight of edge activations between a pair of nodes.
 
-A = tnet.compute_static_adjacency_matrix()
+A = tnet.compute_static_adjacency_matrix().toarray()
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
-sns.heatmap(A.toarray(), ax=ax, annot=True, cbar_kws={"label": "Weight"})
+sns.heatmap(A, ax=ax, annot=True, cbar_kws={"label": "Weight"})
 ax.set_xlabel("Nodes")
 ax.set_ylabel("Nodes")
 ax.set_title("Aggregated Network Adjacency Matrix")
@@ -83,7 +83,7 @@ plt.show()
 # We then transform it into a NetworkX object to visualise and run other
 # algorithms on it.
 
-static = nx.from_numpy_array(A.toarray())
+static = nx.from_numpy_array(A)
 
 pos = nx.circular_layout(static)
 
@@ -100,10 +100,10 @@ plt.show()
 # You can also choose the period to aggregate over by passing
 # start_time and end_time to the function.
 
-A_period = tnet.compute_static_adjacency_matrix(start_time=0, end_time=2)
+A_period = tnet.compute_static_adjacency_matrix(start_time=0, end_time=2).toarray()
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
-sns.heatmap(A_period.toarray(), ax=ax, annot=True, cbar_kws={"label": "Weight"})
+sns.heatmap(A_period, ax=ax, annot=True, cbar_kws={"label": "Weight"})
 ax.set_xlabel("Nodes")
 ax.set_ylabel("Nodes")
 ax.set_title("Aggregated Network Adjacency Matrix (t = 0 to 2)")

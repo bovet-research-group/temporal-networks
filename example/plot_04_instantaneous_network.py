@@ -52,13 +52,10 @@ df.head()
 # Build the temporal network
 # ---------------------------
 # We hand the three columns to :class:`~tempnet.temporal_network.ContTempInstNetwork`.
-# ``relabel_nodes=True`` remaps the raw node ids to a compact ``0..N-1`` range.
-
 tnet = ContTempInstNetwork(
     source_nodes=df["src"],
     target_nodes=df["dst"],
-    starting_times=df["timestamp"],
-    relabel_nodes=True,
+    starting_times=df["timestamp"]
 )
 print(tnet)
 
@@ -87,30 +84,25 @@ ONE_WEEK = 7 * 24 * 3600
 tnet.compute_laplacian_matrices(t_start=None, t_stop=ONE_WEEK)
 
 # %%
-scales=[1, 10, 60,24*3600]
-for scale in scales: 
-    tnet.compute_inter_transition_matrices(lamda=1/scale, method='parallel_expm',n_jobs=1,nproc= 4, normalize_rows= True)
-
-# %%
-from tqdm import tqdm
-forward_transition_matrices = [
-    reduce(lambda a, b: a @ b, tqdm(tnet.inter_T[1/s], leave=False))
-    for s in tqdm(scales)
-]
+lamdas=[1, 1/10, 1/60,1/(24*3600)]
+for lamda in lamdas: 
+    tnet.compute_inter_transition_matrices(lamda=lamda, method='parallel_expm',n_jobs=1,nproc= 4, normalize_rows= True)
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False)
 
 # %%
 # Visualise the forward transition matrices for each time scale.
-ref = forward_transition_matrices[0].toarray()
+forward_transition_matrices=[tnet.T[lamda] for lamda in lamdas]
+ref = forward_transition_matrices[0]
 # symmetric ordering: cluster rows, reuse for cols 
 order = leaves_list(linkage(ref, method='ward'))
 
 norm = LogNorm(vmin=1e-6, vmax=1)
 fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), dpi=500)
 ax = ax.flat
-for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
-    m = matrix.toarray()[np.ix_(order, order)] 
+for i, (lamda, matrix) in enumerate(zip(lamdas, forward_transition_matrices)):
+    m = matrix[np.ix_(order, order)] 
     sns.heatmap(m, ax=ax[i], square=True, cbar=False, norm=norm)
-    ax[i].set_title(rf'$\lambda$={lamda}')
+    ax[i].set_title(rf'$\tau$={1/lamda}')
     ax[i].set_xticks([])
     ax[i].set_yticks([])
 plt.show()
