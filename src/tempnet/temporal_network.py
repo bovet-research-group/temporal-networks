@@ -129,7 +129,6 @@ class ContTempNetwork:
                  label_to_node_dict=None,
                  merge_overlapping_events=False,
                  events_table=None,
-                 instantaneous_events=False,
                  **kwargs):
 
         if events_table is None:
@@ -210,7 +209,6 @@ class ContTempNetwork:
         ))
 
 
-        self.instantaneous_events = instantaneous_events
 
         self.num_events = self.events_table.shape[0]
 
@@ -218,10 +216,9 @@ class ContTempNetwork:
 
         self.end_time = self.events_table.ending_times.max()
         
-        if not self.instantaneous_events: 
-            self.events_table[
-                "durations"
-            ] = self.events_table.ending_times - self.events_table.starting_times
+        self.events_table[
+            "durations"
+        ] = self.events_table.ending_times - self.events_table.starting_times
 
         # to record compute times
         self._compute_times = {}
@@ -1873,7 +1870,9 @@ class ContTempInstNetwork(ContTempNetwork):
                          label_to_node_dict=label_to_node_dict,
                          merge_overlapping_events=False,
                          events_table=events_table, 
-                         instantaneous_events=True)
+                         )
+        #remove duration column as it doesnt make sense for instantaneous events
+        self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
 
 
     def compute_laplacian_matrices(self,
