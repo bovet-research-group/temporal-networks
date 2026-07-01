@@ -451,6 +451,24 @@ class TestRelabelNodes:
         assert net.label_to_node_dict is provided
         assert hasattr(net, "node_to_label_dict")
 
+    def test_relabel_off_with_nonUnique_labels(self):
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
+        provided = {'x': 0, 'y': 0}  # arbitrary user-supplied dict with non-unique values
+        with pytest.raises(ValueError):
+            net = ContTempNetwork(
+                events_table=df,
+                label_to_node_dict=provided,
+            )
+    def test_relabel_off_with_noncanonical_labels(self):
+        df = self._make_df(sources=['x', 'y'], targets=['y', 'x'], starts=[10, 25], ends=[20, 30])
+        provided = {'x': 0, 'y': 2}  # arbitrary user-supplied dict with non-unique values
+        with pytest.raises(ValueError):
+            net = ContTempNetwork(
+                events_table=df,
+                label_to_node_dict=provided,
+            )
+
+
     def test_relabel_does_not_mutate_caller_dataframe(self):
         df = self._make_df([10, 20, 30], [20, 30, 10])
         df_before = df.copy()

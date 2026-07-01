@@ -181,8 +181,14 @@ class ContTempNetwork:
 
         self.num_nodes = pd.unique(
             self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
-        ).size      
+        ).size  
         if label_to_node_dict: 
+            logger.info(label_to_node_dict)  
+            values = list(label_to_node_dict.values())
+            if len(set(values)) != len(values):
+                raise ValueError(
+                    "label_to_node_dict must have unique values for each label."
+                )
             self.label_to_node_dict = label_to_node_dict
             self.node_to_label_dict = {v: k for k, v in label_to_node_dict.items()}
                
@@ -190,8 +196,10 @@ class ContTempNetwork:
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
 
-        elif not self._is_canonical(self.events_table[self._SOURCES],
+        if not self._is_canonical(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
+            if label_to_node_dict: 
+                raise ValueError( "Nodes not labeled 0..num_nodes-1.")
             logger.info("Nodes not labeled 0..num_nodes-1; relabeling...")
             labels = sorted(set(self.events_table[self._SOURCES]) |
                             set(self.events_table[self._TARGETS]))
