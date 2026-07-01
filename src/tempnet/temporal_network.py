@@ -1209,7 +1209,7 @@ class ContTempNetwork:
 
         The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
         100th (max) percentiles of the density distribution, and returns their indices. These
-        can be used to choose a proper method for scale selection and finding a method optimized
+        can be used to choose a proper method for finding a method optimized
         for computing transition matrices. 
 
         Returns
