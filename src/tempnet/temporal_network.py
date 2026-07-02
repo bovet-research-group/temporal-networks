@@ -1022,6 +1022,9 @@ class ContTempNetwork:
             self.time_grid.index.get_level_values(
                 "times") < self._t_stop_laplacians
         )]
+        
+        self.time_grid_range_laplacians=time_grid_range
+
         for k, (tk, time_ev) in enumerate(
                 time_grid_range.groupby(level="times")):
             if not k % 1000:
