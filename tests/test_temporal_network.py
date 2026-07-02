@@ -481,8 +481,7 @@ class TestContTempInstNetwork:
     Instant networks are described by (source, target, starting_time)
     triplets only. The constructor must be able to accept events_tables
     that lack the ending_times column (DataFrame or CSV path) and must
-    synthesize one before delegating to the parent constructor. All
-    durations should be set to 1.0 and instantaneous_events flag set.
+    synthesize one before delegating to the parent constructor. 
     """
 
     def _make_inst_df(self, sources, targets, starts=None):
@@ -503,7 +502,6 @@ class TestContTempInstNetwork:
         assert "ending_times" in net.events_table.columns
         # ending_times derived from sorted unique starts; last one 
         assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
-        assert net.instantaneous_events is True
 
     def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path):
         df = self._make_inst_df([10, 20, 30], [20, 30, 10],
@@ -527,7 +525,6 @@ class TestContTempInstNetwork:
             target_nodes=[1, 2, 0],
             starting_times=[0.0, 1.0, 2.0],
         )
-        assert net.instantaneous_events is True
         net.compute_laplacian_matrices()
         assert len(net.laplacians) > 0
 

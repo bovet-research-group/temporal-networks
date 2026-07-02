@@ -257,7 +257,6 @@ class ContTempNetwork:
 
         # to record compute times
         self._compute_times = {}
-        self.instantaneous_events=False
         self._overlapping_events_merged = False
         if merge_overlapping_events:
             num_merged = 1
@@ -1758,7 +1757,6 @@ class ContTempInstNetwork(ContTempNetwork):
         
         # remove duration column as it doesnt make sense for instantaneous events
         self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
-        self.instantaneous_events = True
 
     def compute_laplacian_matrices(self,
                                    *,
