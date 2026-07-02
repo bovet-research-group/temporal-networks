@@ -82,6 +82,7 @@ class TestTempNetwork:
         # self.real.ending_times = self.real.raw_df['ending_times'].tolist()
 
         # ###
+        
         # gather all networks
         self.networks = [self.minimal, self.minimal_instant,
                          self.simple, self.simple_instant]
@@ -293,13 +294,6 @@ def test_ContTempInstNetwork():
 
 
 
-def test_compute_stationary_transition():
-    """
-    """
-    from tempnet.temporal_network import compute_stationary_transition
-    pass
-
-
 def test_compute_subspace_expm():
     """
     """
@@ -334,12 +328,6 @@ def test_rebuild_nnz_rowcol():
     from tempnet.temporal_network import numpy_rebuild_nnz_rowcol
     pass
 
-
-def test_sparse_stationary_trans():
-    """
-    """
-    from tempnet.temporal_network import sparse_stationary_trans
-    pass
 
 
 def test_set_to_ones():
@@ -486,7 +474,7 @@ class TestRelabelNodes:
         assert used == {0, 1, 2}
         assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
 
-        
+
 class TestContTempInstNetwork:
     """Tests for the ContTempInstNetwork constructor.
 

@@ -43,7 +43,6 @@ from scipy.sparse import (
     diags,
     dok_matrix,
     eye,
-    isspmatrix,
     isspmatrix_csr,
     lil_matrix,
 )
@@ -323,7 +322,7 @@ class ContTempNetwork:
         matrices = ["laplacians",
                     "adjacencies",
                     "inter_T",
-                    "T",,
+                    "T",
                     "delta_inter_T"]
 
         if matrices_list is None:
@@ -1689,51 +1688,57 @@ class ContTempInstNetwork(ContTempNetwork):
     starting_times: Python list
         List of starting times of each event
 
-
     label_to_node_dict: Python dict
-        User may input this to map the nodes in arbitary order. 
+        User may input this to map the nodes in arbitary order.
 
-    events_table: Pandas Dataframe
+    events_table: Pandas Dataframe or Url/path to csv file
         Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
-        and 'ending_times' and index corresponding to event index. Used for
-        instantiating a new ConTempNetwork from the event_table of an other one.
+        and index corresponding to event index. Used for
+        instantiating a new ContTempInstNetwork from the event_table of an other one.
     """
-
     def __init__(self,
-                 source_nodes=[],
-                 target_nodes=[],
-                 starting_times=[],
+                 source_nodes=None,
+                 target_nodes=None,
+                 starting_times=None,
                  label_to_node_dict=None,
                  events_table=None,
                  ):
 
-        if events_table is None:
-            ending_times = [t
-                            for t in starting_times]
-        else:
-            # Instant networks store events_tables without an ending_times
-            # column. The parent constructor's events_table branch requires
-            # ending_times, so we synthesize it here as start. 
+        if source_nodes is None:
+            source_nodes = []
+        if target_nodes is None:
+            target_nodes = []
+        if starting_times is None:
+            starting_times = []
 
-            if isinstance(events_table, pd.DataFrame) and \
-                    self._ENDINGS not in events_table.columns:
-                events_table = events_table.copy()
-                events_table[self._ENDINGS] = (
-                    events_table[self._STARTS]
-                )
-            ending_times = []  # ignored when events_table is provided
+        if events_table is not None:
+            if isinstance(events_table, (str, Path)):
+                events_table = pd.read_csv(str(events_table))
+
+            if isinstance(events_table, pd.DataFrame):
+                if not all(col in events_table.columns
+                           for col in ["source_nodes", "target_nodes", "starting_times"]):
+                    raise ValueError(
+                        "events_table must contain columns 'source_nodes', "
+                        "'target_nodes', and 'starting_times'")
+                source_nodes = events_table["source_nodes"].values
+                target_nodes = events_table["target_nodes"].values
+                starting_times = events_table["starting_times"].values
+            else:
+                raise ValueError(
+                    "events_table must be a pandas DataFrame or a path to a csv file")
 
         super().__init__(source_nodes=source_nodes,
                          target_nodes=target_nodes,
                          starting_times=starting_times,
-                         ending_times=ending_times,
+                         ending_times=starting_times,
                          label_to_node_dict=label_to_node_dict,
                          merge_overlapping_events=False,
-                         events_table=events_table, 
                          )
-        #remove duration column as it doesnt make sense for instantaneous events
+        
+        # remove duration column as it doesnt make sense for instantaneous events
         self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
-        self.instantaneous_events=True
+        self.instantaneous_events = True
 
     def compute_laplacian_matrices(self,
                                    *,
