@@ -1,5 +1,5 @@
 """#
-# Temporal networks `tempent`
+# Temporal networks `tempnet`
 #
 # Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>
 #
@@ -918,7 +918,7 @@ class ContTempNetwork:
                                    t_start=None,
                                    t_stop=None,
                                    save_adjacencies=False, 
-                                   method='random_walk'):
+                                   dynamics='random_walk'):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -949,11 +949,11 @@ class ContTempNetwork:
             Default is False. Use to save adjacency matrices in
             `self.adjacencies`.
 
-        method : str, optional
-            The method to compute the laplacian. Default is 'random_walk'.
-            other option is `heat_kernel` laplacian.
+        dynamics : str, optional
+            The dynamics to compute the laplacian. Default is 'random_walk'.
+            other option is `heat` laplacian.
             If D is the degree matrix and A is the adjacency matrix: 
-                Heat kernel=D-A 
+                Heat=D-A 
                 Random walk=I-D^-1*A 
 
         Returns
@@ -962,10 +962,10 @@ class ContTempNetwork:
 
         """
 
-        if method not in ['random_walk', 'heat_kernel']:
-            raise ValueError("method must be 'random_walk' or 'heat_kernel'")
+        if dynamics not in ['random_walk', 'heat']:
+            raise ValueError("dynamics must be 'random_walk' or 'heat'")
         
-        logger.info(f"Computing Laplacians using {method} method")
+        logger.info(f"Computing Laplacians using {dynamics} method")
 
 
         if not hasattr(self, "time_grid"):
@@ -1071,11 +1071,11 @@ class ContTempNetwork:
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            if method == 'random_walk':
+            if dynamics == 'random_walk':
                 self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
-            elif method == 'heat_kernel':
-                self.laplacians.append(state.D - Acsc)
-
+            elif dynamics == 'heat':
+                self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
+            
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
 

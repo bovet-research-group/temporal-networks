@@ -21,6 +21,8 @@ Contributors
 
 - Jonas I. Liechti <j-i-l@t4d.ch>
 - Yasaman Asgari <yasaman.asgari@uzh.ch>
+- Juni Schindler <juni.schindler@uzh.ch>
+- Samuel Koovely <samuel.koovely@uzh.ch>
 
 License
 -------
