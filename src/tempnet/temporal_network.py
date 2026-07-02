@@ -317,7 +317,6 @@ class ContTempNetwork:
                                     '_t_stop_laplacians',
                                     '_k_stop_laplacians',
                                     '_overlapping_events_merged',]`
-
         """
         save_dict = dict()
 
@@ -422,7 +421,6 @@ class ContTempNetwork:
         events_table = graph_dict.pop("events_table")
 
         net = cls(events_table=events_table,
-                  relabel_nodes=False,
                   label_to_node_dict=graph_dict.pop("label_to_node_dict"))
 
         for k, val in graph_dict.items():
@@ -1705,7 +1703,6 @@ class ContTempInstNetwork(ContTempNetwork):
                  source_nodes=[],
                  target_nodes=[],
                  starting_times=[],
-                 relabel_nodes=True,
                  label_to_node_dict=None,
                  events_table=None,
                  ):
@@ -1730,7 +1727,6 @@ class ContTempInstNetwork(ContTempNetwork):
                          target_nodes=target_nodes,
                          starting_times=starting_times,
                          ending_times=ending_times,
-                         relabel_nodes=relabel_nodes,
                          label_to_node_dict=label_to_node_dict,
                          merge_overlapping_events=False,
                          events_table=events_table, 
