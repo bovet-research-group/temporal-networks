@@ -917,7 +917,8 @@ class ContTempNetwork:
                                    *,
                                    t_start=None,
                                    t_stop=None,
-                                   save_adjacencies=False):
+                                   save_adjacencies=False, 
+                                   method='random_walk'):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -948,12 +949,24 @@ class ContTempNetwork:
             Default is False. Use to save adjacency matrices in
             `self.adjacencies`.
 
+        method : str, optional
+            The method to compute the laplacian. Default is 'random_walk'.
+            other option is `heat_kernel` laplacian.
+            If D is the degree matrix and A is the adjacency matrix: 
+                Heat kernel=D-A 
+                Random walk=I-D^-1*A 
+
         Returns
         -------
         None.
 
         """
-        logger.info("Computing Laplacians")
+
+        if method not in ['random_walk', 'heat_kernel']:
+            raise ValueError("method must be 'random_walk' or 'heat_kernel'")
+        
+        logger.info(f"Computing Laplacians using {method} method")
+
 
         if not hasattr(self, "time_grid"):
             self._compute_time_grid()
@@ -1055,7 +1068,11 @@ class ContTempNetwork:
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+            if method == 'random_walk':
+                self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+            elif method == 'heat_kernel':
+                self.laplacians.append(state.D - Acsc)
+
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
 
