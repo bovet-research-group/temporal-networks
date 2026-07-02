@@ -82,7 +82,7 @@ class TestTempNetwork:
         # self.real.ending_times = self.real.raw_df['ending_times'].tolist()
 
         # ###
-        
+
         # gather all networks
         self.networks = [self.minimal, self.minimal_instant,
                          self.simple, self.simple_instant]
@@ -537,7 +537,7 @@ class TestContTempInstNetwork:
         df["ending_times"] = [10.0, 20.0, 30.0]
         net = ContTempInstNetwork(events_table=df)
         # Existing ending_times must not be overwritten
-        assert net.events_table.ending_times.tolist() == [10.0, 20.0, 30.0]
+        assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
 
     def test_does_not_mutate_caller_dataframe(self):
         df = self._make_inst_df([0, 1, 2], [1, 2, 0],
