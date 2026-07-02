@@ -615,7 +615,7 @@ class ContTempNetwork:
     @staticmethod
     def load_inter_T(filename):
         """
-        Loads inter_T ftom 'filename'.
+        Loads inter_T from 'filename'.
 
         The file must have been generated with `save_inter_T`.
 
@@ -1181,9 +1181,7 @@ class ContTempNetwork:
 
         The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
         100th (max) percentiles of the density distribution, and returns their indices. These
-        can be used to choose a proper method for finding a method optimized
-        for computing transition matrices. 
-
+        can be used to choose the fastest method for computing transition matrices.
         Returns
         -------
         list of int
