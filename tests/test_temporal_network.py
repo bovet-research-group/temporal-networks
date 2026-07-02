@@ -476,7 +476,17 @@ class TestRelabelNodes:
         # caller's df should be unchanged
         pd.testing.assert_frame_equal(df, df_before)
 
+    def test_events_table_from_csv_path_relabels(self, tmp_path):
+        df = self._make_df([10, 20, 30], [20, 30, 10])
+        csv_path = tmp_path / "events.csv"
+        df.to_csv(csv_path, index=False)
+        net = ContTempNetwork(events_table=csv_path)
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
 
+        
 class TestContTempInstNetwork:
     """Tests for the ContTempInstNetwork constructor.
 
@@ -506,6 +516,22 @@ class TestContTempInstNetwork:
         # ending_times derived from sorted unique starts; last one 
         assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
         assert net.instantaneous_events is True
+
+    def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path):
+        df = self._make_inst_df([10, 20, 30], [20, 30, 10],
+                                starts=[0.0, 1.0, 2.0])
+        csv_path = tmp_path / "inst_events.csv"
+        df.to_csv(csv_path, index=False)
+
+        net = ContTempInstNetwork(events_table=csv_path)
+
+        assert "ending_times" in net.events_table.columns
+        assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
+        # Nodes are remapped 10/20/30 to 0/1/2
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
 
     def test_init_from_positional_args(self):
         net = ContTempInstNetwork(
