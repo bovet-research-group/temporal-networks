@@ -445,12 +445,14 @@ class TestBasicProperties:
             [0, 0.5, 0],
         ])
         assert np.allclose(A, expected)
-    def test_laplacians_count(self, simple_network):
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacians_count(self, simple_network, dynamics):
         """One Laplacian per inter-event step over the full grid.
 
         times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps.
         """
-        simple_network.compute_laplacian_matrices()
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
         assert len(simple_network.laplacians) == 7
 
     def test_laplacian_step_1_2_exact(self, simple_network):
@@ -463,12 +465,6 @@ class TestBasicProperties:
             [0.0, -1.0, 1.0],
         ])
         assert np.allclose(L, expected)
-
-    def test_laplacian_shape(self, simple_network):
-        simple_network.compute_laplacian_matrices()
-        n = simple_network.num_nodes
-        for L in simple_network.laplacians:
-            assert L.shape == (n, n)
 
 
     def test_laplacian_step_0_1_connected_block(self, simple_network):
@@ -488,18 +484,21 @@ class TestBasicProperties:
         assert L[2, 1] == 0
         assert L[2, 2] == 0  # self loop
 
-    def test_laplacian_empty_step_all_zero(self, simple_network):
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics):
         """Step [3,4]: no active events, so the Laplacian is all zeros."""
-        simple_network.compute_laplacian_matrices()
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
         L = simple_network.laplacians[3].toarray()
         assert np.all(L == 0)
 
-    def test_laplacian_rows_sum_zero_connected_step(self, simple_network):
-        """For a step with no isolated nodes, every row of I - D^-1 A sums to 0."""
-        simple_network.compute_laplacian_matrices()
-        L = simple_network.laplacians[1].toarray()
-        assert np.allclose(L.sum(axis=1), 0.0)
-
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_rows_sum_zero_connected_step(self, simple_network, dynamics):
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        n = simple_network.num_nodes
+        for i in range(len(simple_network.laplacians)):
+            L = simple_network.laplacians[i].toarray()
+            assert L.shape == (n, n)
+            assert np.allclose(L.sum(axis=1), 0.0)
 
 # --------------------------------------------------------------------------- #
 # Transition matrices
