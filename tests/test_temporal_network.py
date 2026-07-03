@@ -3,6 +3,8 @@ import pickle
 import numpy as np
 import pandas as pd
 import pytest
+from tempnet.utils import to_dense
+
 from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
 
 
@@ -26,14 +28,6 @@ def make_df(sources, targets, starts=None, ends=None):
         data["ending_times"] = ends
     return pd.DataFrame(data)
 
-
-def dense(M):
-    """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
-    if hasattr(M, "to_full_mat"):        # SparseStochMat (stochmat package)
-        M = M.to_full_mat()
-    if hasattr(M, "toarray"):            # scipy sparse
-        return M.toarray()
-    return np.asarray(M)
 
 # --------------------------------------------------------------------------- #
 # Fixtures
@@ -521,8 +515,8 @@ class TestTransitionMatrices:
         net.compute_laplacian_matrices()
         for k, L in enumerate(net.laplacians):
             tau = net.times[k + 1] - net.times[k]
-            T_ref = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "dense_expm"))
-            T = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, method))
+            T_ref = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "dense_expm"))
+            T = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, method))
             np.testing.assert_allclose(
                 T, T_ref, rtol=1e-6, atol=1e-6,
                 err_msg=f"{method} != dense_expm at step {k}, lamda={lamda}",
@@ -536,7 +530,7 @@ class TestTransitionMatrices:
         net.compute_laplacian_matrices()
         for k, L in enumerate(net.laplacians):
             tau = net.times[k + 1] - net.times[k]
-            T = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, method))
+            T = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, method))
             np.testing.assert_allclose(T.sum(axis=1), np.ones(net.num_nodes), atol=1e-10)
             assert (T >= 0).all(), f"{method} produced negative entries at step {k}"
 
@@ -548,9 +542,9 @@ class TestTransitionMatrices:
         L = net.laplacians[0]
         tau = net.times[1] - net.times[0]
 
-        T_ref = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "dense_expm"))
-        T_loose = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "mfp_exp", err=1e-4))
-        T_tight = dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "mfp_exp", err=1e-10))
+        T_ref = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "dense_expm"))
+        T_loose = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "mfp_exp", err=1e-4))
+        T_tight = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "mfp_exp", err=1e-10))
 
         mae_loose = np.mean(np.abs(T_loose - T_ref))
         mae_tight = np.mean(np.abs(T_tight - T_ref))

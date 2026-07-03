@@ -52,7 +52,7 @@ from .expm_with_tol import mfp_exp
 from .subspace_expm import sparse_lapl_expm
 
 from stochmat import inplace_csr_row_normalize, SparseStochMat
-from .utils import set_to_zeroes, _csr,_dense
+from .utils import set_to_zeroes, _csr,to_dense
 
 from .logger import get_logger
 
@@ -1360,7 +1360,7 @@ class ContTempNetwork:
                     set_to_zeroes(nxt, tol)
                 inplace_csr_row_normalize(nxt)
             else:
-                nxt = prev @ _dense(inter[k])
+                nxt = prev @ to_dense(inter[k])
                 if tol is not None:
                     set_to_zeroes(nxt, tol)
 
@@ -1574,7 +1574,7 @@ class ContTempNetwork:
                 outputs[(reference, label)], outputs[('mfp_exp', label)]
             ):
                 errs.append(
-                    np.mean(np.abs(_dense(T_ref) - _dense(T_approx)))
+                    np.mean(np.abs(to_dense(T_ref) - to_dense(T_approx)))
                 )
             mfp_mae[label] = errs
 

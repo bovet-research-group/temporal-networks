@@ -1,6 +1,19 @@
 import numpy as np
 from stochmat import inplace_csr_row_normalize, SparseStochMat
-from scipy.sparse import csc_matrix, csr_matrix, isspmatrix_csc, vstack
+
+from scipy.sparse.linalg import eigsh
+
+from scipy.sparse import (
+    coo_matrix,
+    csc_matrix,
+    csr_matrix,
+    diags,
+    dok_matrix,
+    eye,
+    isspmatrix_csr,
+    isspmatrix_csc,
+    lil_matrix,
+)
 
 def set_to_ones(Tcsr, tol=1e-8):
     """In-place replacement of ones in sparse matrix within the tolerence.
@@ -83,7 +96,7 @@ def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
                 Tcsr.eliminate_zeros()
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
-def _dense(M):
+def to_dense(M):
         """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
         # SparseStochMat (from the stochmat package)
         if hasattr(M, "to_full_mat"):
