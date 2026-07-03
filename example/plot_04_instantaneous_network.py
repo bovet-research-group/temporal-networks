@@ -85,20 +85,22 @@ tnet.compute_laplacian_matrices(t_start=None, t_stop=ONE_WEEK)
 # %%
 lamdas=[1, 1/10, 1/60,1/(24*3600)]
 for lamda in lamdas: 
-    tnet.compute_inter_transition_matrices(lamda=lamda, method='parallel_expm',n_jobs=1,nproc= 4, normalize_rows= True)
+    tnet.compute_inter_transition_matrices(lamda=lamda,n_jobs=10)
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False)
+
+
 
 # %%
 # Visualise the forward transition matrices for each time scale.
-forward_transition_matrices=[tnet.T[lamda] for lamda in lamdas]
-ref = forward_transition_matrices[0]
+
 # symmetric ordering: cluster rows, reuse for cols 
-order = leaves_list(linkage(ref, method='ward'))
+order = leaves_list(linkage( tnet.T[1].toarray(), method='ward'))
 
 norm = LogNorm(vmin=1e-6, vmax=1)
 fig, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 16), dpi=500)
 ax = ax.flat
-for i, (lamda, matrix) in enumerate(zip(lamdas, forward_transition_matrices)):
+for i, (lamda, matrix) in enumerate(tnet.T.items()):
+    matrix= matrix.toarray()
     m = matrix[np.ix_(order, order)] 
     sns.heatmap(m, ax=ax[i], square=True, cbar=False, norm=norm)
     ax[i].set_title(rf'$\tau$={1/lamda}')
@@ -106,3 +108,5 @@ for i, (lamda, matrix) in enumerate(zip(lamdas, forward_transition_matrices)):
     ax[i].set_yticks([])
 plt.show()
 
+
+# %%

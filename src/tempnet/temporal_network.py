@@ -24,7 +24,6 @@
 
 
 """
-
 import gzip
 import os
 import pickle
@@ -38,7 +37,6 @@ import pandas as pd
 from pathlib import Path
 from scipy.sparse import (
     coo_matrix,
-    csc_matrix,
     csr_matrix,
     diags,
     dok_matrix,
@@ -52,7 +50,7 @@ from .expm_with_tol import mfp_exp
 from .subspace_expm import sparse_lapl_expm
 
 from stochmat import inplace_csr_row_normalize, SparseStochMat
-from .utils import set_to_zeroes, _csr,to_dense
+from .utils import set_to_zeroes,to_dense
 
 from .logger import get_logger
 
@@ -1321,12 +1319,18 @@ class ContTempNetwork:
                 f"Finished inter-event transition matrices for {lamda=} "
                 f"in {t_end:.2f}s"
             )
+    def compute_transition_matrices(self,
+                                    lamda=None,
+                                    save_intermediate=True,
+                                    reverse_time=False,
+                                    force_csr=False,
+                                    tol=None):
+        """Compute transition matrices and save them in a dict of lists.
 
-
-    def compute_transition_matrices(self, lamda=None,
-                                    save_intermediate=True, reverse_time=False,
-                                    force_csr=False, tol=None):
-
+        The matrices are saved as ``self.T[lamda]`` where ``self.T[lamda][k]``
+        is the product of all inter-event transition matrices from t_0 to t_k
+        computed with ``lamda``.
+        """
         if not hasattr(self, "inter_T") or lamda not in self.inter_T:
             raise Exception("Compute inter_T first.")
         if not hasattr(self, "T"):
@@ -1334,44 +1338,68 @@ class ContTempNetwork:
         if lamda in self.T:
             logger.info(f"Transition matrices already computed for lamda={lamda}")
             return
+        
 
+
+        requested_direction = "reverse" if reverse_time else "forward"
+        if  hasattr(self, "direction") and self.direction != requested_direction:
+            raise ValueError(
+                f"reverse_time={reverse_time} implies '{requested_direction}' "
+                f"direction, but this network is already set to "
+                f"'{self.direction}'."
+            )
         inter = self.inter_T[lamda]
         n = len(inter)
 
+        def clean(Tk):
+            """Zero-out sub-tolerance entries and renormalize rows."""
+            if tol is not None:
+                set_to_zeroes(Tk, tol)
+            inplace_csr_row_normalize(Tk)
+
+        # Set up iteration direction.
         if reverse_time:
             k_init, k_range = n - 1, reversed(range(n - 1))
+            self.direction = "reverse"
         else:
             k_init, k_range = 0, range(1, n)
+            self.direction = "forward"
 
-        current = _csr(inter[k_init]) if force_csr else inter[k_init]
-        chain = [current] if save_intermediate else current
+        logger.info(f"Computing transition matrices for lambda={lamda} in {self.direction} time")
+
+        # Seed with the initial inter-event matrix.
+        # force_csr makes the first matrix CSR so every subsequent product stays
+        # CSR (CSR @ SparseStochMat is not implemented).
+        if  isinstance(inter[k_init], SparseStochMat) and not force_csr:
+            raise ValueError("inter_T[lamda] is a SparseStochMat, but force_csr is False. Set force_csr=True ")
+        
+        T0 = inter[k_init].tocsr() if force_csr else inter[k_init]
+        clean(T0)
 
         t0 = time.time()
-        for k in k_range:
-            if not k % 1000:
-                logger.info(f"{k} over {n}  {time.time()-t0:.2f}s")
 
-            prev = chain[-1] if save_intermediate else chain
+        if save_intermediate:
+            self.T[lamda] = [T0]
+            for k in k_range:
+                if not k % 1000:
+                    logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
 
-            if force_csr:
-                # multiplication done in CSR: prev stays CSR across iterations
-                nxt = prev @ _csr(inter[k])
-                if tol is not None:
-                    set_to_zeroes(nxt, tol)
-                inplace_csr_row_normalize(nxt)
-            else:
-                nxt = prev @ to_dense(inter[k])
-                if tol is not None:
-                    set_to_zeroes(nxt, tol)
+                Tk = inter[k]
+                clean(Tk)
+                self.T[lamda].append(self.T[lamda][-1] @ Tk)
+                clean(self.T[lamda][-1])
+        else:
+            self.T[lamda] = T0
+            for k in k_range:
+                if not k % 1000:
+                    logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
+                Tk = inter[k]
+                clean(Tk)
+                self.T[lamda] = self.T[lamda] @ Tk
+                clean(self.T[lamda])
 
-            if save_intermediate:
-                chain.append(nxt)
-            else:
-                chain = nxt
-
-        self.T[lamda] = chain
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
-        logger.info(f"Finished computing the transition matrices for lambda ={lamda}")
+        logger.info(f"Finished computing the transition matrices for lambda={lamda}")
 
     def active_nodes(self, t_start=None, t_end=None):
 

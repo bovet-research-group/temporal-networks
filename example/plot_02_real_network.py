@@ -17,11 +17,7 @@ and finally the forward transition matrices at several time scales.
 # %%
 # Load libraries
 # --------------
-#%load_ext autoreload
-#%autoreload 2
-
 import tempfile
-from functools import reduce
 from pathlib import Path
 
 import numpy as np
@@ -258,9 +254,9 @@ tnet.print_report(
     },
 )
 # %%
-# Computing the inter-transition matrices
+# Computing the transition matrices
 # ---------------------------------------
-# Finally we build the inter-transition matrices for 2 time
+# Finally we build thetransition matrices for 2 time
 # scales that the flow-stability clustering consumes. 
 # It may take few minutes to run this.
 
@@ -270,7 +266,7 @@ for i, s in enumerate(scales):
     lamda=s,
     method="parallel_expm",
     n_jobs=1,nproc= 4, normalize_rows= True)
-    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False)
+    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False, force_csr=True)
 
 # %%
 # Visualise the forward transition matrices for each time scale.
@@ -278,7 +274,7 @@ for i, s in enumerate(scales):
 norm = LogNorm(vmin=1e-6, vmax=1)
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4), dpi=500)
 for i, lamda in enumerate(scales):
-    sns.heatmap(tnet.T[lamda], ax=ax[i], square=True, cbar=False,
+    sns.heatmap(tnet.T[lamda].toarray(), ax=ax[i], square=True, cbar=False,
                 norm=norm)
     ax[i].set_title(rf'$\lambda$={lamda}')
     ax[i].set_xticks([])

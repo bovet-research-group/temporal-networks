@@ -12,35 +12,32 @@ sequence of random-walk Laplacians, and finally simulate a continuous-time
 random walk by exponentiating those Laplacians.
 """
 # %%
-import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
 import tempnet as tn
 import networkx as nx
-from functools import reduce
 
 # %%
 # Building the temporal network
 # -----------------------------
-# Consider a small toy network with four edges:
+# Consider a small toy network with three edges:
 #
 # ===== ====== =================
 # Edge  Nodes  Active interval
 # ===== ====== =================
-# 1     0, 1   [0, 3.5]
-# 2     1, 2   [1, 2]
-# 3     0, 2   [2.5, 4]
-# 4     1, 2   [3, 4]
+# 1     0, 1   [0, 1.5]
+# 2     1, 2   [1.5, 2.5]
+# 3     1, 2   [3.5, 4]
 # ===== ====== =================
 #
 # To construct the temporal network, define four parallel lists -- one each for
 # source nodes, target nodes, start times, and end times -- then pass them to
 # the constructor. Each index across the four lists corresponds to a single edge.
 
-source_nodes = [0, 1, 0, 1]
-target_nodes = [1, 2, 2, 2]
-starting_times = [0, 1, 2.5, 3]
-ending_times = [3.5, 2, 4, 4]
+source_nodes = [0, 1, 1]
+target_nodes = [1, 2, 2]
+starting_times = [0, 1.5, 3.5]
+ending_times = [1.5, 2.5, 4]
 
 tnet = tn.ContTempNetwork(
     source_nodes=source_nodes,
@@ -146,15 +143,15 @@ print("End:", tnet.end_time)
 # (:math:`A_{ii} = 1`, :math:`d_i = 1`). This yields one Laplacian per interval
 # :math:`[t_i, t_{i+1})`.
 
-tnet.compute_laplacian_matrices()
+tnet.compute_laplacian_matrices(dynamics='heat')
 
 # %%
 # We can directly access the delta Laplacian matrices for inspection.
 
-fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
-for i in range(4):
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.laplacians), figsize=(16, 4))
+for i, L in enumerate(tnet.laplacians):
     sns.heatmap(
-        tnet.laplacians[i].toarray(),
+        L.toarray(),
         ax=ax[i],
         square=True,
         annot=True,
@@ -185,14 +182,13 @@ plt.show()
 # where :math:`\lambda_{\mathrm{RW}}` is the rate of the random walker.
 # The entry :math:`\hat{T}_{jk}` gives the probability that a walker starting at node
 # :math:`j` at time :math:`t_1` reaches node :math:`k` at time :math:`t_2`.
+lamda=1
+tnet.compute_inter_transition_matrices(lamda=lamda)
 
-tnet.compute_inter_transition_matrices(lamda=1)
-inter_transition_matrices = tnet.inter_T[1]
-
-fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
-for i in range(4):
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.inter_T[lamda]), figsize=(16, 4))
+for i, matrix in enumerate(tnet.inter_T[lamda]):
     sns.heatmap(
-        inter_transition_matrices[i].toarray(),
+        matrix.toarray(),
         ax=ax[i],
         square=True,
         annot=True,
@@ -238,7 +234,7 @@ plt.show()
 fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
 for i, lamda in enumerate([1e-2, 0.1, 10]):
     tnet.compute_inter_transition_matrices(lamda=lamda)
-    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=True)
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=False)
     sns.heatmap(
         tnet.T[lamda].toarray(),
         ax=ax[i],
