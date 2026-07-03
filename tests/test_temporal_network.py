@@ -455,13 +455,25 @@ class TestBasicProperties:
         simple_network.compute_laplacian_matrices(dynamics=dynamics)
         assert len(simple_network.laplacians) == 7
 
-    def test_laplacian_step_1_2_exact(self, simple_network):
+    def test_laplacian_step_1_2_randomwalk(self, simple_network):
         """Step [1,2]: A-B and B-C active. Random-walk Laplacian I - D^-1 A."""
-        simple_network.compute_laplacian_matrices()
+        simple_network.compute_laplacian_matrices(dynamics="rw")
         L = simple_network.laplacians[1].toarray()
         expected = np.array([
             [1.0, -1.0, 0.0],
             [-0.5, 1.0, -0.5],
+            [0.0, -1.0, 1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_1_2_heat(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Heat kernel Laplacian."""
+        simple_network.compute_laplacian_matrices(dynamics="heat")
+        L = simple_network.laplacians[1].toarray()
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-1.0, 2.0, -1.0],
             [0.0, -1.0, 1.0],
         ])
         assert np.allclose(L, expected)
