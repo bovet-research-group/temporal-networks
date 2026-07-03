@@ -1072,8 +1072,11 @@ class ContTempNetwork:
 
             if dynamics == 'rw':
                 self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+                
             elif dynamics == 'heat':
                 self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
+            
+            self.laplacian_dynamics=dynamics
             
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
