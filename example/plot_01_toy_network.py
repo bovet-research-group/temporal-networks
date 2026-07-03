@@ -241,7 +241,7 @@ for i, lamda in enumerate([1e-2, 0.1, 10]):
         square=True,
         annot=True,
         cbar=False,
-        fmt=".3f",
+        fmt=".2f",
         vmin=0,
         vmax=1,
     )

@@ -266,7 +266,7 @@ for i, s in enumerate(scales):
     lamda=s,
     method="parallel_expm",
     n_jobs=1,nproc= 4, normalize_rows= True)
-    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False, force_csr=True)
+    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False, force_csr=True, tol=1e-8)
 
 # %%
 # Visualise the forward transition matrices for each time scale.
