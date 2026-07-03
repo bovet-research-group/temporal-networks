@@ -219,13 +219,13 @@ class ContTempNetwork:
             self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
             self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
-            if not self._is_canonical(self.events_table[self._SOURCES],
+            if not self._is_contiguous(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
                 raise ValueError(
                     "Nodes not labeled 0..num_nodes-1 after relabeling."
                 )
 
-        elif not self._is_canonical(self.events_table[self._SOURCES],
+        elif not self._is_contiguous(self.events_table[self._SOURCES],
                                     self.events_table[self._TARGETS]):
             labels = sorted(set(self.events_table[self._SOURCES]) |
                             set(self.events_table[self._TARGETS]))
@@ -265,7 +265,7 @@ class ContTempNetwork:
             self._overlapping_events_merged = True
 
         
-    def _is_canonical(self, src, tgt):
+    def _is_contiguous(self, src, tgt):
         " This functions checks whether the nodes are indexed from 0 to n-1"
         vals = np.unique(np.concatenate([src.to_numpy(), tgt.to_numpy()]))
         num_nodes=len(vals)
