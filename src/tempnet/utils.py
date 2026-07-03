@@ -4,15 +4,10 @@ from stochmat import inplace_csr_row_normalize, SparseStochMat
 from scipy.sparse.linalg import eigsh
 
 from scipy.sparse import (
-    coo_matrix,
     csc_matrix,
     csr_matrix,
     diags,
-    dok_matrix,
     eye,
-    isspmatrix_csr,
-    isspmatrix_csc,
-    lil_matrix,
 )
 
 def set_to_ones(Tcsr, tol=1e-8):
@@ -21,13 +16,6 @@ def set_to_ones(Tcsr, tol=1e-8):
     Replace values within a tolerance to one with actual ones.
     """
     Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
-
-def _prep(M, force_csr=False, tol=None):
-            M = M.tocsr() if force_csr else M
-            if tol is not None:
-                set_to_zeroes(M, tol)
-                inplace_csr_row_normalize(M)
-            return M
 
 def csc_row_normalize(X):
     """Row normalize scipy sparse csc matrices.
@@ -68,7 +56,6 @@ def remove_nnz_rowcol(L):
     )
 
 
-
 def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
     """In-place replacement of zeroes in sparse matrix within a tolerance.
 
@@ -96,23 +83,19 @@ def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
                 Tcsr.eliminate_zeros()
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
-def to_dense(M):
-        """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
-        # SparseStochMat (from the stochmat package)
-        if hasattr(M, "to_full_mat"):
-            M = M.to_full_mat()
-        # scipy sparse
-        if hasattr(M, "toarray"):
-            return M.toarray()
-        return np.asarray(M)
 
-def _csr(M):
-    """Coerce SparseStochMat, scipy sparse, or dense matrix-like to a CSR matrix."""
-    if hasattr(M, "to_full_mat"):        # SparseStochMat (stochmat package)
+def to_dense(M):
+    """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
+    # Already a numpy array -> return as-is
+    if isinstance(M, np.ndarray):
+        return M
+    # SparseStochMat (from the stochmat package)
+    if hasattr(M, "to_full_mat"):
         M = M.to_full_mat()
-    if hasattr(M, "tocsr"):              # scipy sparse
-        return M.tocsr()
-    return csr_matrix(np.asarray(M))     # dense
+    # scipy sparse
+    if hasattr(M, "toarray"):
+        return M.toarray()
+    return np.asarray(M)
 
 def find_spectral_gap(L):
     """L is assummed to be connected"""
