@@ -46,12 +46,16 @@ setup_logger()  # Set up the logger with the default level
 from .temporal_network import (  # noqa: F401
     ContTempNetwork,
     ContTempInstNetwork,
+)
+from .subspace_expm import (  # noqa: F401
     compute_subspace_expm,
+    compute_subspace_expm_parallel,
+    sparse_lapl_expm)
+
+from .utils import (  # noqa: F401
     csc_row_normalize,
-    find_spectral_gap,
+    inplace_csr_row_normalize,
     remove_nnz_rowcol,
-    numpy_rebuild_nnz_rowcol,
-    sparse_lapl_expm,
     set_to_ones,
     set_to_zeroes,
 )

@@ -1,4 +1,5 @@
-"""#
+"""
+#
 # Temporal networks `tempnet`
 #
 # Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>
@@ -32,7 +33,6 @@ from tqdm import tqdm
 from joblib import Parallel, delayed
 import gc
 from dataclasses import dataclass
-from functools import partial
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -47,14 +47,16 @@ from scipy.sparse import (
     lil_matrix,
 )
 
-from scipy.sparse.csgraph import connected_components
-from scipy.sparse.linalg import eigsh, expm
-
+from scipy.sparse.linalg import expm
 from .expm_with_tol import mfp_exp
-from .parallel_expm import compute_subspace_expm_parallel
+from .subspace_expm import sparse_lapl_expm
+
 from stochmat import inplace_csr_row_normalize, SparseStochMat
+from .utils import set_to_zeroes, _csr,_dense
 
 from .logger import get_logger
+
+
 from matplotlib import pyplot as plt
 import seaborn as sns
 
@@ -1171,155 +1173,7 @@ class ContTempNetwork:
         """
         pass
 
-    
-    def plot_density_of_laplacians(self):
-        """Plot the distribution of Laplacian densities.
 
-        For each Laplacian ``L`` in ``self.laplacians``, the density is computed
-        as the number of stored (non-zero) entries divided by ``num_nodes ** 2``.
-        The densities are shown as a histogram on log-log axes.
-
-        The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
-        100th (max) percentiles of the density distribution, and returns their indices. These
-        can be used to choose the fastest method for computing transition matrices.
-        Returns
-        -------
-        list of int
-            Indices into ``self.laplacians`` of the slices closest to the
-            0th, 25th, 50th, 75th, and 100th percentiles of density, in that
-            order.
-        """
-
-        # density per slice: nnz normalized by N^2
-        density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
-
-        # quantile values and the indices of the slices closest to them
-        quantiles = np.quantile(density, [0, 0.25, 0.50, 0.75, 1])
-        indices = [np.argmin(np.abs(density - q)) for q in quantiles]
-
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6, 4), dpi=200)
-        sns.histplot(density, ax=ax, bins=np.logspace(-5, 0, 21),
-                    fill=False, element='step')
-        ax.set_xscale("log")
-        ax.set_yscale("log")
-        ax.set_xlabel('Density of Laplacians')
-        ax.set_ylabel('Count')
-
-        # interquartile range (25th–75th) shaded
-        ax.axvspan(density[indices[1]], density[indices[3]], alpha=0.1, color='r')
-        ax.axvline(density[indices[1]], color='r', linestyle='--', linewidth=0.5)
-        ax.axvline(density[indices[3]], color='r', linestyle='--', linewidth=0.5)
-        ax.axvline(density[indices[2]], color='r', linestyle='--', label='Median')
-
-        # min and max
-        ax.axvline(density[indices[0]], color='b', linestyle=':', linewidth=1, label='Min/Max')
-        ax.axvline(density[indices[-1]], color='b', linestyle=':', linewidth=1)
-
-        ax.legend(frameon=False)
-        plt.tight_layout()
-        plt.show()
-        return indices
-
-    def print_report(self, indices, scales, method_kwargs=None, **kwargs):
-        """Benchmark and compare matrix-exponential computation methods.
-
-        Args:
-            indices: Iterable of 5 integer indices into ``self.laplacians`` /
-                ``self.times``, mapped to the labels
-                ['min', 'q25', 'median', 'q75', 'max'].
-            scales: Iterable of diffusion scale factors (``lamda``) to sweep.
-            method_kwargs: Optional dict mapping a method name to a dict of
-                extra keyword args for that method, e.g.
-                ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
-        """
-        method_kwargs = method_kwargs or {}
-        labels = ['min', 'q25', 'median', 'q75', 'max']
-        laplacians = {
-            label: {
-                'L': self.laplacians[idx],
-                'tau': self.times[idx + 1] - self.times[idx],
-            }
-            for label, idx in zip(labels, indices)
-        }
-        methods = ['dense_expm', 'sparse_expm', 'mfp_exp', 'parallel_expm']
-        num_nodes = self.num_nodes
-        reference = 'dense_expm'
-
-        scales = list(scales)
-        min_scale_idx = int(np.argmin(scales))
-        max_scale_idx = int(np.argmax(scales))
-
-        results = {}
-        outputs = {}
-        for method in methods:
-            this_kwargs = {**kwargs, **method_kwargs.get(method, {})}
-            for label, data in laplacians.items():
-                times = []
-                mats = []
-                for lamda in scales:
-                    t = time.perf_counter()
-                    T = self._compute_single_T(
-                        L=data['L'], tau_k=data['tau'], lamda=lamda,
-                        num_nodes=num_nodes, method=method,
-                        **this_kwargs
-                    )
-                    times.append(time.perf_counter() - t)
-                    mats.append(T)
-                results[(method, label)] = times
-                outputs[(method, label)] = mats
-
-        mfp_mae = {}  # label -> list of per-scale MAE
-        for label in laplacians:
-            errs = []
-            for T_ref, T_approx in zip(
-                outputs[(reference, label)], outputs[('mfp_exp', label)]
-            ):
-                errs.append(
-                    np.mean(np.abs(_dense(T_ref) - _dense(T_approx)))
-                )
-            mfp_mae[label] = errs
-
-        # Aggregate MAE across labels, per scale
-        mae_avg = np.mean([np.mean(mfp_mae[lbl]) for lbl in laplacians])
-        mae_min_scale = np.mean([mfp_mae[lbl][min_scale_idx] for lbl in laplacians])
-        mae_max_scale = np.mean([mfp_mae[lbl][max_scale_idx] for lbl in laplacians])
-
-        # Report
-        for method in methods:
-            print(f"\n=== {method} ===")
-            method_total = 0.0
-            for label in laplacians:
-                times = results[(method, label)]
-                method_total += sum(times)
-                line = (f"  L_{label:<7} avg={np.mean(times):.4f}s  "
-                        f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
-                if method == 'mfp_exp':
-                    errs = mfp_mae[label]
-                    line += (f"  MAE(avg={np.mean(errs):.3e}, "
-                            f"min_scale={errs[min_scale_idx]:.3e}, "
-                            f"max_scale={errs[max_scale_idx]:.3e})")
-                print(line)
-            print(f"  total: {method_total:.4f}s")
-            if method == 'mfp_exp':
-                print(f"  overall MAE vs {reference}:  "
-                    f"avg={mae_avg:.3e}  "
-                    f"min_scale(={scales[min_scale_idx]:g})={mae_min_scale:.3e}  "
-                    f"max_scale(={scales[max_scale_idx]:g})={mae_max_scale:.3e}")
-
-        totals = {
-            m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
-            for m in methods
-        }
-        best = min(totals, key=totals.get)
-        print(f"\nRecommended method: {best} "
-            f"({totals[best]:.4f}s total, fastest of the three)")
-
-    def _prep(self, M, force_csr=False, tol=None):
-            M = M.tocsr() if force_csr else M
-            if tol is not None:
-                set_to_zeroes(M, tol)
-                inplace_csr_row_normalize(M)
-            return M
     
     def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, **kwargs):
             """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
@@ -1519,76 +1373,6 @@ class ContTempNetwork:
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
         logger.info(f"Finished computing the transition matrices for lambda ={lamda}")
 
-    def _merge_overlapping_events(self):
-        """
-        Merge temporally overlapping undir. event between each pair of nodes.
-        """
-        events_to_keep = np.ones(self.events_table.shape[0], dtype=bool)
-
-        A = self.compute_static_adjacency_matrix()
-
-        # loop over nodes
-
-        for i, n1 in enumerate(self.node_array):
-            for j in (A[i, :] > 0).nonzero()[1]:
-                n2 = self.node_array[j]
-                mask_12 = np.logical_and(
-                    self.events_table.source_nodes.values == n1,
-                    self.events_table.target_nodes.values == n2
-                )
-
-                mask_21 = np.logical_and(
-                    self.events_table.source_nodes.values == n2,
-                    self.events_table.target_nodes.values == n1
-                )
-                # sort by starting times
-                evs = self.events_table.loc[
-                    np.logical_or(mask_12, mask_21)
-                ].sort_values(by=["starting_times", "ending_times"])
-
-                evs_list = list(evs.itertuples())
-
-                # event to compare
-                ev1 = evs_list[0]
-                merged = 0
-                for k in range(1, len(evs_list)):
-                    ev2 = evs_list[k]
-                    # if ev2 overlaps with ev1, merge them
-                    # otherwise ev2 becomes ev1
-                    if ev2.starting_times < ev1.ending_times:
-                        # merge
-                        events_to_keep[ev2.Index] = False
-                        self.events_table.loc[
-                            ev1.Index, "ending_times"] = ev2.ending_times
-                        ev1._replace(ending_times=ev2.ending_times)
-                        merged += 1
-                    else:
-                        ev1 = ev2
-                if merged !=0: 
-                    logger.debug(f"n1,n2 ({n1},{n2}): {merged} merged")
-
-        num_merged = (events_to_keep == False).sum()
-        if num_merged !=0: 
-            logger.info(f"Merged {num_merged} events.")
-        else: 
-            logger.debug(f"Merged {num_merged} events.")
-
-        self.events_table = self.events_table.loc[events_to_keep]
-
-        self.events_table.reset_index(inplace=True, drop=True)
-
-        self.num_nodes = self.node_array.shape[0]
-
-        self.num_events = self.events_table.shape[0]
-
-        self.start_time = self.events_table.starting_times.min()
-
-        self.end_time = self.events_table.ending_times.max()
-
-        self._compute_time_grid()
-
-        return num_merged
-
     def active_nodes(self, t_start=None, t_end=None):
 
         """Return the nodes that are active within a given time window.
@@ -1685,6 +1469,221 @@ class ContTempNetwork:
         mask = (self.events_table["starting_times"] < t_end) & \
                (self.events_table["ending_times"] > t_start)
         return int(mask.sum())
+
+    
+    def plot_density_of_laplacians(self):
+        """Plot the distribution of Laplacian densities.
+
+        For each Laplacian ``L`` in ``self.laplacians``, the density is computed
+        as the number of stored (non-zero) entries divided by ``num_nodes ** 2``.
+        The densities are shown as a histogram on log-log axes.
+
+        The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
+        100th (max) percentiles of the density distribution, and returns their indices. These
+        can be used to choose the fastest method for computing transition matrices.
+        Returns
+        -------
+        list of int
+            Indices into ``self.laplacians`` of the slices closest to the
+            0th, 25th, 50th, 75th, and 100th percentiles of density, in that
+            order.
+        """
+
+        # density per slice: nnz normalized by N^2
+        density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
+
+        # quantile values and the indices of the slices closest to them
+        quantiles = np.quantile(density, [0, 0.25, 0.50, 0.75, 1])
+        indices = [np.argmin(np.abs(density - q)) for q in quantiles]
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6, 4), dpi=200)
+        sns.histplot(density, ax=ax, bins=np.logspace(-5, 0, 21),
+                    fill=False, element='step')
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel('Density of Laplacians')
+        ax.set_ylabel('Count')
+
+        # interquartile range (25th–75th) shaded
+        ax.axvspan(density[indices[1]], density[indices[3]], alpha=0.1, color='r')
+        ax.axvline(density[indices[1]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[3]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[2]], color='r', linestyle='--', label='Median')
+
+        # min and max
+        ax.axvline(density[indices[0]], color='b', linestyle=':', linewidth=1, label='Min/Max')
+        ax.axvline(density[indices[-1]], color='b', linestyle=':', linewidth=1)
+
+        ax.legend(frameon=False)
+        plt.tight_layout()
+        plt.show()
+        return indices
+
+    def print_report(self, indices, scales, method_kwargs=None, **kwargs):
+        """Benchmark and compare matrix-exponential computation methods.
+
+        Args:
+            indices: Iterable of 5 integer indices into ``self.laplacians`` /
+                ``self.times``, mapped to the labels
+                ['min', 'q25', 'median', 'q75', 'max'].
+            scales: Iterable of diffusion scale factors (``lamda``) to sweep.
+            method_kwargs: Optional dict mapping a method name to a dict of
+                extra keyword args for that method, e.g.
+                ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
+        """
+        method_kwargs = method_kwargs or {}
+        labels = ['min', 'q25', 'median', 'q75', 'max']
+        laplacians = {
+            label: {
+                'L': self.laplacians[idx],
+                'tau': self.times[idx + 1] - self.times[idx],
+            }
+            for label, idx in zip(labels, indices)
+        }
+        methods = ['dense_expm', 'sparse_expm', 'mfp_exp', 'parallel_expm']
+        num_nodes = self.num_nodes
+        reference = 'dense_expm'
+
+        scales = list(scales)
+        min_scale_idx = int(np.argmin(scales))
+        max_scale_idx = int(np.argmax(scales))
+
+        results = {}
+        outputs = {}
+        for method in methods:
+            this_kwargs = {**kwargs, **method_kwargs.get(method, {})}
+            for label, data in laplacians.items():
+                times = []
+                mats = []
+                for lamda in scales:
+                    t = time.perf_counter()
+                    T = self._compute_single_T(
+                        L=data['L'], tau_k=data['tau'], lamda=lamda,
+                        num_nodes=num_nodes, method=method,
+                        **this_kwargs
+                    )
+                    times.append(time.perf_counter() - t)
+                    mats.append(T)
+                results[(method, label)] = times
+                outputs[(method, label)] = mats
+
+        mfp_mae = {}  # label -> list of per-scale MAE
+        for label in laplacians:
+            errs = []
+            for T_ref, T_approx in zip(
+                outputs[(reference, label)], outputs[('mfp_exp', label)]
+            ):
+                errs.append(
+                    np.mean(np.abs(_dense(T_ref) - _dense(T_approx)))
+                )
+            mfp_mae[label] = errs
+
+        # Aggregate MAE across labels, per scale
+        mae_avg = np.mean([np.mean(mfp_mae[lbl]) for lbl in laplacians])
+        mae_min_scale = np.mean([mfp_mae[lbl][min_scale_idx] for lbl in laplacians])
+        mae_max_scale = np.mean([mfp_mae[lbl][max_scale_idx] for lbl in laplacians])
+
+        # Report
+        for method in methods:
+            print(f"\n=== {method} ===")
+            method_total = 0.0
+            for label in laplacians:
+                times = results[(method, label)]
+                method_total += sum(times)
+                line = (f"  L_{label:<7} avg={np.mean(times):.4f}s  "
+                        f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
+                if method == 'mfp_exp':
+                    errs = mfp_mae[label]
+                    line += (f"  MAE(avg={np.mean(errs):.3e}, "
+                            f"min_scale={errs[min_scale_idx]:.3e}, "
+                            f"max_scale={errs[max_scale_idx]:.3e})")
+                print(line)
+            print(f"  total: {method_total:.4f}s")
+            if method == 'mfp_exp':
+                print(f"  overall MAE vs {reference}:  "
+                    f"avg={mae_avg:.3e}  "
+                    f"min_scale(={scales[min_scale_idx]:g})={mae_min_scale:.3e}  "
+                    f"max_scale(={scales[max_scale_idx]:g})={mae_max_scale:.3e}")
+
+        totals = {
+            m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
+            for m in methods
+        }
+        best = min(totals, key=totals.get)
+        print(f"\nRecommended method: {best} "
+            f"({totals[best]:.4f}s total, fastest of the three)")
+
+
+    def _merge_overlapping_events(self):
+        """
+        Merge temporally overlapping undir. event between each pair of nodes.
+        """
+        events_to_keep = np.ones(self.events_table.shape[0], dtype=bool)
+
+        A = self.compute_static_adjacency_matrix()
+
+        # loop over nodes
+
+        for i, n1 in enumerate(self.node_array):
+            for j in (A[i, :] > 0).nonzero()[1]:
+                n2 = self.node_array[j]
+                mask_12 = np.logical_and(
+                    self.events_table.source_nodes.values == n1,
+                    self.events_table.target_nodes.values == n2
+                )
+
+                mask_21 = np.logical_and(
+                    self.events_table.source_nodes.values == n2,
+                    self.events_table.target_nodes.values == n1
+                )
+                # sort by starting times
+                evs = self.events_table.loc[
+                    np.logical_or(mask_12, mask_21)
+                ].sort_values(by=["starting_times", "ending_times"])
+
+                evs_list = list(evs.itertuples())
+
+                # event to compare
+                ev1 = evs_list[0]
+                merged = 0
+                for k in range(1, len(evs_list)):
+                    ev2 = evs_list[k]
+                    # if ev2 overlaps with ev1, merge them
+                    # otherwise ev2 becomes ev1
+                    if ev2.starting_times < ev1.ending_times:
+                        # merge
+                        events_to_keep[ev2.Index] = False
+                        self.events_table.loc[
+                            ev1.Index, "ending_times"] = ev2.ending_times
+                        ev1._replace(ending_times=ev2.ending_times)
+                        merged += 1
+                    else:
+                        ev1 = ev2
+                if merged !=0: 
+                    logger.debug(f"n1,n2 ({n1},{n2}): {merged} merged")
+
+        num_merged = (events_to_keep == False).sum()
+        if num_merged !=0: 
+            logger.info(f"Merged {num_merged} events.")
+        else: 
+            logger.debug(f"Merged {num_merged} events.")
+
+        self.events_table = self.events_table.loc[events_to_keep]
+
+        self.events_table.reset_index(inplace=True, drop=True)
+
+        self.num_nodes = self.node_array.shape[0]
+
+        self.num_events = self.events_table.shape[0]
+
+        self.start_time = self.events_table.starting_times.min()
+
+        self.end_time = self.events_table.ending_times.max()
+
+        self._compute_time_grid()
+
+        return num_merged
+
 
 
 class ContTempInstNetwork(ContTempNetwork):
@@ -1838,347 +1837,3 @@ class ContTempInstNetwork(ContTempNetwork):
         super().compute_inter_transition_matrices( lamda=lamda, fix_tau_k=True,
                                             method=method, n_jobs=n_jobs,
                                             **kwargs)
-        
-def compute_subspace_expm(A,
-                          n_comp=None,
-                          comp_labels=None,
-                          thresh_ratio=None,
-                          normalize_rows=True):
-    """Compute the exponential matrix of `A`.
-
-    The computation is done by applying expm on each connected subgraphs
-    defined by A and recomposing it to return expm(A).
-
-    Parameters
-    ----------
-        A : scipy.sparse.csc_matrix
-
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
-        zero. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-
-
-    Returns
-    -------
-        expm(A) : scipy.sparse.csr_matrix
-        matrix exponential of A
-
-    """
-    num_nodes = A.shape[0]
-
-    # otherwise 0 values may count as an edge
-    A.eliminate_zeros()
-    A.sort_indices()
-
-    if (n_comp is None) or (comp_labels is None):
-        n_comp, comp_labels = connected_components(A, directed=False)
-    comp_sizes = np.bincount(comp_labels)
-    cmp_indices = [
-        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
-    ]
-
-    logger.info(f"subspace_expm with {n_comp} components")
-
-    # constructors for sparse array
-    data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
-    indices = np.zeros((comp_sizes**2).sum(), dtype=np.int32)
-    indptr = np.zeros(num_nodes+1, dtype=np.int32)
-
-    # if nproc == 1:
-    #     expm_func = lambda M: expm(M)
-    # else:
-    #     expm_func = lambda M: compute_parallel_expm(M, nproc=nproc,
-    #                                                 thresh_ratio=None,
-    #                                                 normalize_rows=False)
-    subnets_expms = []
-    for i, cmp_ind in enumerate(cmp_indices):
-        logger.info(
-            f"Computing component {i} over {n_comp}, with size {cmp_ind.size}"
-        )
-
-        subnets_expms.append(expm(A[cmp_ind, :][:, cmp_ind]).toarray())
-
-    # reconstruct csr sparse matrix
-    logger.info("Reconstructing expm mat")
-    data_ind = 0
-    for row in range(num_nodes):
-        cmp = comp_labels[row]
-        cmp_expm = subnets_expms[cmp]
-        sub_expm_row, = np.where(cmp_indices[cmp] == row)
-
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
-
-        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
-
-        indptr[row] = data_ind
-
-        data_ind += comp_sizes[cmp]
-
-    indptr[num_nodes] = data_ind
-
-    expmA = csr_matrix(
-        (data, indices, indptr),
-        shape=(num_nodes, num_nodes),
-        dtype=np.float64
-    )
-
-    if thresh_ratio is not None:
-        expmA.data[expmA.data < expmA.data.max() / thresh_ratio] = 0.0
-        expmA.eliminate_zeros()
-    if normalize_rows:
-        inplace_csr_row_normalize(expmA)
-
-    return expmA
-
-
-def csc_row_normalize(X):
-    """Row normalize scipy sparse csc matrices.
-    returns a copy of X row-normalized and in CSC format.
-    """
-    X = X.tocsr()
-
-    for i in range(X.shape[0]):
-        row_sum = X.data[X.indptr[i]:X.indptr[i+1]].sum()
-        if row_sum != 0:
-            X.data[X.indptr[i]:X.indptr[i+1]] /= row_sum
-
-    return X.tocsc()
-
-
-def find_spectral_gap(L):
-    """L is assummed to be connected"""
-    Lcsr = L.tocsr()
-
-    I = eye(L.shape[0],
-            dtype=np.float64,
-            format="csr")
-
-    degs = np.diff((I-Lcsr).indptr)
-
-    D12 = diags(np.sqrt(degs),
-                format="csr")
-    Dm12 = diags(1/np.sqrt(degs),
-                 format="csr")
-
-    Lsym = D12 @ Lcsr @ Dm12
-
-    # stationary solution
-    Pi = np.vstack([degs/degs.sum()]*L.shape[0])
-
-    gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
-
-    return gap
-
-
-def remove_nnz_rowcol(L):
-    """CSC or CSR matrix with removed zero row and columns
-
-    This also returns an array of the indices of rows/columns with non-zero
-    values and the (linear) size of L.
-
-    Returns
-    -------
-    L_small, nonzero_indices, size
-
-    """
-    # indicies with zero sum row AND col
-    nonzerosum_rowcols = ~np.logical_and(L.getnnz(1) == 0,
-                                         L.getnnz(0) == 0)
-
-    nonzero_indices, = (nonzerosum_rowcols).nonzero()
-
-    return (
-        L[nonzerosum_rowcols][:, nonzerosum_rowcols],
-        nonzero_indices,
-        L.shape[0]
-    )
-
-
-def numpy_rebuild_nnz_rowcol(T_data,
-                             T_indices,
-                             T_indptr,
-                             zero_indices):
-    """Returns a CSR matrix.
-
-    The CSR matrix (data, indices, rownnz, shape) is built from the CSR matrix
-    T_small but with added row-colums at zero_indicies (with 1 on the diagonal)
-
-    """
-    n_rows = T_indptr.size-1 + zero_indices.size
-
-    data = np.zeros(T_data.size+zero_indices.size, dtype=np.float64)
-    indices = np.zeros(T_data.size+zero_indices.size, dtype=np.int32)
-    indptr = np.zeros(n_rows+1, dtype=np.int32)
-    new_col_inds = np.zeros(T_indptr.size-1, dtype=np.int32)
-    Ts_indices = np.zeros(T_indices.size, dtype=np.int32)
-    zero_set = set(zero_indices)
-
-    # map col indices to new positions
-    k = 0
-    for i in range(n_rows):
-        if i not in zero_set:
-            new_col_inds[k] = i
-            k += 1
-
-    for k, i in enumerate(T_indices):
-        Ts_indices[k] = new_col_inds[i]
-
-    row_id_small_t = -1
-    data_ind = 0
-    for row_id in range(n_rows):
-        row_id_small_t += 1
-        if row_id in zero_set:
-            # add a row with just 1 on the diagonal
-            data[data_ind] = 1.0
-            indices[data_ind] = row_id
-            indptr[row_id+1] = indptr[row_id]+1
-
-            row_id_small_t -= 1
-            data_ind += 1
-
-        else:
-            row_start = T_indptr[row_id_small_t]
-            row_end = T_indptr[row_id_small_t+1]
-
-            num_data_row = row_end - row_start
-
-            data[data_ind:data_ind+num_data_row] = T_data[row_start:row_end]
-            indices[
-                data_ind:data_ind+num_data_row] = Ts_indices[row_start:row_end]
-            indptr[row_id+1] = indptr[row_id]+num_data_row
-
-            data_ind += num_data_row
-
-    return (data, indices, indptr, n_rows)
-
-
-def sparse_lapl_expm(L,
-                     fact,
-                     dense_expm=True,
-                     nproc=1,
-                     thresh_ratio=None,
-                     normalize_rows=True):
-    """Computes the matrix exponential of a laplacian L.
-
-    The exponential, expm(-fact*L), is computed considering only the non-zeros
-    rows/cols of L
-
-    Parameters
-    ----------
-    L : scipy sparse csc matrix
-        Laplacian matrix with large proportion of zero rows/cols.
-    fact : float
-        factor in front of the laplacian
-    dense_expm : boolean
-        Whether to compute the expm on the small Laplacian as a dense
-        or sparse array. Default is True.
-    nproc : int, optional
-        number of parallel processes for dense_expm=False. The default is 1.
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to
-        zero. For dense_expm=False. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-        For dense_expm=False
-
-    Returns
-    -------
-    expm(-fact*L) : `SparseStochMat` object
-        Transition matrix
-
-    """
-    if L.getnnz() == 0:  # zero matrix
-        # return identity
-        return SparseStochMat.create_diag(L.shape[0])
-
-    L_small, nz_inds, size = remove_nnz_rowcol(L)
-
-    if nproc == 1:
-        expm_func = partial(compute_subspace_expm,
-                            A=-fact*L_small,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    else:
-        expm_func = partial(compute_subspace_expm_parallel,
-                            A=-fact*L_small,
-                            nproc=nproc,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    if dense_expm:
-        T_small = csr_matrix(expm(-fact*L_small.toarray()))
-    else:
-
-        # for large networks, try subspace expm
-        L_small.eliminate_zeros()
-        if L_small.shape[0] >= 1000:
-            n_comp, comp_labels = connected_components(L_small, directed=False)
-            if n_comp > 1 :
-                T_small = expm_func(n_comp=n_comp,
-                                    comp_labels=comp_labels)
-            else:
-                T_small = expm(-fact*L_small).tocsr()
-        else:
-            T_small = expm(-fact*L_small).tocsr()
-
-    return SparseStochMat(size, T_small.data, T_small.indices,
-                          T_small.indptr, nz_inds)
-
-
-def set_to_ones(Tcsr, tol=1e-8):
-    """In-place replacement of ones in sparse matrix within the tolerence.
-
-    Replace values within a tolerance to one with actual ones.
-    """
-    Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
-
-
-def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
-    """In-place replacement of zeroes in sparse matrix within a tolerance.
-
-    Replace values that are, within the tolerence, close to zero with actual
-    zeroes.
-
-    If tol is None, does nothing
-    """
-    if tol is not None:
-        if isinstance(Tcsr, SparseStochMat):
-            Tcsr.set_to_zeroes(tol, relative=relative)
-        elif isinstance(Tcsr, (csr_matrix, csc_matrix)):
-            if Tcsr.data.size > 0:
-                if relative:
-                    # tol = tol*np.abs(Tcsr.data).max()
-                    # finding the max of the absolute value without making a
-                    # copy of the whole array
-                    tol = tol*np.abs([Tcsr.data.min(), Tcsr.data.max()]).max()
-
-                if use_absolute_value:
-                    Tcsr.data[np.abs(Tcsr.data) <= tol] = 0
-                else:
-                    Tcsr.data[Tcsr.data <= tol] = 0
-
-                Tcsr.eliminate_zeros()
-        else:
-            raise TypeError("Tcsr must be csc,csr or SparseStochMat")
-def _dense(M):
-        """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
-        # SparseStochMat (from the stochmat package)
-        if hasattr(M, "to_full_mat"):
-            M = M.to_full_mat()
-        # scipy sparse
-        if hasattr(M, "toarray"):
-            return M.toarray()
-        return np.asarray(M)
-
-def _csr(M):
-    """Coerce SparseStochMat, scipy sparse, or dense matrix-like to a CSR matrix."""
-    if hasattr(M, "to_full_mat"):        # SparseStochMat (stochmat package)
-        M = M.to_full_mat()
-    if hasattr(M, "tocsr"):              # scipy sparse
-        return M.tocsr()
-    return csr_matrix(np.asarray(M))     # dense
