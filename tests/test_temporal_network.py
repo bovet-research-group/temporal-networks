@@ -1,14 +1,8 @@
 import os
 import pickle
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.append(str(Path(__file__).resolve().parents[1] / "src"))
-
 from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
 
 
