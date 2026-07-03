@@ -917,7 +917,7 @@ class ContTempNetwork:
                                    t_start=None,
                                    t_stop=None,
                                    save_adjacencies=False, 
-                                   dynamics='random_walk'):
+                                   dynamics='rw'):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -949,7 +949,7 @@ class ContTempNetwork:
             `self.adjacencies`.
 
         dynamics : str, optional
-            The dynamics to compute the laplacian. Default is 'random_walk'.
+            The dynamics to compute the laplacian. Default is 'rw'.
             other option is `heat` laplacian.
             If D is the degree matrix and A is the adjacency matrix: 
                 Heat=D-A 
@@ -961,8 +961,8 @@ class ContTempNetwork:
 
         """
 
-        if dynamics not in ['random_walk', 'heat']:
-            raise ValueError("dynamics must be 'random_walk' or 'heat'")
+        if dynamics not in ['rw', 'heat']:
+            raise ValueError("dynamics must be 'rw' or 'heat'")
         
         logger.info(f"Computing Laplacians using {dynamics} method")
 
@@ -1070,7 +1070,7 @@ class ContTempNetwork:
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            if dynamics == 'random_walk':
+            if dynamics == 'rw':
                 self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
             elif dynamics == 'heat':
                 self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
