@@ -1,8 +1,9 @@
 """Sparse-matrix utility functions for temporal-network computations."""
 
-from typing import Any
+from typing import cast
 
 import numpy as np
+from numpy.typing import ArrayLike
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from scipy.sparse.linalg import eigsh
@@ -12,6 +13,8 @@ from scipy.sparse import (
     csr_matrix,
     diags,
     eye,
+    sparray,
+    spmatrix,
 )
 
 
@@ -24,14 +27,14 @@ def set_to_ones(Tcsr: csr_matrix, tol: float = 1e-8) -> None:
         Sparse matrix whose stored values are modified in place.
     tol : float, default=1e-8
         Absolute tolerance around one. Stored values ``x`` satisfying
-        ``abs(x - 1) <= tol`` are replaced by exactly one.
+        ``abs(x - 1.0) <= tol`` are replaced by exactly ``1.0``.
 
     Returns
     -------
     None
         The input matrix is modified in place.
     """
-    Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
+    Tcsr.data[np.abs(Tcsr.data - 1.0) <= tol] = 1.0
 
 
 def csc_row_normalize(X: csr_matrix | csc_matrix) -> csc_matrix:
@@ -48,14 +51,14 @@ def csc_row_normalize(X: csr_matrix | csc_matrix) -> csc_matrix:
     :class:`scipy.sparse.csc_matrix`
         Row-normalized copy of ``X`` in CSC format.
     """
-    X = X.tocsr()
+    X_csr = cast(csr_matrix, X.tocsr())
 
-    for i in range(X.shape[0]):
-        row_sum = X.data[X.indptr[i]:X.indptr[i+1]].sum()
+    for i in range(X_csr.shape[0]):
+        row_sum = X_csr.data[X_csr.indptr[i]:X_csr.indptr[i+1]].sum()
         if row_sum != 0:
-            X.data[X.indptr[i]:X.indptr[i+1]] /= row_sum
+            X_csr.data[X_csr.indptr[i]:X_csr.indptr[i+1]] /= row_sum
 
-    return X.tocsc()
+    return cast(csc_matrix, X_csr.tocsc())
 
 
 def remove_nnz_rowcol(
@@ -90,7 +93,7 @@ def remove_nnz_rowcol(
     nonzero_indices, = (nonzerosum_rowcols).nonzero()
 
     return (
-        L[nonzerosum_rowcols][:, nonzerosum_rowcols],
+        cast(csr_matrix | csc_matrix, L[nonzerosum_rowcols][:, nonzerosum_rowcols]),
         nonzero_indices,
         L.shape[0]
     )
@@ -136,36 +139,40 @@ def set_to_zeroes(
         If ``Tcsr`` is not a supported sparse matrix type.
     """
     if tol is not None:
+        threshold = float(tol)
         if isinstance(Tcsr, SparseStochMat):
-            Tcsr.set_to_zeroes(tol, relative=relative)
+            Tcsr.set_to_zeroes(threshold, relative=relative)
         elif isinstance(Tcsr, (csr_matrix, csc_matrix)):
-            if Tcsr.data.size > 0:
+            data = Tcsr.data
+            if data.size > 0:
                 if relative:
                     # tol = tol*np.abs(Tcsr.data).max()
                     # finding the max of the absolute value without making a
                     # copy of the whole array
-                    tol = tol*np.abs([Tcsr.data.min(), Tcsr.data.max()]).max()
+                    threshold = threshold*np.abs([data.min(), data.max()]).max()
 
                 if use_absolute_value:
-                    Tcsr.data[np.abs(Tcsr.data) <= tol] = 0
+                    data[np.abs(data) <= threshold] = 0
                 else:
-                    Tcsr.data[Tcsr.data <= tol] = 0
+                    data[data <= threshold] = 0
 
                 Tcsr.eliminate_zeros()
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
 
 
-def to_dense(M: Any) -> np.ndarray:
+def to_dense(M: ArrayLike | spmatrix | sparray | SparseStochMat) -> np.ndarray:
     """Coerce a sparse or dense matrix-like object to an ndarray.
 
     Parameters
     ----------
-    M : Any
-        Matrix-like object. Supported objects include :class:`numpy.ndarray`,
-        SciPy sparse matrices with a ``toarray`` method, and
-        :class:`stochmat.SparseStochMat`-like objects with a ``to_full_mat``
-        method.
+    M : array-like, :class:`scipy.sparse.spmatrix`, \
+            :class:`scipy.sparse.sparray`, or \
+            :class:`stochmat.SparseStochMat`
+        Matrix-like object to convert. NumPy-compatible array-like inputs are
+        passed to :func:`numpy.asarray`; SciPy sparse matrices and arrays are
+        converted with ``toarray``; and :class:`stochmat.SparseStochMat`
+        objects are converted with ``to_full_mat``.
 
     Returns
     -------
@@ -173,14 +180,11 @@ def to_dense(M: Any) -> np.ndarray:
         Dense array representation of ``M``. Existing NumPy arrays are returned
         unchanged.
     """
-    # Already a numpy array -> return as-is
     if isinstance(M, np.ndarray):
         return M
-    # SparseStochMat (from the stochmat package)
-    if hasattr(M, "to_full_mat"):
+    if isinstance(M, SparseStochMat):
         M = M.to_full_mat()
-    # scipy sparse
-    if hasattr(M, "toarray"):
+    if isinstance(M, (spmatrix, sparray)):
         return M.toarray()
     return np.asarray(M)
 
@@ -201,11 +205,11 @@ def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
         containing the eigenvalue nearest zero of the adjusted symmetric
         Laplacian.
     """
-    Lcsr = L.tocsr()
+    Lcsr = cast(csr_matrix, L.tocsr())
 
-    I = eye(L.shape[0],
-            dtype=np.float64,
-            format="csr")
+    I = cast(csr_matrix, eye(L.shape[0],
+                            dtype=np.float64,
+                            format="csr"))
 
     degs = np.diff((I-Lcsr).indptr)
 
@@ -221,4 +225,4 @@ def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
 
     gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
 
-    return gap
+    return cast(np.ndarray, gap)
