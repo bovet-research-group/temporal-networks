@@ -1,7 +1,5 @@
 """Sparse-matrix utility functions for temporal-network computations."""
 
-from typing import cast
-
 import numpy as np
 from numpy.typing import ArrayLike
 from stochmat import inplace_csr_row_normalize, SparseStochMat
@@ -51,14 +49,15 @@ def csc_row_normalize(X: csr_matrix | csc_matrix) -> csc_matrix:
     :class:`scipy.sparse.csc_matrix`
         Row-normalized copy of ``X`` in CSC format.
     """
-    X_csr = cast(csr_matrix, X.tocsr())
+    X_csr = X.tocsr()
 
-    for i in range(X_csr.shape[0]):
+    n_rows = X_csr.shape[0]
+    for i in range(n_rows):
         row_sum = X_csr.data[X_csr.indptr[i]:X_csr.indptr[i+1]].sum()
         if row_sum != 0:
             X_csr.data[X_csr.indptr[i]:X_csr.indptr[i+1]] /= row_sum
 
-    return cast(csc_matrix, X_csr.tocsc())
+    return X_csr.tocsc()
 
 
 def remove_nnz_rowcol(
@@ -86,16 +85,17 @@ def remove_nnz_rowcol(
     size : int
         Original linear matrix size, equal to ``L.shape[0]``.
     """
-    # indicies with zero sum row AND col
+    # indices with zero sum row AND col
     nonzerosum_rowcols = ~np.logical_and(L.getnnz(1) == 0,
                                          L.getnnz(0) == 0)
 
     nonzero_indices, = (nonzerosum_rowcols).nonzero()
+    L_small = L[nonzerosum_rowcols][:, nonzerosum_rowcols]
 
     return (
-        cast(csr_matrix | csc_matrix, L[nonzerosum_rowcols][:, nonzerosum_rowcols]),
+        L_small,
         nonzero_indices,
-        L.shape[0]
+        L.shape[0],
     )
 
 
@@ -149,7 +149,10 @@ def set_to_zeroes(
                     # tol = tol*np.abs(Tcsr.data).max()
                     # finding the max of the absolute value without making a
                     # copy of the whole array
-                    threshold = threshold*np.abs([data.min(), data.max()]).max()
+                    threshold = (
+                        threshold
+                        * np.abs([data.min(), data.max()]).max()
+                    )
 
                 if use_absolute_value:
                     data[np.abs(data) <= threshold] = 0
@@ -205,13 +208,12 @@ def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
         containing the eigenvalue nearest zero of the adjusted symmetric
         Laplacian.
     """
-    Lcsr = cast(csr_matrix, L.tocsr())
+    Lcsr = L.tocsr()
+    n_nodes = L.shape[0]
 
-    I = cast(csr_matrix, eye(L.shape[0],
-                            dtype=np.float64,
-                            format="csr"))
+    identity = eye(n_nodes, dtype=np.float64, format="csr")
 
-    degs = np.diff((I-Lcsr).indptr)
+    degs = np.diff((identity - Lcsr).indptr)
 
     D12 = diags(np.sqrt(degs),
                 format="csr")
@@ -221,8 +223,8 @@ def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
     Lsym = D12 @ Lcsr @ Dm12
 
     # stationary solution
-    Pi = np.vstack([degs/degs.sum()]*L.shape[0])
+    Pi = np.vstack([degs/degs.sum()]*n_nodes)
 
     gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
 
-    return cast(np.ndarray, gap)
+    return gap
