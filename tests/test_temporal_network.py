@@ -321,6 +321,21 @@ class TestContTempInstNetwork:
     the parent constructor.
     """
 
+    def test_constructor_wrong_columns(self):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1],
+            "target_nodes": [1, 0],
+        })
+        with pytest.raises(ValueError):
+            ContTempInstNetwork(events_table=df)
+
+
+    def test_constructor_wrong_file_type(self, tmp_path):
+        with open(tmp_path/"file.txt", "w") as f:
+            f.write("\n\n")
+        with pytest.raises(ValueError):
+            ContTempInstNetwork(events_table=tmp_path/'file.txt')
+ 
     def test_init_from_dataframe_synthesizes_ending_times(self):
         df = make_df(sources=[0, 1, 2], targets=[1, 2, 0], starts=[0.0, 1.0, 2.0])
         net = ContTempInstNetwork(events_table=df)
@@ -371,7 +386,24 @@ class TestContTempInstNetwork:
             events_table=make_df(sources=[0, 1, 2], targets=[1, 2, 0], starts=[0.0, 0.5, 5.0]),
         )
         assert net.events_table.ending_times.tolist() == [0.0, 0.5, 5.0]
-
+    
+    EXPM_METHODS = ["sparse_expm", "parallel_expm", "mfp_exp"]
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    @pytest.mark.parametrize("lamda", [0.1, 1.0, 5.0])
+    def test_method_matches_dense_exact(self, method, lamda):
+        """Every method should match dense_expm to near machine precision."""
+        net = ContTempInstNetwork(
+            events_table=make_df(sources=[0, 1, 2], targets=[1, 2, 0], starts=[0.0, 0.5, 0.5]),
+        )
+        net.compute_laplacian_matrices()
+        for k, L in enumerate(net.laplacians):
+            tau =1
+            T_ref = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, "dense_expm"))
+            T = to_dense(net._compute_single_T(L, tau, lamda, net.num_nodes, method))
+            np.testing.assert_allclose(
+                T, T_ref, rtol=1e-6, atol=1e-6,
+                err_msg=f"{method} != dense_expm at step {k}, lamda={lamda}",
+            )
 
 # --------------------------------------------------------------------------- #
 # Test save/load 
@@ -434,6 +466,23 @@ class TestBasicProperties:
         for col in ["source_nodes", "target_nodes", "starting_times",
                     "ending_times", "durations"]:
             assert col in simple_network.events_table.columns
+
+    def test_active_edges(self, simple_network):
+        assert simple_network.num_active_edges(t_start=None, t_end=None)==4
+        assert simple_network.num_active_edges(t_start=1, t_end=2)==2
+        assert simple_network.num_active_edges(t_start=None, t_end=5)==3
+        assert simple_network.num_active_edges(t_start=6.5, t_end=None)==1
+        assert simple_network.num_active_edges(t_start=3.5, t_end=3.75)==0
+
+
+    def test_active_nodes(self, simple_network):
+        assert simple_network.num_active_nodes(t_start=None, t_end=None)==3
+        assert simple_network.num_active_nodes(t_start=1, t_end=2)==3
+        assert simple_network.num_active_nodes(t_start=None, t_end=5)==3
+        assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
+        assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
+
+
 
     def test_index_reset(self, simple_network):
         assert list(simple_network.events_table.index) == list(
@@ -557,6 +606,22 @@ class TestTransitionMatrices:
                 T, T_ref, rtol=1e-6, atol=1e-6,
                 err_msg=f"{method} != dense_expm at step {k}, lamda={lamda}",
             )
+
+
+    def test_no_laplacian(self, simple_network):
+        net = simple_network
+        lamda=1
+        with pytest.raises(RuntimeError):
+            net.compute_inter_transition_matrices(lamda=lamda)
+
+    def test_wrong_method(self, simple_network):
+        net = simple_network
+        lamda=1
+        net.compute_laplacian_matrices()
+        with pytest.raises(Exception):
+            for k, L in enumerate(net.laplacians):
+                tau = net.times[k + 1] - net.times[k]
+                net._compute_single_T(L, tau, lamda, net.num_nodes, "method")
 
     @pytest.mark.parametrize("method", EXPM_METHODS)
     def test_transition_matrix_is_stochastic(self, simple_network, method):
