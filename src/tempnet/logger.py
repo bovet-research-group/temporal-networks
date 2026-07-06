@@ -1,3 +1,5 @@
+"""Logging utilities for :mod:`tempnet`."""
+
 import os
 import logging
 
@@ -6,25 +8,44 @@ logger = logging.getLogger("flowstab")
 
 
 class CustomPathnameFilter(logging.Filter):
-    def filter(self, record):
-        # Get the full pathname
-        full_path = record.pathname
+    """Shorten log-record path names to the last two path components."""
 
-        # Split the path into parts
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Shorten the pathname stored on a log record in place.
+
+        Parameters
+        ----------
+        record : :class:`logging.LogRecord`
+            Log record whose ``pathname`` attribute is shortened to the last
+            two path components when possible.
+
+        Returns
+        -------
+        bool
+            Always ``True`` so the record remains eligible for emission.
+        """
+        full_path = record.pathname
         path_parts = full_path.split(os.sep)
 
-        # Limit to the last 2 parts
         if len(path_parts) > 2:
             record.pathname = os.sep.join(path_parts[-2:])
         return True
 
 
-def setup_logger(log_level=logging.INFO):
-    """
-    Set up the logger for the package.
+def setup_logger(log_level: int = logging.INFO) -> None:
+    """Set up the package logger.
 
-    Args:
-        log_level (int): The logging level (e.g., logging.DEBUG, logging.INFO).
+    Parameters
+    ----------
+    log_level : int, default=logging.INFO
+        Logging threshold passed to :meth:`logging.Logger.setLevel` and to the
+        console :class:`logging.StreamHandler`, for example
+        :data:`logging.DEBUG` or :data:`logging.INFO`.
+
+    Returns
+    -------
+    None
+        The global package logger is configured in place.
     """
     logger.setLevel(log_level)
 
@@ -46,6 +67,12 @@ def setup_logger(log_level=logging.INFO):
         logger.addHandler(ch)
 
 
-def get_logger():
-    """Return the logger instance."""
+def get_logger() -> logging.Logger:
+    """Return the package logger.
+
+    Returns
+    -------
+    :class:`logging.Logger`
+        Logger instance shared by the package modules.
+    """
     return logger
