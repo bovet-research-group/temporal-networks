@@ -1,6 +1,7 @@
 """Tests for tolerance-filtered sparse matrix exponentials."""
 
 import numpy as np
+import pytest
 from scipy.linalg import expm as dense_expm
 from scipy.sparse import csr_matrix, issparse
 
@@ -64,6 +65,22 @@ def test_flitoutA2_returns_csr_matrix() -> None:
     assert isinstance(A_filtered, csr_matrix)
     assert scale >= 1.0
     assert issparse(A_filtered)
+
+
+def test_flitoutA2_rejects_zero_scale() -> None:
+    """flitoutA2 should reject a zero filtering scale."""
+    A = csr_matrix(np.eye(6))
+
+    with pytest.raises(ValueError, match="eg and m must be positive"):
+        flitoutA2(A, eg=1e-6, m=0)
+
+
+def test_flitoutA2_rejects_zero_error_bound() -> None:
+    """flitoutA2 should reject a zero error bound."""
+    A = csr_matrix(np.eye(6))
+
+    with pytest.raises(ValueError, match="eg and m must be positive"):
+        flitoutA2(A, eg=0, m=1)
 
 
 def test_getfi_decreases_with_taylor_order() -> None:
