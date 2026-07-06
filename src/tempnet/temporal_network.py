@@ -428,7 +428,7 @@ class ContTempNetwork:
         for k, val in graph_dict.items():
             if k in matrices_list:
                 setattr(net, k, val)
-                
+
             if k in attributes_list:
                 setattr(net, k, val)
 
@@ -733,7 +733,7 @@ class ContTempNetwork:
 
                 text = "SparseStochMat T"
 
-            elif isspmatrix_csr(self.T[lamda]):
+            elif isspmatrix_csr(self.T[lamda]) :
 
                 if round_zeros:
                     T = self.T[lamda].copy()
@@ -745,7 +745,7 @@ class ContTempNetwork:
                 text = "csr T"
 
             else:
-                raise TypeError("T must be csr or SparseStochMat.")
+                raise TypeError(f"T must be csr or SparseStochMat. current type is {type( self.T[lamda])}")
 
         ext = os.path.splitext(filename)[-1]
 
@@ -1197,7 +1197,7 @@ class ContTempNetwork:
             elif method == "mfp_exp":
                 params = dict(err=1e-8, non_norm=0)
                 params.update(kwargs)
-                T = mfp_exp(-tau_k * lamda * L, **params)
+                T = mfp_exp(-tau_k * lamda * L, **params).tocsr()
             return T
 
 

@@ -331,10 +331,8 @@ class TestContTempInstNetwork:
 
 
     def test_constructor_wrong_file_type(self, tmp_path):
-        with open(tmp_path/"file.txt", "w") as f:
-            f.write("\n\n")
         with pytest.raises(ValueError):
-            ContTempInstNetwork(events_table=tmp_path/'file.txt')
+            ContTempInstNetwork(events_table=1)
  
     def test_init_from_dataframe_synthesizes_ending_times(self):
         df = make_df(sources=[0, 1, 2], targets=[1, 2, 0], starts=[0.0, 1.0, 2.0])
@@ -417,7 +415,7 @@ class TestSaveLoad:
                                     lamda=1,
                                     save_intermediate=True,
                                     reverse_time=False,
-                                    force_csr=False,
+                                    force_csr=True,
                                     tol=None)
         simple_network.save(tmp_path / "simple_network.pkl")
         
@@ -429,6 +427,24 @@ class TestSaveLoad:
                 simple_network.events_table[col], new_network.events_table[col],
             )
 
+    EXPM_METHODS = ["sparse_expm", "parallel_expm", "mfp_exp"]
+    @pytest.mark.parametrize("method", EXPM_METHODS)
+    def test_save_load_T(self, simple_network,tmp_path, method):
+        simple_network.compute_laplacian_matrices()
+        for lam in [1, 10, 0.1]:
+            simple_network.compute_inter_transition_matrices(lamda=lam, method=method)
+            simple_network.compute_transition_matrices(
+                                        lamda=lam,
+                                        save_intermediate=False,
+                                        reverse_time=False,
+                                        force_csr=True,
+                                        tol=None)
+        simple_network.save_T(tmp_path / "simple_network.pickle")
+        
+
+        T=ContTempNetwork.load_T(tmp_path / "simple_network.pickle")
+
+        assert type(T)==dict
 
 class TestBasicProperties:
 
