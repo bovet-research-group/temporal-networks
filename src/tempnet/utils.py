@@ -1,3 +1,7 @@
+"""Sparse-matrix utility functions for temporal-network computations."""
+
+from typing import Any
+
 import numpy as np
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
@@ -10,16 +14,39 @@ from scipy.sparse import (
     eye,
 )
 
-def set_to_ones(Tcsr, tol=1e-8):
-    """In-place replacement of ones in sparse matrix within the tolerence.
 
-    Replace values within a tolerance to one with actual ones.
+def set_to_ones(Tcsr: csr_matrix, tol: float = 1e-8) -> None:
+    """Replace near-one sparse-matrix entries in place.
+
+    Parameters
+    ----------
+    Tcsr : :class:`scipy.sparse.csr_matrix`
+        Sparse matrix whose stored values are modified in place.
+    tol : float, default=1e-8
+        Absolute tolerance around one. Stored values ``x`` satisfying
+        ``abs(x - 1) <= tol`` are replaced by exactly one.
+
+    Returns
+    -------
+    None
+        The input matrix is modified in place.
     """
     Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
 
-def csc_row_normalize(X):
-    """Row normalize scipy sparse csc matrices.
-    returns a copy of X row-normalized and in CSC format.
+
+def csc_row_normalize(X: csr_matrix | csc_matrix) -> csc_matrix:
+    """Return a row-normalized sparse matrix in CSC format.
+
+    Parameters
+    ----------
+    X : :class:`scipy.sparse.csr_matrix` or :class:`scipy.sparse.csc_matrix`
+        Sparse matrix to normalize by row sums. Rows with zero sum are left
+        unchanged.
+
+    Returns
+    -------
+    :class:`scipy.sparse.csc_matrix`
+        Row-normalized copy of ``X`` in CSC format.
     """
     X = X.tocsr()
 
@@ -31,17 +58,30 @@ def csc_row_normalize(X):
     return X.tocsc()
 
 
+def remove_nnz_rowcol(
+    L: csr_matrix | csc_matrix,
+) -> tuple[csr_matrix | csc_matrix, np.ndarray, int]:
+    """Remove rows and columns that are both structurally zero.
 
-def remove_nnz_rowcol(L):
-    """CSC or CSR matrix with removed zero row and columns
+    A row and column index is retained when either the corresponding row or
+    column contains at least one stored value.
 
-    This also returns an array of the indices of rows/columns with non-zero
-    values and the (linear) size of L.
+    Parameters
+    ----------
+    L : :class:`scipy.sparse.csr_matrix` or :class:`scipy.sparse.csc_matrix`
+        Square sparse matrix from which structurally zero rows and columns are
+        removed.
 
     Returns
     -------
-    L_small, nonzero_indices, size
-
+    L_small : :class:`scipy.sparse.csr_matrix` or \
+            :class:`scipy.sparse.csc_matrix`
+        Sparse submatrix containing only retained rows and columns.
+    nonzero_indices : :class:`numpy.ndarray`
+        One-dimensional integer array with the retained row and column indices
+        in the original matrix.
+    size : int
+        Original linear matrix size, equal to ``L.shape[0]``.
     """
     # indicies with zero sum row AND col
     nonzerosum_rowcols = ~np.logical_and(L.getnnz(1) == 0,
@@ -56,13 +96,44 @@ def remove_nnz_rowcol(L):
     )
 
 
-def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
-    """In-place replacement of zeroes in sparse matrix within a tolerance.
+def set_to_zeroes(
+    Tcsr: SparseStochMat | csr_matrix | csc_matrix,
+    tol: float | None = 1e-8,
+    relative: bool = True,
+    use_absolute_value: bool = False,
+) -> None:
+    """Replace near-zero sparse-matrix entries in place.
 
-    Replace values that are, within the tolerence, close to zero with actual
-    zeroes.
+    When ``tol`` is not ``None``, stored values close to zero are replaced by
+    exact zeros and eliminated from SciPy sparse matrices. For
+    :class:`stochmat.SparseStochMat`, the operation is delegated to its own
+    ``set_to_zeroes`` method.
 
-    If tol is None, does nothing
+    Parameters
+    ----------
+    Tcsr : :class:`stochmat.SparseStochMat`, \
+            :class:`scipy.sparse.csr_matrix`, or \
+            :class:`scipy.sparse.csc_matrix`
+        Sparse matrix whose stored values are modified in place.
+    tol : float or None, default=1e-8
+        Threshold below which values are set to zero. If ``None``, the function
+        returns without modifying ``Tcsr``.
+    relative : bool, default=True
+        If ``True``, scale ``tol`` by the largest absolute stored value before
+        thresholding SciPy sparse matrices.
+    use_absolute_value : bool, default=False
+        If ``True``, threshold values by ``abs(value) <= tol``. If ``False``,
+        threshold values by ``value <= tol``.
+
+    Returns
+    -------
+    None
+        The input matrix is modified in place when ``tol`` is not ``None``.
+
+    Raises
+    ------
+    TypeError
+        If ``Tcsr`` is not a supported sparse matrix type.
     """
     if tol is not None:
         if isinstance(Tcsr, SparseStochMat):
@@ -84,8 +155,24 @@ def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
 
-def to_dense(M):
-    """Coerce sparse, SparseStochMat, or dense matrix-like to a 2D ndarray."""
+
+def to_dense(M: Any) -> np.ndarray:
+    """Coerce a sparse or dense matrix-like object to an ndarray.
+
+    Parameters
+    ----------
+    M : Any
+        Matrix-like object. Supported objects include :class:`numpy.ndarray`,
+        SciPy sparse matrices with a ``toarray`` method, and
+        :class:`stochmat.SparseStochMat`-like objects with a ``to_full_mat``
+        method.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        Dense array representation of ``M``. Existing NumPy arrays are returned
+        unchanged.
+    """
     # Already a numpy array -> return as-is
     if isinstance(M, np.ndarray):
         return M
@@ -97,8 +184,23 @@ def to_dense(M):
         return M.toarray()
     return np.asarray(M)
 
-def find_spectral_gap(L):
-    """L is assummed to be connected"""
+
+def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
+    """Compute the spectral gap of a connected random-walk Laplacian.
+
+    Parameters
+    ----------
+    L : :class:`scipy.sparse.csr_matrix` or :class:`scipy.sparse.csc_matrix`
+        Connected random-walk Laplacian matrix. The matrix is converted to CSR
+        format internally.
+
+    Returns
+    -------
+    :class:`numpy.ndarray`
+        One-element array returned by :func:`scipy.sparse.linalg.eigsh`,
+        containing the eigenvalue nearest zero of the adjusted symmetric
+        Laplacian.
+    """
     Lcsr = L.tocsr()
 
     I = eye(L.shape[0],
@@ -120,4 +222,3 @@ def find_spectral_gap(L):
     gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
 
     return gap
-
