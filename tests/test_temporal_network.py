@@ -444,7 +444,7 @@ class TestSaveLoad:
 
         T=ContTempNetwork.load_T(tmp_path / "simple_network.pickle")
 
-        assert type(T)==dict
+        assert type(T)==dict # it might be really weak...
 
 class TestBasicProperties:
 
