@@ -301,6 +301,71 @@ class TestRelabelNodesAndMergeEvents:
         assert used == {0, 1, 2}
         assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
 
+    @pytest.mark.parametrize("input_mode", ["lists", "events_table"])
+    @pytest.mark.parametrize(
+        "sources, targets",
+        [
+            ([1, 2, 3], [2, 3, 1]),
+            ([0, 2, 3], [2, 3, 0]),
+            ([10, 20, 30], [20, 30, 10]),
+            (["a", "b", "c"], ["b", "c", "a"]),
+        ],
+    )
+    def test_bad_node_labels_are_safe_after_relabel(
+        self,
+        input_mode,
+        sources,
+        targets,
+    ):
+        starts = [0.0, 1.0, 2.0]
+        ends = [1.0, 2.0, 3.0]
+
+        if input_mode == "lists":
+            net = ContTempNetwork(
+                source_nodes=sources,
+                target_nodes=targets,
+                starting_times=starts,
+                ending_times=ends,
+            )
+        else:
+            net = ContTempNetwork(
+                events_table=make_df(
+                    sources=sources,
+                    targets=targets,
+                    starts=starts,
+                    ends=ends,
+                )
+            )
+
+        used = set(net.events_table.source_nodes) | set(
+            net.events_table.target_nodes
+        )
+        expected_nodes = set(range(net.num_nodes))
+
+        assert used == expected_nodes
+        assert net.node_array.tolist() == list(range(net.num_nodes))
+
+        A = net.compute_static_adjacency_matrix()
+        assert A.shape == (net.num_nodes, net.num_nodes)
+
+        net.compute_laplacian_matrices()
+        assert all(
+            L.shape == (net.num_nodes, net.num_nodes)
+            for L in net.laplacians
+        )
+
+        net.compute_inter_transition_matrices(
+            lamda=1.0,
+            method="dense_expm",
+        )
+        assert all(
+            T.shape == (net.num_nodes, net.num_nodes)
+            for T in net.inter_T[1.0]
+        )
+
+        net.compute_transition_matrices(lamda=1.0, force_csr=True)
+        assert net.T[1.0][-1].shape == (net.num_nodes, net.num_nodes)
+
     def test_overlapping_events_are_merged(self, network_overlapping):
         assert network_overlapping.num_events == 2
 
@@ -713,4 +778,3 @@ class TestMice:
         ).toarray()
         A_loaded = np.load(self._fixture("mice_1h_adjacency.npy"))
         assert np.allclose(A, A_loaded)
-
