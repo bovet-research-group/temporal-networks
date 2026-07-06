@@ -169,12 +169,7 @@ class ContTempNetwork:
                     # Convert Path to string if it's a Path object
                     self.events_table = pd.read_csv(str(events_table), **kwargs)
                     logger.debug("Loading events from csv file.")
-                    if not set(self._MANDATORY).issubset(self.events_table.columns):
-                        raise ValueError(
-                            f"events_table is missing required columns. "
-                            f"Expected: {self._MANDATORY}, "
-                            f"Got: {list(self.events_table.columns)}"
-                        )
+
                 except FileNotFoundError:
                     raise ValueError(
                         f"The file at {events_table} was not found."
@@ -191,18 +186,25 @@ class ContTempNetwork:
             elif isinstance(events_table, pd.DataFrame):
                 # copy to avoid mutating caller's DataFrame when relabeling
                 self.events_table = events_table.copy()
+
             else:
                 raise ValueError(
                     "`events_table` must be a pandas DataFrame or path to CSV file. "
                     f"'{type(events_table)} is not acceptable."
                 )
+
             if self._ENDINGS not in self.events_table.columns:
                 raise ValueError(
                     f"events_table is missing required column"
                     f" '{self._ENDINGS}'. For instantaneous temporal"
                     " networks use ContTempInstNetwork."
-                )
-
+            )
+            if not set(self._ESSENTIAL).issubset(self.events_table.columns):
+                    raise ValueError(
+                        f"events_table is missing required columns. "
+                        f"Expected: {self._ESSENTIAL}, "
+                            f"Got: {list(self.events_table.columns)}"
+                        )
         self.num_nodes = pd.unique(
             self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
         ).size  
@@ -238,10 +240,7 @@ class ContTempNetwork:
             self.label_to_node_dict = {i: i for i in range(self.num_nodes)}
             self.node_to_label_dict = {i: i for i in range(self.num_nodes)}
 
-        self.node_array = np.sort(pd.unique(
-            self.events_table[["source_nodes",
-                               "target_nodes"]].values.ravel("K")
-        ))
+        self.node_array = np.sort(list(self.label_to_node_dict.values()))
 
 
 
@@ -328,10 +327,12 @@ class ContTempNetwork:
             matrices_list = matrices
 
         attributes = ["label_to_node_dict",
+                      "node_to_label_dict",
                       "events_table",
                       "times",
                       "time_grid",
                       "num_nodes",
+                      "num_events",
                       "_compute_times",
                       "_t_start_laplacians",
                       "_k_start_laplacians",
@@ -352,6 +353,7 @@ class ContTempNetwork:
 
         with open(os.path.splitext(filename)[0] + ".pickle", "wb") as fopen:
             pickle.dump(save_dict, fopen)
+        logger.info(f'Network has been successfully saved in {filename}')
 
     @classmethod
     def load(cls, filename,
@@ -377,6 +379,7 @@ class ContTempNetwork:
             List of attribute names to load.
             The default list is:
                 `attributes_list = ['label_to_node_dict',
+                                    'node_to_label_dict'
                                     'events_table',
                                     'times',
                                     'time_grid',
@@ -399,10 +402,12 @@ class ContTempNetwork:
             matrices_list = matrices
 
         attributes = ["label_to_node_dict",
+                      'node_to_label_dict',
                       "events_table",
                       "times",
                       "time_grid",
                       "num_nodes",
+                      "num_events",
                       "_compute_times",
                       "_t_start_laplacians",
                       "_k_start_laplacians",
@@ -418,12 +423,12 @@ class ContTempNetwork:
 
         events_table = graph_dict.pop("events_table")
 
-        net = cls(events_table=events_table,
-                  label_to_node_dict=graph_dict.pop("label_to_node_dict"))
+        net = cls(events_table=events_table)
 
         for k, val in graph_dict.items():
             if k in matrices_list:
                 setattr(net, k, val)
+                
             if k in attributes_list:
                 setattr(net, k, val)
 

@@ -283,3 +283,13 @@ for i, lamda in enumerate(scales):
 fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
              fraction=0.046, pad=0.04)
 plt.show()
+
+## Save
+# As computing the transition matrices for different lambdas can be
+# computationally expensive, one can save and load the network to access it later.
+tmp_path = Path(r'')  # <-- put your actual directory here, e.g. Path(r'C:\Users\you\data')
+tnet.save(tmp_path / "mice_network.pkl")
+
+# Load
+# and we can load it later with
+tnet = tn.ContTempNetwork.load(tmp_path / "mice_network.pkl")

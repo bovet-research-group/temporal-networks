@@ -121,6 +121,24 @@ class TestConstructorValidation:
                 source_nodes=[0, 1], target_nodes=["a", "b"],
                 starting_times=[0, 0], ending_times=[1, 1],
             )
+    def test_wrong_file(self):
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="not_a_file.csv")
+    
+    def test_empty_dataframe(self,tmp_path):
+        with open(tmp_path/"empty.csv", "w") as f:
+            f.write("\n\n")
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="empty.csv")
+
+    def test_missing_required_columns(self,tmp_path):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1],
+            "target_nodes": [1, 0],
+        })
+        df.to_csv(tmp_path/"temp_missing_columns.csv", index=False)
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="temp_missing_columns.csv")
 
     def test_extra_attrs_wrong_length_raises(self):
         with pytest.raises(AssertionError):
@@ -129,13 +147,20 @@ class TestConstructorValidation:
                 starting_times=[0], ending_times=[1],
                 extra_attrs={"weight": [1.0, 2.0]},  # too long
             )
+    def test_extra_attrs_correct_length(self):
+            ContTempNetwork(
+                source_nodes=["A"], target_nodes=["B"],
+                starting_times=[0], ending_times=[1],
+                extra_attrs={"sex_source": [1.0], "sex_target": [0.0]},  
+            )
+        
 
     def test_invalid_events_table_type_raises(self):
         with pytest.raises(ValueError):
             ContTempNetwork(events_table=12345)
 
     def test_events_table_missing_required_column_raises(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             ContTempNetwork(events_table=pd.DataFrame({"source_nodes": [0, 1]}))
 
     def test_compute_time_grid(self, simple_network):
@@ -353,17 +378,23 @@ class TestContTempInstNetwork:
 # --------------------------------------------------------------------------- #
 class TestSaveLoad:
 
-    def test_save_and_load_pickle(self, simple_network, tmp_path):
-        pkl_path = tmp_path / "network.pkl"
-        with open(pkl_path, "wb") as f:
-            pickle.dump(simple_network, f)
-        with open(pkl_path, "rb") as f:
-            loaded = pickle.load(f)
+    def test_save_load(self, simple_network,tmp_path):
+        simple_network.compute_laplacian_matrices()
+        simple_network.compute_inter_transition_matrices(lamda=1)
+        simple_network.compute_transition_matrices(
+                                    lamda=1,
+                                    save_intermediate=True,
+                                    reverse_time=False,
+                                    force_csr=False,
+                                    tol=None)
+        simple_network.save(tmp_path / "simple_network.pkl")
+        
 
-        assert isinstance(loaded, ContTempNetwork)
+        new_network=ContTempNetwork.load(tmp_path / "simple_network.pkl")
+
         for col in ["source_nodes", "target_nodes", "starting_times", "ending_times"]:
             pd.testing.assert_series_equal(
-                simple_network.events_table[col], loaded.events_table[col],
+                simple_network.events_table[col], new_network.events_table[col],
             )
 
 
@@ -381,8 +412,13 @@ class TestBasicProperties:
     def test_end_time(self, simple_network):
         assert simple_network.end_time == 7
 
+    def test_print(self ,simple_network):
+        s=str(simple_network)
+        assert s==  "<class 'tempnet.temporal_network.ContTempNetwork'> with 3 nodes and 4 events" 
+
     def test_node_array_sorted(self, simple_network):
         assert list(simple_network.node_array) == [0, 1, 2]
+        assert simple_network.nodes==['A', 'B', 'C']
 
     def test_durations_column_exists(self, simple_network):
         assert "durations" in simple_network.events_table.columns
