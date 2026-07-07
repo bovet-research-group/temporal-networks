@@ -1,8 +1,14 @@
-"""#
-# flow stability
+"""
 #
-# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+# Temporal networks `tempnet`
 #
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>
+#
+# Contributors: 
+# Yasaman Asgari <yasaman.asgari@uzh.ch>
+# Juni Schindler <juni.schindler@uzh.ch>
+# Samuel Koovely <samuel.koovely@uzh.ch>
+
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
 # Software Foundation; either version 3 of the License, or (at your option) any
@@ -18,35 +24,43 @@
 
 
 """
-
 import gzip
 import os
 import pickle
 import time
+from tqdm import tqdm
+from joblib import Parallel, delayed
+import gc
 from dataclasses import dataclass
-from functools import partial
-
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.sparse import (
     coo_matrix,
-    csc_matrix,
     csr_matrix,
     diags,
     dok_matrix,
     eye,
-    isspmatrix,
     isspmatrix_csr,
     lil_matrix,
 )
-from scipy.sparse.csgraph import connected_components
-from scipy.sparse.linalg import eigsh, expm
 
-from .parallel_expm import compute_subspace_expm_parallel
-from stochmat import inplace_csr_row_normalize, SparseStochMat
+from scipy.sparse.csgraph import connected_components
+from scipy.sparse.linalg import expm
+from .expm_with_tol import mfp_exp
+from .subspace_expm import sparse_lapl_expm
+from .utils import (
+    SparseStochMat,
+    inplace_csr_row_normalize,
+    set_to_zeroes,
+    to_dense,
+)
 
 from .logger import get_logger
+
+
+from matplotlib import pyplot as plt
+import seaborn as sns
 
 # get the logger
 logger = get_logger()
@@ -62,6 +76,7 @@ class _LaplacianState:
     S: object        # self-loop diagonal (csc)
     Dm1: object      # inverse-degree diagonal (csc)
     degrees: np.ndarray
+    dynamics: str
 
 
 class ContTempNetwork:
@@ -87,27 +102,17 @@ class ContTempNetwork:
         {attr_name: list_of_values}, where list_of_values has the same order
         and length as `source_nodes`.
 
-    relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in
-        self.node_to_label_dict. Default is `True`
-
-    reset_event_table_index: boolean
-        Reset the index of the `events_table` DataFrame. Default is `True`.
-
-    node_to_label_dict: Python dict
-        If `relabel_nodes` is `False, this can be used to save the original
-        labels of the nodes.
-
+    label_to_node_dict: Python dict
+        The user can input this dictionary to map the labels in an arbitary order. 
     merge_overlapping_events: boolean
         Check for overlapping events (between the same pair of nodes)
         and merges them. Default is `False`.
 
-    events_table: Pandas Dataframe
-        Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
-        and 'ending_times' and index corresponding to event index.
-        Used for instantiating a new ConTempNetwork from the event_table of
-        an other one.
-
+    events_table: Pandas Dataframe/ URL/Path string to the CSV file
+        A Pandas Dataframe or a URL/Path string to
+        a CSV file containing the events table o with columns 'source_nodes', 
+        'target_nodes', 'starting_times'and 'ending_times' and index 
+        corresponding to event index. 
     """
     # parametrize the column names > single place to change them:
     _SOURCES = "source_nodes"
@@ -118,25 +123,6 @@ class ContTempNetwork:
     _ESSENTIAL = [_SOURCES, _TARGETS, _STARTS, _ENDINGS]
     # to hold endings - starts
     _DURATIONS = "durations"
-    # for instantaneous event this is the duration to use
-    _DEFAULT_DURATION = 1
-
-    def _build_label_maps(self, source_iter, target_iter):
-        """Build label<->node id dicts from two iterables of node labels.
-
-        Sets `self.label_to_node_dict` (original label -> contiguous
-        0..N-1 node id) and `self.node_to_label_dict` (its inverse).
-        Does not modify the input iterables.
-        """
-        all_nodes = set()
-        all_nodes.update(source_iter)
-        all_nodes.update(target_iter)
-        self.label_to_node_dict = {
-            m: n for n, m in enumerate(sorted(all_nodes))
-        }
-        self.node_to_label_dict = {
-            n: m for m, n in self.label_to_node_dict.items()
-        }
 
     def __init__(self, *,
                  source_nodes=[],
@@ -144,9 +130,7 @@ class ContTempNetwork:
                  starting_times=[],
                  ending_times=[],
                  extra_attrs=None,
-                 relabel_nodes=True,
-                 reset_event_table_index=True,
-                 node_to_label_dict=None,
+                 label_to_node_dict=None,
                  merge_overlapping_events=False,
                  events_table=None,
                  **kwargs):
@@ -161,17 +145,6 @@ class ContTempNetwork:
                 )
             assert len(source_nodes) == len(target_nodes) == \
                    len(starting_times) == len(ending_times)
-
-            if relabel_nodes:
-                # relabel nodes from 0 to num_nodes and save
-                # original labels in self.node_to_label_dict
-                self._build_label_maps(source_nodes, target_nodes)
-                source_nodes = [self.label_to_node_dict[n]
-                                for n in source_nodes]
-                target_nodes = [self.label_to_node_dict[n]
-                                for n in target_nodes]
-            else:
-                self.node_to_label_dict = node_to_label_dict
 
             data = {"source_nodes": source_nodes,
                     "target_nodes": target_nodes,
@@ -195,11 +168,13 @@ class ContTempNetwork:
                                           inplace=True)
 
         else:
+
             if isinstance(events_table, (str, Path)):
                 try:
                     # Convert Path to string if it's a Path object
                     self.events_table = pd.read_csv(str(events_table), **kwargs)
                     logger.debug("Loading events from csv file.")
+
                 except FileNotFoundError:
                     raise ValueError(
                         f"The file at {events_table} was not found."
@@ -212,60 +187,80 @@ class ContTempNetwork:
                     raise ValueError(
                         f"The file at {events_table} could not be parsed."
                     )
+                
             elif isinstance(events_table, pd.DataFrame):
                 # copy to avoid mutating caller's DataFrame when relabeling
-                self.events_table = events_table.copy() if relabel_nodes \
-                    else events_table
+                self.events_table = events_table.copy()
+
             else:
                 raise ValueError(
-                    "`events_table` must be a pandas DataFrame or the"
-                    "path to a CSV file. "
+                    "`events_table` must be a pandas DataFrame or path to CSV file. "
                     f"'{type(events_table)} is not acceptable."
                 )
-            reset_event_table_index = False
+
             if self._ENDINGS not in self.events_table.columns:
                 raise ValueError(
                     f"events_table is missing required column"
                     f" '{self._ENDINGS}'. For instantaneous temporal"
                     " networks use ContTempInstNetwork."
+            )
+            if not set(self._ESSENTIAL).issubset(self.events_table.columns):
+                    raise ValueError(
+                        f"events_table is missing required columns. "
+                        f"Expected: {self._ESSENTIAL}, "
+                            f"Got: {list(self.events_table.columns)}"
+                        )
+        self.num_nodes = pd.unique(
+            self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
+        ).size  
+        if label_to_node_dict: 
+            logger.info(label_to_node_dict)  
+            values = list(label_to_node_dict.values())
+            if len(set(values)) != len(values):
+                raise ValueError(
+                    "label_to_node_dict must have unique values for each label."
                 )
-            if relabel_nodes:
-                self._build_label_maps(
-                    self.events_table[self._SOURCES],
-                    self.events_table[self._TARGETS],
+            self.label_to_node_dict = label_to_node_dict
+            self.node_to_label_dict = {v: k for k, v in label_to_node_dict.items()}
+               
+            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
+            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
+
+            if not self._is_contiguous(self.events_table[self._SOURCES],
+                                    self.events_table[self._TARGETS]):
+                raise ValueError(
+                    "Nodes not labeled 0..num_nodes-1 after relabeling."
                 )
-                self.events_table[self._SOURCES] = self.events_table[
-                    self._SOURCES
-                ].map(self.label_to_node_dict)
-                self.events_table[self._TARGETS] = self.events_table[
-                    self._TARGETS
-                ].map(self.label_to_node_dict)
-            else:
-                self.node_to_label_dict = node_to_label_dict
 
-        if reset_event_table_index:
-            self.events_table.reset_index(inplace=True, drop=True)
+        elif not self._is_contiguous(self.events_table[self._SOURCES],
+                                    self.events_table[self._TARGETS]):
+            labels = sorted(set(self.events_table[self._SOURCES]) |
+                            set(self.events_table[self._TARGETS]))
+            self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
+            self.node_to_label_dict = {i: name for name, i in self.label_to_node_dict.items()}
+            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
+            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
+        else:
 
-        self.node_array = np.sort(pd.unique(
-            self.events_table[["source_nodes",
-                               "target_nodes"]].values.ravel("K")
-        ))
+            self.label_to_node_dict = {i: i for i in range(self.num_nodes)}
+            self.node_to_label_dict = {i: i for i in range(self.num_nodes)}
 
-        self.num_nodes = self.node_array.shape[0]
+        self.node_array = np.sort(list(self.label_to_node_dict.values()))
+
+
 
         self.num_events = self.events_table.shape[0]
 
         self.start_time = self.events_table.starting_times.min()
 
         self.end_time = self.events_table.ending_times.max()
-
+        
         self.events_table[
             "durations"
         ] = self.events_table.ending_times - self.events_table.starting_times
 
         # to record compute times
         self._compute_times = {}
-
         self._overlapping_events_merged = False
         if merge_overlapping_events:
             num_merged = 1
@@ -273,12 +268,121 @@ class ContTempNetwork:
                 num_merged = self._merge_overlapping_events()
             self._overlapping_events_merged = True
 
-        self.is_directed = False
-        self.instantaneous_events = False
+        
+    def _is_contiguous(self, src, tgt):
+        " This functions checks whether the nodes are indexed from 0 to n-1"
+        vals = np.unique(np.concatenate([src.to_numpy(), tgt.to_numpy()]))
+        num_nodes=len(vals)
+        return (vals.dtype.kind in "iu"
+                and vals.min() == 0
+                and vals.max() == num_nodes - 1
+                and len(vals) == num_nodes)
 
     def __repr__(self):
         return str(self.__class__) + \
               f" with {self.num_nodes} nodes and {self.num_events} events"
+
+    @property
+    def nodes(self):
+        """Sorted list of original node labels."""
+        return sorted(self.label_to_node_dict.keys())
+
+    @staticmethod
+    def _validate_dynamics(dynamics):
+        if dynamics is None:
+            return "rw"
+        if dynamics == "random_walk":
+            dynamics = "rw"
+        if dynamics not in {"rw", "heat"}:
+            raise ValueError("dynamics must be 'rw' or 'heat'")
+        return dynamics
+
+    def _resolve_dynamics(self, dynamics=None):
+        if dynamics is None:
+            dynamics = getattr(self, "laplacian_dynamics", "rw")
+        return self._validate_dynamics(dynamics)
+
+    def _invalidate_laplacian_dependent_cache(self):
+        """Clear flat caches derived from the current Laplacian matrices."""
+        for attr in ("inter_T", "T", "delta_inter_T", "S", "S_reverse"):
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+        if hasattr(self, "_inter_T_info"):
+            delattr(self, "_inter_T_info")
+
+        if hasattr(self, "direction"):
+            delattr(self, "direction")
+
+    def _invalidate_lambda_cache(self, lamda):
+        for attr in ("T", "delta_inter_T", "S", "S_reverse"):
+            if hasattr(self, attr):
+                getattr(self, attr).pop(lamda, None)
+
+    def _inter_T_matches_request(self, dynamics, lamda, t_start=None,
+                                 t_stop=None, fix_tau_k=None):
+        dynamics = self._validate_dynamics(dynamics)
+        if not hasattr(self, "_inter_T_info"):
+            return False
+
+        info = self._inter_T_info.get(lamda)
+        if info is None:
+            return False
+
+        t_start_req, k_start_req, t_stop_req, k_stop_req = \
+            self._requested_laplacian_range(t_start=t_start, t_stop=t_stop)
+
+        if (
+            info.get("dynamics") != dynamics
+            or
+            info.get("t_start") != t_start_req
+            or info.get("k_start") != k_start_req
+            or info.get("t_stop") != t_stop_req
+            or info.get("k_stop") != k_stop_req
+        ):
+            return False
+
+        if fix_tau_k is not None and info.get("fix_tau_k") != fix_tau_k:
+            return False
+
+        return True
+
+    def _requested_laplacian_range(self, t_start=None, t_stop=None):
+        if not hasattr(self, "time_grid"):
+            self._compute_time_grid()
+
+        if t_start is None:
+            t_start_req = self.times[0]
+            k_start_req = 0
+        else:
+            t_start_req, k_start_req = self._get_closest_time(t_start)
+
+        if t_stop is None:
+            t_stop_req = self.times[-1]
+            k_stop_req = len(self.times) - 1
+        else:
+            t_stop_req, k_stop_req = self._get_closest_time(t_stop)
+
+        return t_start_req, k_start_req, t_stop_req, k_stop_req
+
+    def _laplacians_match_request(self, t_start=None, t_stop=None,
+                                  dynamics=None):
+        dynamics = self._validate_dynamics(dynamics)
+        if (
+            not hasattr(self, "laplacians")
+            or getattr(self, "laplacian_dynamics", None) != dynamics
+        ):
+            return False
+
+        t_start_req, k_start_req, t_stop_req, k_stop_req = \
+            self._requested_laplacian_range(t_start=t_start, t_stop=t_stop)
+
+        return (
+            getattr(self, "_t_start_laplacians", None) == t_start_req
+            and getattr(self, "_k_start_laplacians", None) == k_start_req
+            and getattr(self, "_t_stop_laplacians", None) == t_stop_req
+            and getattr(self, "_k_stop_laplacians", None) == k_stop_req
+        )
 
     def save(self, filename,
              matrices_list=None,
@@ -296,16 +400,12 @@ class ContTempNetwork:
                 `matrices_list = ['laplacians',
                                   'adjacencies',
                                   'inter_T',
-                                  'inter_T_lin',
                                   'T',
-                                  'T_lin',
-                                  '_stationary_trans',
-                                  'delta_inter_T',
-                                  'delta_inter_T_lin',]`
+                                  'delta_inter_T']`
         attributes_list: list of strings
             List of attribute names to save.
             The default list is:
-                `attributes_list = ['node_to_label_dict',
+                `attributes_list = ['label_to_node_dict',
                                     'events_table',
                                     'times',
                                     'time_grid',
@@ -316,35 +416,33 @@ class ContTempNetwork:
                                     '_t_stop_laplacians',
                                     '_k_stop_laplacians',
                                     '_overlapping_events_merged',]`
-
         """
         save_dict = dict()
 
         matrices = ["laplacians",
                     "adjacencies",
                     "inter_T",
-                    "inter_T_lin",
                     "T",
-                    "T_lin",
-                    "_stationary_trans",
-                    "delta_inter_T",
-                    "delta_inter_T_lin"]
+                    "delta_inter_T"]
 
         if matrices_list is None:
             matrices_list = matrices
 
-        attributes = ["node_to_label_dict",
+        attributes = ["label_to_node_dict",
+                      "node_to_label_dict",
                       "events_table",
                       "times",
                       "time_grid",
                       "num_nodes",
+                      "num_events",
                       "_compute_times",
                       "_t_start_laplacians",
                       "_k_start_laplacians",
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
-                      "_overlapping_events_merged",
-                      "is_directed"]
+                      "laplacian_dynamics",
+                      "_inter_T_info",
+                      "_overlapping_events_merged"]
 
         if attributes_list is None:
             attributes_list = attributes
@@ -359,6 +457,7 @@ class ContTempNetwork:
 
         with open(os.path.splitext(filename)[0] + ".pickle", "wb") as fopen:
             pickle.dump(save_dict, fopen)
+        logger.info(f'Network has been successfully saved in {filename}')
 
     @classmethod
     def load(cls, filename,
@@ -378,16 +477,13 @@ class ContTempNetwork:
                 `matrices_list = ['laplacians',
                                   'adjacencies',
                                   'inter_T',
-                                  'inter_T_lin',
                                   'T',
-                                  'T_lin',
-                                  '_stationary_trans',
-                                  'delta_inter_T',
-                                  'delta_inter_T_lin',]`
+                                  'delta_inter_T']`
         attributes_list: list of strings
             List of attribute names to load.
             The default list is:
-                `attributes_list = ['node_to_label_dict',
+                `attributes_list = ['label_to_node_dict',
+                                    'node_to_label_dict'
                                     'events_table',
                                     'times',
                                     'time_grid',
@@ -403,28 +499,27 @@ class ContTempNetwork:
         matrices = ["laplacians",
                     "adjacencies",
                     "inter_T",
-                    "inter_T_lin",
                     "T",
-                    "T_lin",
-                    "_stationary_trans",
-                    "delta_inter_T",
-                    "delta_inter_T_lin"]
+                    "delta_inter_T"]
 
         if matrices_list is None:
             matrices_list = matrices
 
-        attributes = ["node_to_label_dict",
+        attributes = ["label_to_node_dict",
+                      'node_to_label_dict',
                       "events_table",
                       "times",
                       "time_grid",
                       "num_nodes",
+                      "num_events",
                       "_compute_times",
                       "_t_start_laplacians",
                       "_k_start_laplacians",
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
-                      "_overlapping_events_merged",
-                      "is_directed"]
+                      "laplacian_dynamics",
+                      "_inter_T_info",
+                      "_overlapping_events_merged"]
 
         if attributes_list is None:
             attributes_list = attributes
@@ -434,13 +529,12 @@ class ContTempNetwork:
 
         events_table = graph_dict.pop("events_table")
 
-        net = cls(events_table=events_table,
-                  relabel_nodes=False,
-                  node_to_label_dict=graph_dict.pop("node_to_label_dict"))
+        net = cls(events_table=events_table)
 
         for k, val in graph_dict.items():
             if k in matrices_list:
                 setattr(net, k, val)
+
             if k in attributes_list:
                 setattr(net, k, val)
 
@@ -526,11 +620,9 @@ class ContTempNetwork:
         skipping = False
         if os.path.exists(file):
             if replace_existing:
-                # TODO: move to logger usage
-                print("PID ", os.getpid(), f" : , file {file} already exists, replacing it.")
+                logger.info("PID %s : file %s already exists, replacing it.", os.getpid(), file)
             else:
-                # TODO: move to logger usage
-                print("PID ", os.getpid(), f" : , file {file} already exists, skipping.")
+                logger.info(f"PID {os.getpid()} : file {file} already exists, skipping.")
                 skipping = True
 
         if not skipping:
@@ -545,34 +637,30 @@ class ContTempNetwork:
             ]
             save_dict["num_nodes"] = self.num_nodes
             save_dict["_compute_times"] = self._compute_times
+            if hasattr(self, "laplacian_dynamics"):
+                save_dict["laplacian_dynamics"] = self.laplacian_dynamics
 
             if save_delta:
-                assert not isinstance(
-                    self.inter_T[lamda][0], SparseStochMat
-                ), "inter_T must not be SparseStochMat"
+                if lamda is None:
+                    lamdas_to_check = self.inter_T.keys()
+                else:
+                    lamdas_to_check = [lamda]
+                for lamda_i in lamdas_to_check:
+                    assert not isinstance(
+                        self.inter_T[lamda_i][0], SparseStochMat
+                    ), "inter_T must not be SparseStochMat"
 
-                if not hasattr(
-                    self, "delta_inter_T"
-                ) and hasattr(self, "inter_T"):
-                    if lamda is not None:
-                        self._compute_delta_trans_mat(lamda,
-                                                      round_zeros=round_zeros,
-                                                      tol=tol)
-                    else:
-                        # computes it for all lamda
-                        for lamda in self.inter_T.keys():
-                            self._compute_delta_trans_mat(
-                                lamda,
-                                round_zeros=round_zeros,
-                                tol=tol
-                            )
-
-                if (
-                    lamda is not None
-                ) and (lamda not in self.delta_inter_T.keys()):
+                if lamda is not None:
                     self._compute_delta_trans_mat(lamda,
                                                   round_zeros=round_zeros,
                                                   tol=tol)
+                else:
+                    for lamda_i in self.inter_T.keys():
+                        self._compute_delta_trans_mat(
+                            lamda_i,
+                            round_zeros=round_zeros,
+                            tol=tol,
+                        )
 
                 if hasattr(self, "delta_inter_T"):
                     save_dict["inter_T"] = dict()
@@ -621,154 +709,12 @@ class ContTempNetwork:
                 text = "sparse stoch trans mats"
 
             if compressed:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
                 with gzip.open(file, "wb", compresslevel=2) as fopen:
                     pickle.dump(save_dict, fopen)
             else:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
-
-                with open(file, "wb") as fopen:
-                    pickle.dump(save_dict, fopen)
-
-    def save_inter_T_lin(self,
-                         filename,
-                         lamda=None,
-                         round_zeros=True,
-                         tol=1e-8,
-                         compressed=False,
-                         replace_existing=True,
-                         save_delta=False):
-        """Creates delta_inter_T_lin if it is not already present.
-
-        The delta_inter_T_lin is saves together with
-        inter_T_lin[lamda][t_s][0] in a pickle file.
-        """
-        assert hasattr(
-            self, "inter_T_lin"
-        ), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
-
-        ext = os.path.splitext(filename)[-1]
-
-        file = filename
-
-        if compressed:
-            if ext != ".gz":
-                file += ".gz"
-        elif ext != ".pickle":
-            file += ".pickle"
-
-        skipping = False
-        if os.path.exists(file):
-            if replace_existing:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), f" : , file {file} already exists, replacing it.")
-            else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), f" : , file {file} already exists, skipping.")
-                skipping = True
-
-        if not skipping:
-
-            save_dict = {}
-            save_dict["_k_start_laplacians"] = self._k_start_laplacians
-            save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
-            save_dict["_t_start_laplacians"] = self._t_start_laplacians
-            save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-            save_dict["times_k_start_to_k_stop+1"] = self.times.values[
-                self._k_start_laplacians:self._k_stop_laplacians + 1
-            ]
-            save_dict["num_nodes"] = self.num_nodes
-            save_dict["_compute_times"] = self._compute_times
-
-            if save_delta:
-                if not hasattr(self, "delta_inter_T_lin") and \
-                                    hasattr(self, "inter_T_lin"):
-                    if lamda is not None:
-                        self._compute_delta_trans_mat(lamda,
-                                                      round_zeros=round_zeros,
-                                                      tol=tol)
-                    else:
-                        # computes it for all lamda
-                        for lamda in self.inter_T_lin.keys():
-                            self._compute_delta_trans_mat(
-                                lamda,
-                                round_zeros=round_zeros,
-                                tol=tol
-                            )
-                if (
-                    lamda is not None
-                ) and (
-                    lamda not in self.delta_inter_T_lin.keys()
-                ):
-                    self._compute_delta_trans_mat(lamda,
-                                                  round_zeros=round_zeros,
-                                                  tol=tol)
-                if hasattr(self, "delta_inter_T_lin"):
-                    save_dict["inter_T_lin"] = dict()
-                    save_dict["is_delta_trans"] = True
-
-                    if lamda is None:
-                        lamdas = self.delta_inter_T_lin.keys()
-                    else:
-                        lamdas = [lamda]
-
-                    for lamda in lamdas:
-                        save_dict["inter_T_lin"][lamda] = dict()
-                        for t_s in self.inter_T_lin[lamda].keys():
-                            save_dict["inter_T_lin"][lamda][t_s] = dict()
-                            save_dict["inter_T_lin"][lamda][t_s][
-                                "delta_inter_T_lin"
-                            ] = self.delta_inter_T_lin[lamda][t_s]
-                            save_dict["inter_T_lin"][lamda][t_s][
-                                "trans_mat_lin0"
-                            ] = self.inter_T_lin[lamda][t_s][0].copy()
-                            if round_zeros:
-                                set_to_zeroes(
-                                    save_dict["inter_T_lin"][lamda][t_s][
-                                        "trans_mat_lin0"],
-                                    tol=tol
-                                )
-
-                text = "delta trans mats"
-
-            else:
-
-                save_dict["inter_T_lin"] = dict()
-                save_dict["is_sparse_stoch"] = True
-
-                if lamda is None:
-                    lamdas = self.delta_inter_T_lin.keys()
-                else:
-                    lamdas = [lamda]
-
-                for lamda in lamdas:
-                    save_dict["inter_T_lin"][lamda] = dict()
-                    for t_s in self.inter_T_lin[lamda].keys():
-                        assert isinstance(
-                            self.inter_T_lin[lamda][t_s][0], SparseStochMat
-                        ), "inter_T needs to be SparseStochMat"
-                        save_dict["inter_T_lin"][lamda][t_s] = []
-                        for interT in self.inter_T_lin[lamda][t_s]:
-                            if round_zeros:
-                                interT.set_to_zeroes(tol=tol)
-                            save_dict["inter_T_lin"][lamda][t_s].append(
-                                interT.to_dict()
-                            )
-
-                text = "sparse stoch trans mats"
-
-            if compressed:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
-
-                with gzip.open(file, "wb", compresslevel=2) as fopen:
-                    pickle.dump(save_dict, fopen)
-            else:
-                # TODO: switch to logging
-                print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+                logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
                 with open(file, "wb") as fopen:
                     pickle.dump(save_dict, fopen)
@@ -776,7 +722,7 @@ class ContTempNetwork:
     @staticmethod
     def load_inter_T(filename):
         """
-        Loads inter_T and inter_T_lin from 'filename'.
+        Loads inter_T from 'filename'.
 
         The file must have been generated with `save_inter_T`.
 
@@ -815,6 +761,8 @@ class ContTempNetwork:
             "num_nodes": load_dict["num_nodes"],
             "times_k_start_to_k_stop+1": load_dict["times_k_start_to_k_stop+1"]
         }
+        if "laplacian_dynamics" in load_dict:
+            return_dict["laplacian_dynamics"] = load_dict["laplacian_dynamics"]
 
         # rebuild inter_T from delta_inter_T
         if "inter_T" in load_dict.keys():
@@ -837,40 +785,6 @@ class ContTempNetwork:
                         return_dict["inter_T"][lamda].append(
                             return_dict["inter_T"][lamda][-1] + dT
                         )
-
-        if "inter_T_lin" in load_dict.keys():
-            return_dict["inter_T_lin"] = dict()
-
-            if load_dict.get("is_sparse_stoch", False):
-
-                for lamda in load_dict["inter_T_lin"].keys():
-                    return_dict["inter_T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["inter_T_lin"][lamda].keys():
-
-                        return_dict["inter_T_lin"][lamda][t_s] = [
-                            SparseStochMat(**mat_dict)
-                            for mat_dict in load_dict[
-                                "inter_T_lin"][lamda][t_s]
-                        ]
-
-            else:
-                for lamda in load_dict["inter_T_lin"].keys():
-                    return_dict["inter_T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["inter_T_lin"][lamda].keys():
-
-                        return_dict["inter_T_lin"][lamda][t_s] = [
-                            load_dict[
-                                "inter_T_lin"][lamda][t_s]["trans_mat_lin0"]
-                        ]
-
-                        for dT in load_dict["inter_T_lin"][lamda][t_s][
-                                "delta_inter_T_lin"]:
-                            return_dict["inter_T_lin"][lamda][t_s].append(
-                                return_dict["inter_T_lin"][lamda][t_s][-1] + dT
-                            )
-
         del load_dict
         return return_dict
 
@@ -903,6 +817,8 @@ class ContTempNetwork:
         ]
         save_dict["num_nodes"] = self.num_nodes
         save_dict["_compute_times"] = self._compute_times
+        if hasattr(self, "laplacian_dynamics"):
+            save_dict["laplacian_dynamics"] = self.laplacian_dynamics
 
         save_dict["T"] = dict()
 
@@ -912,6 +828,13 @@ class ContTempNetwork:
             lamdas = [lamda]
 
         for lamda in lamdas:
+            if isinstance(self.T[lamda], list):
+                raise TypeError(
+                    "save_T only supports final transition matrices. "
+                    "Run compute_transition_matrices with "
+                    "save_intermediate=False."
+                )
+
             if isinstance(self.T[lamda], SparseStochMat):
                 save_dict["is_sparse_stoch"] = True
                 if round_zeros:
@@ -923,7 +846,7 @@ class ContTempNetwork:
 
                 text = "SparseStochMat T"
 
-            elif isspmatrix_csr(self.T[lamda]):
+            elif isspmatrix_csr(self.T[lamda]) :
 
                 if round_zeros:
                     T = self.T[lamda].copy()
@@ -935,7 +858,10 @@ class ContTempNetwork:
                 text = "csr T"
 
             else:
-                raise TypeError("T must be csr or SparseStochMat.")
+                raise TypeError(
+                    "T must be csr or SparseStochMat. current type is "
+                    f"{type(self.T[lamda])}"
+                )
 
         ext = os.path.splitext(filename)[-1]
 
@@ -945,8 +871,8 @@ class ContTempNetwork:
 
             if ext != ".gz":
                 file += ".gz"
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+            logger.info(f"PID {os.getpid()} : saving {text} to {file}")
+
 
             with gzip.open(file, "wb", compresslevel=2) as fopen:
                 pickle.dump(save_dict, fopen)
@@ -954,107 +880,14 @@ class ContTempNetwork:
             ext = os.path.splitext(filename)[-1]
             if ext != ".pickle":
                 file += ".pickle"
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
+            logger.info(f"PID {os.getpid()} : saving {text} to {file}")
 
             with open(file, "wb") as fopen:
                 pickle.dump(save_dict, fopen)
-
-    def save_T_lin(self,
-                   filename,
-                   lamda=None,
-                   round_zeros=True,
-                   tol=1e-8,
-                   compressed=False):
-        """
-        Saves a dict with 'T_lin' as key and net.T_lin and other attributes.
-
-        This also works with SparseStochMat instance.
-
-        It only works if net.T_lin[lamda][t_s] is a matrix and not a list of matrices,
-        i.e. if compute_transition_matrices was ran without save_intermediate.
-        """
-        assert hasattr(
-            self, "T_lin"
-        ), f"PID {os.getpid()} : nothing saved, compute inter_T_lin first."
-
-        save_dict = {}
-        save_dict["_k_start_laplacians"] = self._k_start_laplacians
-        save_dict["_k_stop_laplacians"] = self._k_stop_laplacians
-        save_dict["_t_start_laplacians"] = self._t_start_laplacians
-        save_dict["_t_stop_laplacians"] = self._t_stop_laplacians
-        save_dict["times_k_start_to_k_stop+1"] = self.times.values[
-            self._k_start_laplacians:self._k_stop_laplacians + 1
-        ]
-        save_dict["num_nodes"] = self.num_nodes
-        save_dict["_compute_times"] = self._compute_times
-
-        save_dict["T_lin"] = dict()
-
-        if lamda is None:
-            lamdas = self.T_lin.keys()
-        else:
-            lamdas = [lamda]
-
-        for lamda in lamdas:
-            save_dict["T_lin"][lamda] = dict()
-            for t_s in self.T_lin[lamda].keys():
-
-                if isinstance(self.T_lin[lamda][t_s], SparseStochMat):
-                    save_dict["is_sparse_stoch"] = True
-                    if round_zeros:
-                        T = self.T_lin[lamda][t_s].copy()
-                        T.set_to_zeroes(tol)
-                    else:
-                        T = self.T_lin[lamda][t_s]
-
-                    save_dict["T_lin"][lamda][t_s] = T.to_dict()
-
-                    text = "SparseStochMat T_lin"
-
-                elif isspmatrix_csr(self.T_lin[lamda][t_s]):
-
-                    if round_zeros:
-                        T = self.T_lin[lamda][t_s].copy()
-                        set_to_zeroes(T, tol)
-                    else:
-                        T = self.T_lin[lamda][t_s]
-                    save_dict["T_lin"][lamda][t_s] = T
-
-                    text = "csr T_lin"
-
-                else:
-                    raise TypeError("T must be csr or SparseStochMat.")
-
-        ext = os.path.splitext(filename)[-1]
-
-        file = filename
-
-        if compressed:
-
-            if ext != ".gz":
-                file += ".gz"
-
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
-
-            with gzip.open(file, "wb", compresslevel=2) as fopen:
-                pickle.dump(save_dict, fopen)
-        else:
-            ext = os.path.splitext(filename)[-1]
-            if ext != ".pickle":
-                file += ".pickle"
-
-            # TODO: switch to logging
-            print("PID ", os.getpid(), " : "," saving " + text + " to " + file)
-
-            with open(file, "wb") as fopen:
-                pickle.dump(save_dict, fopen)
-
 
     @staticmethod
     def load_T(filename):
-        """Loads T and T_lin from 'filename' that was saved with save_T.
+        """Loads T from 'filename' that was saved with save_T.
 
         Returns a dictionary with the T restored.
 
@@ -1091,6 +924,8 @@ class ContTempNetwork:
             "num_nodes": load_dict["num_nodes"],
             "times_k_start_to_k_stop+1": load_dict["times_k_start_to_k_stop+1"]
         }
+        if "laplacian_dynamics" in load_dict:
+            return_dict["laplacian_dynamics"] = load_dict["laplacian_dynamics"]
 
         if "T" in load_dict.keys():
             return_dict["T"] = dict()
@@ -1105,30 +940,9 @@ class ContTempNetwork:
                 for lamda in load_dict["T"].keys():
                     return_dict["T"][lamda] = load_dict["T"][lamda]
 
-        if "T_lin" in load_dict.keys():
-            return_dict["T_lin"] = dict()
-
-            if load_dict.get("is_sparse_stoch", False):
-
-                for lamda in load_dict["T_lin"].keys():
-                    return_dict["T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["T_lin"][lamda].keys():
-
-                        return_dict["T_lin"][lamda][t_s] = \
-                            SparseStochMat(**load_dict["T_lin"][lamda][t_s])
-
-            else:
-                for lamda in load_dict["T_lin"].keys():
-                    return_dict["T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["T_lin"][lamda].keys():
-
-                        return_dict["T_lin"][lamda][t_s] = \
-                                            load_dict["T_lin"][lamda][t_s]
-
         del load_dict
         return return_dict
+
 
     def compute_static_adjacency_matrix(self, start_time=None, end_time=None):
         """Returns the adjacency matrix of the static network built from the
@@ -1153,29 +967,26 @@ class ContTempNetwork:
         """
         if start_time is None:
             start_time = self.start_time
-
         if end_time is None:
             end_time = self.end_time
 
         mask = np.logical_and(self.events_table.starting_times < end_time,
-                              self.events_table.ending_times > start_time)
+                            self.events_table.ending_times > start_time)
 
-        # loop on events
-        data = []
-        cols = []
-        rows = []
-        for ev in self.events_table.loc[mask].itertuples():
+        sub = self.events_table.loc[mask]
+
+
+        data, rows, cols = [], [], []
+        for ev in sub.itertuples():
             data.append(
-                min(ev.ending_times,
-                    end_time) - max(ev.starting_times, start_time)
+                min(ev.ending_times, end_time) - max(ev.starting_times, start_time)
             )
             rows.append(ev.source_nodes)
             cols.append(ev.target_nodes)
 
-        A = coo_matrix((data, (rows, cols)),
-                       shape=(self.num_nodes, self.num_nodes))
-
+        A = coo_matrix((data, (rows, cols)), shape=(self.num_nodes, self.num_nodes))
         return A + A.T
+
 
     def _compute_time_grid(self):
         """Create `self.time_grid`, a dataframe with ('times', 'id') as index,
@@ -1228,7 +1039,8 @@ class ContTempNetwork:
                                    *,
                                    t_start=None,
                                    t_stop=None,
-                                   save_adjacencies=False):
+                                   save_adjacencies=False, 
+                                   dynamics='rw'):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -1259,12 +1071,24 @@ class ContTempNetwork:
             Default is False. Use to save adjacency matrices in
             `self.adjacencies`.
 
+        dynamics : str, optional
+            The dynamics to compute the laplacian. Default is 'rw'.
+            other option is `heat` laplacian.
+            If D is the degree matrix and A is the adjacency matrix: 
+                Heat=D-A 
+                Random walk=I-D^-1*A 
+
         Returns
         -------
         None.
 
         """
-        logger.info("Computing Laplacians")
+
+        dynamics = self._validate_dynamics(dynamics)
+        
+        logger.info(f"Computing Laplacians using {dynamics} method")
+        self._invalidate_laplacian_dependent_cache()
+
 
         if not hasattr(self, "time_grid"):
             self._compute_time_grid()
@@ -1284,7 +1108,13 @@ class ContTempNetwork:
         # self loop matrix
         S = I.copy()
 
-        state = _LaplacianState(A=A, S=S, Dm1=Dm1, degrees=degrees)
+        state = _LaplacianState(
+            A=A,
+            S=S,
+            Dm1=Dm1,
+            degrees=degrees,
+            dynamics=dynamics,
+        )
 
         self.laplacians = []
         if save_adjacencies:
@@ -1320,6 +1150,9 @@ class ContTempNetwork:
             self.time_grid.index.get_level_values(
                 "times") < self._t_stop_laplacians
         )]
+        
+        self.time_grid_range_laplacians=time_grid_range
+
         for k, (tk, time_ev) in enumerate(
                 time_grid_range.groupby(level="times")):
             if not k % 1000:
@@ -1332,6 +1165,8 @@ class ContTempNetwork:
             meet_id = time_ev.index.get_level_values("id")
             # starting or ending events
             is_starts = time_ev.is_start.values
+
+
 
             events_k = [self.events_table.loc[
                 mid,
@@ -1364,7 +1199,12 @@ class ContTempNetwork:
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+            if dynamics == 'rw':
+                self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+                
+            elif dynamics == 'heat':
+                self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
+            
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
 
@@ -1373,8 +1213,10 @@ class ContTempNetwork:
             self._laplacian_step_end(state)
 
         t_end = time.time()-t0
+        self.laplacian_dynamics = dynamics
         self._compute_times["laplacians"] = t_end
-        logger.info(f"Finished in {t_end}")
+        self._compute_times[f"laplacians_{dynamics}"] = t_end
+        logger.info(f"Finished computing laplacians in {t_end:.2f}")
 
     # ------------------------------------------------------------------
     # Laplacian-loop extension hooks.
@@ -1461,358 +1303,303 @@ class ContTempNetwork:
         """
         pass
 
+
+    def _default_lamda(self):
+        if not hasattr(self, "time_grid"):
+            self._compute_time_grid()
+        taus = np.diff(self.times)
+        if taus.size == 0:
+            return 1.0
+        return 1.0 / np.median(taus)
+
+    def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, **kwargs):
+        """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
+        if L.getnnz() == 0:
+            return eye(num_nodes, format="csr")
+        if method == "dense_expm":
+            return csr_matrix(expm(-tau_k * lamda * L.toarray()))
+        if method == "sparse_expm":
+            return expm(-tau_k * lamda * L).tocsr()
+        if method == "parallel_expm":
+            params = dict(
+                dense_expm=True,
+                nproc=1,
+                thresh_ratio=None,
+                normalize_rows=True,
+            )
+            params.update(kwargs)
+            return sparse_lapl_expm(L, fact=tau_k * lamda, **params)
+        if method == "mfp_exp":
+            params = dict(err=1e-8, non_norm=0)
+            params.update(kwargs)
+            return mfp_exp(-tau_k * lamda * L, **params).tocsr()
+        raise ValueError(f"unknown transition method {method!r}")
+
+    def _prepare_transition_matrix(self, Tk, *, force_csr, tol):
+        if isinstance(Tk, SparseStochMat):
+            if not force_csr:
+                raise ValueError(
+                    "inter_T is a SparseStochMat, but force_csr is False. "
+                    "Set force_csr=True."
+                )
+            Tk = Tk.tocsr()
+        elif force_csr and not isspmatrix_csr(Tk):
+            Tk = Tk.tocsr()
+        else:
+            Tk = Tk.copy()
+
+        if tol is not None:
+            set_to_zeroes(Tk, tol)
+        inplace_csr_row_normalize(Tk)
+        return Tk
+
     def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
                                           t_stop=None, fix_tau_k=False,
-                                          use_sparse_stoch=False,
-                                          dense_expm=True):
+                                          dynamics=None,
+                                          method="dense_expm", n_jobs=1,
+                                          **kwargs):
         """
-        Computes interevent transition matrices.
+        Compute inter-event transition matrices for a lambda.
 
-        T_k(lamda) = expm(-tau_k*lamda*L_k).
-
-
-        The transition matrix T_k is saved in `self.inter_T[lamda][k]`, where
-        self.inter_T is a dictionary with lamda as keys and lists of transition
-        matrices as values.
-
-        will compute from self.times[self._k_start_laplacians] until
-        self.times[self._k_stop_laplacians-1]
-
-        the transition matrix at step k, is the probability transition matrix
-        between times[k] and times[k+1]
-
-        Parameters
-        ----------
-        lamda : float, optional
-            Random walk rate, dynamical resolution parameter.
-            The default (None) is 1 over the median inter event time.
-        t_start : float or int, optional
-            Starting time, passed to `compute_laplacian_matrices` if the
-            Laplacians have not yet been computed.
-            Otherwise is not used.
-            The computation starts at self.times[self._k_start_laplacians].
-            The default is None, i.e. starts at the beginning of times.
-        t_stop : float or int, optional
-            Same than `t_start` but for the ending time of computations.
-            Computations stop at self.times[self._k_stop_laplacians-1].
-            Default is end of times.
-        fix_tau_k : bool, optional
-            If true, all interevent times (tau_k) in the formula above are set
-            to 1. This decouples the dynamic scale from the length of event
-            which is useful for temporal networks with instantaneous events.
-            The default is False.
-        use_sparse_stoch : bool, optional
-            Whether to use custom sparse stochastic matrix format to save the
-            inter transition matrices. Especially useful for large networks as
-            the matrix exponential is then computed on each connected component
-            separately (more memory efficient). The default is False.
-        dense_expm : bool, optional
-            Whether to use the dense version of the matrix exponential
-            algorithm at each time steps.
-            Recommended for not too large networks.
-            The inter trans. matrices are still saved as sparse scipy matrices
-            as they usually have many zero values. The default is True. Has no
-            effect is use_sparse_stoch is True.
-
-        Returns
-        -------
-        None.
-
+        ``dynamics='rw'`` uses the random-walk Laplacian and
+        ``dynamics='heat'`` uses the combinatorial heat Laplacian.
+        Results are stored in ``self.inter_T[lamda]`` using the currently
+        requested dynamics.
         """
-        # NOTE: We might drop such tests if we check for process consistency
-        #       on a higher leverl (i.e. FlowStability)
-        if not hasattr(self, "laplacians"):
-            self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
-        if not hasattr(self, "inter_T"):
-            self.inter_T = dict()
+        valid_methods = {"dense_expm", "sparse_expm", "mfp_exp",
+                         "parallel_expm"}
+        if method not in valid_methods:
+            raise ValueError(
+                f"method must be one of {valid_methods}, got {method!r}"
+            )
+
+        dynamics = self._resolve_dynamics(dynamics)
 
         if lamda is None:
             logger.info("Taking lamda as 1/tau_w with tau_w = median "
-                        "interevent time")
-            lamda = 1/np.median(np.diff(self.times))
+                        "inter-event time")
+            lamda = self._default_lamda()
 
-        # new value of lamda, we need to recompute
-        if lamda not in self.inter_T.keys():
+        if not hasattr(self, "inter_T"):
+            self.inter_T = {}
 
-            logger.debug(
-                f"Computing interevent transition matrices for lamda={lamda}"
-            )
-            self.inter_T[lamda] = []
-
-            t0 = time.time()
-            for k, tk in enumerate(self.times[self._k_start_laplacians:
-                                              self._k_stop_laplacians]):
-                if not k % 1000:
-                    logger.debug(
-                        f"{k} over "
-                        f"{self._k_stop_laplacians-1-self._k_start_laplacians}"
-                    )
-                    logger.debug(f"{time.time()-t0:.2f}s")
-
-                if fix_tau_k:
-                    tau_k = 1.0
-                else:
-                    tau_k = self.times[self._k_start_laplacians+k+1] - tk
-
-                if use_sparse_stoch:
-                    self.inter_T[lamda].append(
-                        sparse_lapl_expm(self.laplacians[k],
-                                         tau_k*lamda,
-                                         dense_expm=dense_expm)
-                    )
-                elif self.laplacians[k].getnnz() == 0:
-                    # expm of zero = identity
-                    self.inter_T[lamda].append(
-                        eye(self.num_nodes, format="csr")
-                    )
-                elif dense_expm:
-                    self.inter_T[lamda].append(csr_matrix(
-                            expm(-tau_k * lamda * self.laplacians[k].toarray())
-                        ))
-                else:
-                    self.inter_T[lamda].append(expm(
-                        -tau_k * lamda * self.laplacians[k]
-                    ).tocsr())
-
-            if len(self.inter_T[lamda]) == 0:
-                logger.info("no events, trans. matrix = identity")
-                # is there was no event, the transition is identity
-                if use_sparse_stoch:
-                    self.inter_T[lamda].append(
-                        SparseStochMat.create_diag(size=self.num_nodes)
-                    )
-                else:
-                    self.inter_T[lamda].append(eye(self.num_nodes,
-                                                   dtype=np.float64,
-                                                   format="csr"))
-
-            t_end = time.time()-t0
-
-            self._compute_times["inter_T_" + str(lamda)] = t_end
-
-            logger.debug(
-                f"Finished computing interevent transition matrices in {t_end}"
-            )
-        logger.debug(
-            f"Interevent transition matrices already computed for {lamda=}"
-        )
-
-    def compute_lin_inter_transition_matrices(self,
-                                              lamda=None,
-                                              t_start=None,
-                                              t_stop=None,
-                                              t_s=10, fix_tau_k=False,
-                                              use_sparse_stoch=False):
-        """Compute interevent transition matrices as a linear approximation.
-
-        Approximated it expm(-tau_k*lamda*L_k) based on the discrete time
-        transition matrix.
-
-        `t_s` is the time value for which the linear approximation reaches the
-        stationary transition matrix (default is `t_s=10`).
-
-        The transition matrix T_k_lin is saved in 
-        `self.inter_T_lin[lamda][t_s][k]`,
-        where `self.inter_T_lin` is a dictionary with lamda as keys and
-        lists of transition matrices as values.
-
-        will compute from self.times[self._k_start_laplacians]
-        until self.times[self._k_stop_laplacians-1]
-
-        the transition matrix at step k, is the probability transition matrix
-        between times[k] and times[k+1]
-
-        """
-        I = eye(self.num_nodes,
-                dtype=np.float64, format="csr")
-
-        if not hasattr(self, "_stationary_trans"):
-            self._compute_stationary_transition(
-                t_start=t_start, t_stop=t_stop,
-                use_sparse_stoch=use_sparse_stoch
-            )
-
-        if not hasattr(self, "inter_T_lin"):
-            self.inter_T_lin = dict()
-
-        if lamda is None:
-            logger.info(
-                "taking lamda as 1/tau_w with tau_w = median interevent time"
-            )
-            lamda = 1/np.median(np.diff(self.times))
-
-        compute = True
-
-        if lamda in self.inter_T_lin.keys():
-            if t_s in self.inter_T_lin[lamda].keys():
-                compute = False
+        if lamda in self.inter_T:
+            if self._inter_T_matches_request(
+                dynamics,
+                lamda,
+                t_start=t_start,
+                t_stop=t_stop,
+                fix_tau_k=fix_tau_k,
+            ):
                 logger.debug(
-                    "Interevent transition matrices already computed "
-                    f"for lamda={lamda}, t_s={t_s}"
+                    "Inter-event transition matrices already computed for "
+                    f"{dynamics=}, {lamda=}"
                 )
+                return
 
-        if compute:
-            if lamda not in self.inter_T_lin.keys():
-                self.inter_T_lin[lamda] = dict()
-                self.inter_T_lin[lamda][t_s] = []
-            else:
-                self.inter_T_lin[lamda][t_s] = []
-
-            logger.debug(
-                "Computing interevent linear transition matrices for "
-                f"lamda={lamda}, t_s={t_s}"
+            logger.info(
+                "Recomputing inter-event transition matrices for "
+                f"{dynamics=}, {lamda=} because the requested range changed"
             )
+            self.inter_T.pop(lamda, None)
+            self._invalidate_lambda_cache(lamda)
 
-            t0 = time.time()
-            for k, tk in enumerate(self.times[self._k_start_laplacians:
-                                              self._k_stop_laplacians]):
-                if not k % 1000:
-                    logger.debug(
-                        f"{k} over "
-                        f"{self._k_stop_laplacians-1-self._k_start_laplacians}"
-                    )
-                    logger.debug(f"{time.time()-t0:.2f}s")
+        if not self._laplacians_match_request(
+            t_start=t_start,
+            t_stop=t_stop,
+            dynamics=dynamics,
+        ):
+            self.compute_laplacian_matrices(
+                t_start=t_start,
+                t_stop=t_stop,
+                dynamics=dynamics,
+            )
+            if not hasattr(self, "inter_T"):
+                self.inter_T = {}
 
-                if fix_tau_k:
-                    tau_k = 1.0
-                else:
-                    tau_k = self.times[self._k_start_laplacians+k+1] - tk
+        logger.info(
+            "Computing inter-event transition matrices for "
+            f"{dynamics=}, {lamda=}"
+        )
+        t0 = time.time()
 
-                Lcsr = self.laplacians[k].tocsr()
+        n_steps = len(self.laplacians)
+        if len(self.times) < self._k_start_laplacians + n_steps + 1:
+            raise ValueError(
+                "not enough time-grid points for the current laplacian range"
+            )
+        if fix_tau_k:
+            taus = [1.0] * n_steps
+        else:
+            taus = [
+                self.times[self._k_start_laplacians + k + 1]
+                - self.times[self._k_start_laplacians + k]
+                for k in range(n_steps)
+            ]
 
-                if use_sparse_stoch:
+        desc = f"expm {dynamics} lambda={float(lamda):.2e}"
+        if n_jobs == 1:
+            T_list = [
+                self._compute_single_T(
+                    L, tau, lamda, self.num_nodes, method, **kwargs
+                )
+                for L, tau in tqdm(
+                    zip(self.laplacians, taus),
+                    total=n_steps,
+                    desc=desc,
+                )
+            ]
+        else:
+            results_gen = Parallel(n_jobs=n_jobs, return_as="generator")(
+                delayed(self._compute_single_T)(
+                    L, tau, lamda, self.num_nodes, method, **kwargs
+                )
+                for L, tau in zip(self.laplacians, taus)
+            )
+            T_list = list(tqdm(results_gen, total=n_steps, desc=desc))
 
-                    # get non zero indices
-                    nonzerosum_rowcols = ~np.logical_and(Lcsr.getnnz(1) == 0,
-                                                         Lcsr.getnnz(0) == 0)
+        if len(T_list) == 0:
+            logger.debug("no events, trans. matrix = identity")
+            T_list.append(eye(self.num_nodes, dtype=np.float64, format="csr"))
 
-                    nz_rowcols, = (nonzerosum_rowcols).nonzero()
+        self.inter_T[lamda] = T_list
 
-                    self.inter_T_lin[lamda][t_s].append(
-                        sparse_lin_approx(I - Lcsr,
-                                          tau_k * lamda,
-                                          Pi=self._stationary_trans[k],
-                                          t_s=t_s,
-                                          nz_rowcols=nz_rowcols)
-                    )
-                else:
-                    self.inter_T_lin[lamda][t_s].append(
-                        lin_approx_trans_matrix(I - Lcsr,
-                                                tau_k * lamda,
-                                                Pi=self._stationary_trans[k],
-                                                t_s=t_s))
+        if not hasattr(self, "_inter_T_info"):
+            self._inter_T_info = {}
+        self._inter_T_info[lamda] = {
+            "dynamics": dynamics,
+            "k_start": self._k_start_laplacians,
+            "k_stop": self._k_stop_laplacians,
+            "t_start": self._t_start_laplacians,
+            "t_stop": self._t_stop_laplacians,
+            "fix_tau_k": fix_tau_k,
+            "method": method,
+            "kwargs": dict(kwargs),
+        }
 
-            if len(self.inter_T_lin[lamda][t_s]) == 0:
-                logger.debug("no events, lin. trans. matrix = identity")
-                # is there was no event, the transition is identity
-                if use_sparse_stoch:
-                    self.inter_T_lin[lamda].append(
-                        SparseStochMat.create_diag(size=self.num_nodes)
-                    )
-                else:
-                    self.inter_T_lin[lamda][t_s].append(
-                        eye(self.num_nodes,
-                            dtype=np.float64,
-                            format="csr")
-                    )
-
-            t_end = time.time()-t0
-            self._compute_times[f"tran_matrices_lin_{lamda}_{t_s}"] = t_end
-
-            logger.debug("Finished computing linear interevent transition "
-                         f"matrices in {t_end}")
+        gc.collect()
+        t_end = time.time() - t0
+        self._compute_times[f"inter_T_{dynamics}_{lamda}"] = t_end
+        logger.debug(
+            "Finished inter-event transition matrices for "
+            f"{dynamics=}, {lamda=} in {t_end:.2f}s"
+        )
 
     def compute_transition_matrices(self,
                                     lamda=None,
-                                    t_start=None,
-                                    t_stop=None,
+                                    dynamics=None,
                                     save_intermediate=True,
                                     reverse_time=False,
                                     force_csr=False,
                                     tol=None):
-        """Compute transition matrices and saves them in a dict of lists.
+        """Compute cumulative transition matrices.
 
-        The matrices are saved as `self.T[lamda]` where `self.T[lamda][k]` is
-        the product of all interevent transition matrices from t_0 to t_k
-        computed with lamda.
+        The matrices are stored as ``self.T[lamda]``. The corresponding
+        one-step matrices must already exist in ``self.inter_T[lamda]``.
         """
-        if not hasattr(self, "inter_T") or \
-                lamda not in self.inter_T.keys():
+        dynamics = self._resolve_dynamics(dynamics)
+
+        if lamda is None:
+            lamda = self._default_lamda()
+
+        if not hasattr(self, "inter_T") or lamda not in self.inter_T:
             raise Exception("Compute inter_T first.")
+        if (
+            hasattr(self, "_inter_T_info")
+            and lamda in self._inter_T_info
+            and self._inter_T_info[lamda].get("dynamics") != dynamics
+        ):
+            raise Exception(
+                "Compute inter_T first for "
+                f"dynamics={dynamics!r}."
+            )
 
         if not hasattr(self, "T"):
-            self.T = dict()
+            self.T = {}
+
+        requested_direction = "reverse" if reverse_time else "forward"
+
+        if lamda in self.T:
+            existing_direction = getattr(
+                self,
+                "direction",
+                requested_direction,
+            )
+            if existing_direction != requested_direction:
+                raise ValueError(
+                    f"reverse_time={reverse_time} implies "
+                    f"'{requested_direction}' direction, but cached "
+                    f"{dynamics=} transitions for {lamda=} are "
+                    f"'{existing_direction}'."
+                )
+            if not save_intermediate or isinstance(self.T[lamda], list):
+                logger.info(
+                    "Transition matrices already computed for "
+                    f"{dynamics=}, {lamda=}"
+                )
+                return
+
+        if hasattr(self, "direction") and self.direction != requested_direction:
+            raise ValueError(
+                f"reverse_time={reverse_time} implies "
+                f"'{requested_direction}' direction, but this network is "
+                f"already set to '{self.direction}'."
+            )
+
+        inter = self.inter_T[lamda]
+        n = len(inter)
 
         if reverse_time:
-            k_init = len(self.inter_T[lamda])-1
-            k_range = reversed(range(k_init))
-            logger.info("Reversed time computation.")
+            k_init, k_range = n - 1, reversed(range(n - 1))
+            self.direction = "reverse"
         else:
-            k_init = 0
-            k_range = range(1, len(self.inter_T[lamda]))
+            k_init, k_range = 0, range(1, n)
+            self.direction = "forward"
 
-        if lamda not in self.T.keys():
-            if save_intermediate:
-                if force_csr:
-                    # forcing the first matrix to csr, will ensure that
-                    # all products are done in csr format,
-                    # since CSR @ SparseStochMat t is not implemented
-                    self.T[lamda] = [self.inter_T[lamda][k_init].tocsr()]
-                else:
-                    self.T[lamda] = [self.inter_T[lamda][k_init]]
+        logger.info(
+            "Computing transition matrices for "
+            f"{dynamics=}, lambda={lamda} in {self.direction} time"
+        )
 
-                if tol is not None:
-                    set_to_zeroes(self.T[lamda][0], tol)
-                    inplace_csr_row_normalize(self.T[lamda][0])
-            else:
-                if force_csr:
-                    self.T[lamda] = self.inter_T[lamda][k_init].tocsr()
-                else:
-                    self.T[lamda] = self.inter_T[lamda][k_init]
+        t0 = time.time()
+        T0 = self._prepare_transition_matrix(
+            inter[k_init],
+            force_csr=force_csr,
+            tol=tol,
+        )
 
-                if tol is not None:
-                    set_to_zeroes(self.T[lamda], tol)
-                    inplace_csr_row_normalize(self.T[lamda])
-
-            logger.info("Computing transition matrix")
-
-            t0 = time.time()
-
+        if save_intermediate:
+            self.T[lamda] = [T0]
             for k in k_range:
                 if not k % 1000:
-                    logger.info(f"{k} over {len(self.inter_T[lamda])}")
-                    logger.info(f"{time.time()-t0:.2f}s")
+                    logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
 
-                Tk = self.inter_T[lamda][k]
-                if tol is not None:
-                    set_to_zeroes(Tk, tol)
-                    inplace_csr_row_normalize(Tk)
+                Tk = self._prepare_transition_matrix(
+                    inter[k],
+                    force_csr=force_csr,
+                    tol=tol,
+                )
+                self.T[lamda].append(self.T[lamda][-1] @ Tk)
+                inplace_csr_row_normalize(self.T[lamda][-1])
+        else:
+            self.T[lamda] = T0
+            for k in k_range:
+                if not k % 1000:
+                    logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
+                Tk = self._prepare_transition_matrix(
+                    inter[k],
+                    force_csr=force_csr,
+                    tol=tol,
+                )
+                self.T[lamda] = self.T[lamda] @ Tk
+                inplace_csr_row_normalize(self.T[lamda])
 
-                if save_intermediate:
-
-                    self.T[lamda].append(self.T[lamda][-1] @ Tk)
-
-                    # normalize T to correct precision errors
-                    if tol is not None:
-                        set_to_zeroes(self.T[lamda][-1], tol)
-
-                    inplace_csr_row_normalize(self.T[lamda][-1])
-                else:
-                    self.T[lamda] = self.T[lamda] @ Tk
-                    if tol is not None:
-                        set_to_zeroes(self.T[lamda], tol)
-
-                    # normalize T to correct precision errors
-                    inplace_csr_row_normalize(self.T[lamda])
-
-            t_end = time.time()-t0
-
-            self._compute_times[
-                f"trans_matrix_{lamda}_rev{reverse_time}"] = t_end
-
-            logger.info(f"Finished in {t_end:.2f}s")
+        self._compute_times[
+            f"trans_matrix_{dynamics}_{lamda}_rev{reverse_time}"
+        ] = time.time() - t0
         logger.info(
-            f"Transition matrices already computed for lamda={lamda}"
+            "Finished computing transition matrices for "
+            f"{dynamics=}, lambda={lamda}"
         )
 
     @staticmethod
@@ -1841,38 +1628,34 @@ class ContTempNetwork:
 
         return float(-np.dot(p0, row_sums))
 
-    def _compute_cumulative_transition_sequence(self, lamda, reverse_time=False,
+    def _compute_cumulative_transition_sequence(self, lamda, dynamics=None,
+                                                reverse_time=False,
                                                 force_csr=True, tol=None):
         """Build cumulative transition matrices without changing ``self.T``."""
-        if not hasattr(self, "inter_T") or lamda not in self.inter_T.keys():
+        if not hasattr(self, "inter_T") or lamda not in self.inter_T:
             raise Exception("Compute inter_T first.")
 
+        inter = self.inter_T[lamda]
         if reverse_time:
-            k_init = len(self.inter_T[lamda]) - 1
+            k_init = len(inter) - 1
             k_range = reversed(range(k_init))
         else:
             k_init = 0
-            k_range = range(1, len(self.inter_T[lamda]))
+            k_range = range(1, len(inter))
 
-        if force_csr:
-            cumulative = self.inter_T[lamda][k_init].tocsr().copy()
-        else:
-            cumulative = self.inter_T[lamda][k_init].copy()
-
-        if tol is not None:
-            set_to_zeroes(cumulative, tol)
-            inplace_csr_row_normalize(cumulative)
-
+        cumulative = self._prepare_transition_matrix(
+            inter[k_init],
+            force_csr=force_csr,
+            tol=tol,
+        )
         transition_sequence = [cumulative]
-        for k in k_range:
-            Tk = self.inter_T[lamda][k]
-            if force_csr:
-                Tk = Tk.tocsr()
-            if tol is not None:
-                Tk = Tk.copy()
-                set_to_zeroes(Tk, tol)
-                inplace_csr_row_normalize(Tk)
 
+        for k in k_range:
+            Tk = self._prepare_transition_matrix(
+                inter[k],
+                force_csr=force_csr,
+                tol=tol,
+            )
             cumulative = cumulative @ Tk
             if tol is not None:
                 set_to_zeroes(cumulative, tol)
@@ -1881,29 +1664,20 @@ class ContTempNetwork:
 
         return transition_sequence
 
-    def compute_entropy(self, lamda=None, t_start=None, t_stop=None,
-                        verbose=False, reverse_time=False, force_csr=True,
-                        tol=None, alpha_sampling=None):
+    def compute_entropy(self, lamda=None, dynamics=None, t_start=None,
+                        t_stop=None, method="dense_expm", n_jobs=1,
+                        fix_tau_k=False, verbose=False, reverse_time=False,
+                        force_csr=True, tol=None, alpha_sampling=None,
+                        **kwargs):
         """Compute global conditional entropy of cumulative transitions.
 
-        The entropy at cumulative transition matrix ``T`` is
-        ``-sum_i p0_i sum_j T_ij log(T_ij)`` with a uniform initial
-        distribution ``p0`` over nodes.
-
-        If ``alpha_sampling`` is ``None``, the full forward entropy signal is
-        computed and cached in ``self.S[lamda]``. Reverse-time full signals are
-        cached separately in ``self.S_reverse[lamda]``. If provided,
-        ``alpha_sampling`` must be a fraction in ``(0, 1]`` and only
-        deterministic grid-sampled indices are evaluated.
-
-        Returns
-        -------
-        numpy.ndarray
-            Two-column array with sampled transition indices in the first
-            column and conditional entropy values in the second column.
+        Entropy is cached as ``self.S[lamda]`` for forward time and
+        ``self.S_reverse[lamda]`` for reverse time.
         """
         if not force_csr:
             raise Exception("Use force_csr=True")
+
+        dynamics = self._resolve_dynamics(dynamics)
 
         if not hasattr(self, "time_grid"):
             self._compute_time_grid()
@@ -1911,29 +1685,42 @@ class ContTempNetwork:
         if lamda is None:
             if verbose:
                 logger.info("Taking lamda as 1/tau_w with tau_w = median "
-                            "interevent time")
-            lamda = 1 / np.median(np.diff(self.times))
+                            "inter-event time")
+            lamda = self._default_lamda()
 
-        if not hasattr(self, "laplacians"):
-            self.compute_laplacian_matrices(t_start=t_start, t_stop=t_stop)
-
-        if not hasattr(self, "inter_T") or lamda not in self.inter_T.keys():
+        if (
+            not hasattr(self, "inter_T")
+            or lamda not in self.inter_T
+            or not self._inter_T_matches_request(
+                dynamics,
+                lamda,
+                t_start=t_start,
+                t_stop=t_stop,
+                fix_tau_k=fix_tau_k,
+            )
+        ):
             self.compute_inter_transition_matrices(
                 lamda=lamda,
                 t_start=t_start,
                 t_stop=t_stop,
+                fix_tau_k=fix_tau_k,
+                dynamics=dynamics,
+                method=method,
+                n_jobs=n_jobs,
+                **kwargs,
             )
 
         if not hasattr(self, "S"):
-            self.S = dict()
+            self.S = {}
 
         if reverse_time and not hasattr(self, "S_reverse"):
-            self.S_reverse = dict()
+            self.S_reverse = {}
 
         entropy_cache = self.S_reverse if reverse_time else self.S
 
-        if alpha_sampling is None and lamda in entropy_cache.keys():
-            entropy_values = np.asarray(entropy_cache[lamda], dtype=np.float64)
+        if alpha_sampling is None and lamda in entropy_cache:
+            entropy_values = np.asarray(entropy_cache[lamda],
+                                        dtype=np.float64)
             sampled_indices = np.arange(entropy_values.size, dtype=int)
             if reverse_time:
                 sampled_indices = sampled_indices[::-1]
@@ -1944,9 +1731,14 @@ class ContTempNetwork:
 
         transition_matrices = None
         if not reverse_time:
-            if not hasattr(self, "T") or lamda not in self.T.keys():
+            if (
+                not hasattr(self, "T")
+                or lamda not in self.T
+                or not isinstance(self.T[lamda], list)
+            ):
                 self.compute_transition_matrices(
                     lamda=lamda,
+                    dynamics=dynamics,
                     save_intermediate=True,
                     reverse_time=reverse_time,
                     force_csr=force_csr,
@@ -1955,7 +1747,7 @@ class ContTempNetwork:
 
             if (
                 hasattr(self, "T")
-                and lamda in self.T.keys()
+                and lamda in self.T
                 and isinstance(self.T[lamda], list)
             ):
                 transition_matrices = self.T[lamda]
@@ -1963,6 +1755,7 @@ class ContTempNetwork:
         if transition_matrices is None:
             transition_matrices = self._compute_cumulative_transition_sequence(
                 lamda,
+                dynamics=dynamics,
                 reverse_time=reverse_time,
                 force_csr=force_csr,
                 tol=tol,
@@ -1982,7 +1775,11 @@ class ContTempNetwork:
             if num_samples >= num_points:
                 sampled_indices = all_indices
             else:
-                time_start = getattr(self, "_k_start_laplacians", 0)
+                inter_info = getattr(self, "_inter_T_info", {}).get(lamda, {})
+                time_start = inter_info.get(
+                    "k_start",
+                    getattr(self, "_k_start_laplacians", 0),
+                )
                 time_stop = time_start + num_points
                 if hasattr(self, "times") and len(self.times) >= time_stop:
                     candidate_times = np.asarray(
@@ -2046,11 +1843,12 @@ class ContTempNetwork:
         if alpha_sampling is None:
             entropy_cache[lamda] = entropy_values.tolist()
             self._compute_times[
-                f"entropy_{lamda}_rev{reverse_time}"
+                f"entropy_{dynamics}_{lamda}_rev{reverse_time}"
             ] = t_end
         else:
             self._compute_times[
-                f"entropy_{lamda}_rev{reverse_time}_alpha{alpha_sampling}"
+                f"entropy_{dynamics}_{lamda}_rev{reverse_time}"
+                f"_alpha{alpha_sampling}"
             ] = t_end
 
         if verbose:
@@ -2067,29 +1865,27 @@ class ContTempNetwork:
                                     verbose=False):
         """Compute a component-size upper bound for the entropy curve.
 
-        For each cumulative entropy sample, the bound is computed from the
+        For each sampled transition interval, the bound is computed from the
         connected components of the static graph aggregated from
-        ``aggregation_start_time`` to that sample's interval end time:
+        ``aggregation_start_time`` to that interval's end time:
         ``sum_c (|c| / N) log(|c|)``.
 
         Parameters
         ----------
         t_start : float or int, optional
-            Starting time used to select the entropy sample range. The default
-            is the first time in ``self.times``.
+            Starting time used to select the sample range. The default is the
+            first time in ``self.times``.
         t_stop : float or int, optional
-            Stopping time used to select the entropy sample range. The default
-            is the last time in ``self.times``.
+            Stopping time used to select the sample range. The default is the
+            last time in ``self.times``.
         aggregation_start_time : float or int, optional
             Start time for the cumulative static graph. The default is the
             selected ``t_start``.
         alpha_sampling : float, optional
-            Fraction of samples to evaluate, in ``(0, 1]``. The deterministic
-            grid sampling matches ``compute_entropy``.
+            Fraction of samples to evaluate, in ``(0, 1]``.
         return_times : bool, optional
-            If ``False`` (default), the first returned column contains entropy
-            sample indices. If ``True``, it contains the corresponding interval
-            end times.
+            If ``False`` (default), the first returned column contains sample
+            indices. If ``True``, it contains interval end times.
         verbose : bool, optional
             Log progress information.
 
@@ -2181,6 +1977,7 @@ class ContTempNetwork:
                     start_time=float(aggregation_start_time),
                     end_time=float(end_time),
                 ).tocsr()
+                adjacency.eliminate_zeros()
 
             n_components, labels = connected_components(
                 adjacency,
@@ -2207,134 +2004,269 @@ class ContTempNetwork:
             values,
         ))
 
-    def compute_lin_transition_matrices(self,
-                                        lamda=None,
-                                        t_start=None,
-                                        t_stop=None,
-                                        t_s=10, save_intermediate=True,
-                                        reverse_time=False):
-        """Compute transition matrices and saves them in a dict of lists.
+    def active_nodes(self, t_start=None, t_end=None):
 
-        The transition matrices are save as `self.T_lin[lamda][t_s]` where
-        `self.T_lin[lamda][t_s][k]` is the product of all interevent
-        transition matrices from t_0 to t_k computed with lamda and t_s.
+        """Return the nodes that are active within a given time window.
+
+        A node is considered active if it is an endpoint of at least one event
+        that overlaps the interval ``[t_start, t_end]``. An event overlaps the
+        window when it starts before ``t_end`` and ends after ``t_start``.
+
+        Parameters
+        ----------
+        t_start : float or int (default is None)
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int (default is None)
+            End of the time window.
+
+        Returns
+        -------
+        numpy.ndarray
+            Array of unique node ids active within the window. Empty if no events overlap.
         """
-        if not hasattr(self, "inter_T_lin") \
-                or lamda not in self.inter_T_lin.keys() \
-                or t_s not in self.inter_T_lin[lamda].keys():
-            raise Exception("Compute inter_T_lin first.")
 
-        if not hasattr(self, "T_lin"):
-            self.T_lin = dict()
+        if not t_start: 
+            t_start=self.start_time
+        if not t_end: 
+            t_end=self.end_time
 
-        compute = True
+        assert t_start < t_end, \
+            "t_end should be bigger than t_start"
 
-        if lamda in self.T_lin.keys():
-            if t_s in self.T_lin[lamda].keys():
-                compute = False
-                logger.info("Transition matrices already computed "
-                            f"for lamda={lamda}, t_s={t_s}")
+        t_start=max(self.start_time, t_start)
+        t_end=min(self.end_time, t_end)    
+        mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
+        edges = self.events_table[mask]
+        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
+        return np.sort(np.array(list(nodes)))
 
-        if compute:
+    def num_active_nodes(self, t_start=None, t_end=None):
+        """Return the number of nodes active within a given time window.
 
-            if reverse_time:
-                k_init = len(self.inter_T_lin[lamda][t_s])-1
-                k_range = reversed(range(k_init))
-                logger.info("Reversed time computation.")
-            else:
-                k_init = 0
-                k_range = range(1, len(self.inter_T_lin[lamda][t_s]))
+        A node is active if it is an endpoint of at least one event overlapping
+        ``[t_start, t_end]``. 
 
-            # initial conditions
-            if lamda not in self.T_lin.keys():
-                self.T_lin[lamda] = dict()
-                if save_intermediate:
-                    self.T_lin[lamda][t_s] = [
-                            self.inter_T_lin[lamda][t_s][k_init]]
-                else:
-                    self.T_lin[lamda][t_s] = self.inter_T_lin[
-                            lamda][t_s][k_init]
+        Parameters
+        ----------
+        t_start : float or int (default: None)
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int (default: None)
+            End of the time window.
 
-            if t_s not in self.T_lin[lamda].keys():
-                if save_intermediate:
-                    self.T_lin[lamda][t_s] = [self.inter_T_lin[
-                        lamda][t_s][k_init]]
-                else:
-                    self.T_lin[lamda][t_s] = self.inter_T_lin[
-                            lamda][t_s][k_init]
+        Returns
+        -------
+        int
+            Number of active nodes in the window. Zero if no events
+            overlap.
+        """        
+        nodes=self.active_nodes(t_start, t_end)
+        return len(nodes)
 
-            logger.info(
-                f"Computing transition matrix for lamda={lamda}, t_s={t_s}"
-            )
 
-            t0 = time.time()
+    def num_active_edges(self, t_start=None, t_end=None):
+        """Return the number of edges active within a given time window.
 
-            for k in k_range:
-                if not k % 1000:
-                    logger.info(
-                        f"{k} over {len(self.inter_T_lin[lamda][t_s])}")
-                    logger.info(f"{time.time()-t0:.2f}s")
-                if save_intermediate:
-                    self.T_lin[lamda][t_s].append(
-                        self.T_lin[lamda][t_s][-1] @ self.inter_T_lin[
-                            lamda][t_s][k]
+        An edge (event) is counted as active if it overlaps the interval
+        ``[t_start, t_end]``, that is, it starts before ``t_end`` and ends
+        after ``t_start``. 
+
+        Note that this counts *events*, so if the same node pair interacts
+        multiple times within the window, each interaction is counted
+        separately.
+
+        Parameters
+        ----------
+        t_start : float or int
+            Start of the time window. Must be strictly less than ``t_end``.
+        t_end : float or int
+            End of the time window.
+
+        Returns
+        -------
+        int
+            Number of active events overlapping the window. Zero if none.
+        """
+        if not t_start: 
+            t_start=self.start_time
+        if not t_end: 
+            t_end=self.end_time
+
+        assert t_start < t_end, \
+            "t_end should be bigger than t_start"
+
+        t_start = max(self.start_time, t_start)
+        t_end = min(self.end_time, t_end)
+
+        mask = (self.events_table["starting_times"] < t_end) & \
+               (self.events_table["ending_times"] > t_start)
+        return int(mask.sum())
+
+    
+    def plot_density_of_laplacians(self):
+        """Plot the distribution of Laplacian densities.
+
+        For each Laplacian ``L`` in ``self.laplacians``, the density is computed
+        as the number of stored (non-zero) entries divided by ``num_nodes ** 2``.
+        The densities are shown as a histogram on log-log axes.
+
+        The method also find and plots the time slice corresponding to the 0th (min), 25th, 50th (median), 75th, and
+        100th (max) percentiles of the density distribution, and returns their indices. These
+        can be used to choose the fastest method for computing transition matrices.
+        Returns
+        -------
+        list of int
+            Indices into ``self.laplacians`` of the slices closest to the
+            0th, 25th, 50th, 75th, and 100th percentiles of density, in that
+            order.
+        """
+
+        # density per slice: nnz normalized by N^2
+        density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
+
+        # quantile values and the indices of the slices closest to them
+        quantiles = np.quantile(density, [0, 0.25, 0.50, 0.75, 1])
+        indices = [np.argmin(np.abs(density - q)) for q in quantiles]
+
+        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(6, 4), dpi=200)
+        sns.histplot(density, ax=ax, bins=np.logspace(-5, 0, 21),
+                    fill=False, element='step')
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        ax.set_xlabel('Density of Laplacians')
+        ax.set_ylabel('Count')
+
+        # interquartile range (25th–75th) shaded
+        ax.axvspan(density[indices[1]], density[indices[3]], alpha=0.1, color='r')
+        ax.axvline(density[indices[1]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[3]], color='r', linestyle='--', linewidth=0.5)
+        ax.axvline(density[indices[2]], color='r', linestyle='--', label='Median')
+
+        # min and max
+        ax.axvline(density[indices[0]], color='b', linestyle=':', linewidth=1, label='Min/Max')
+        ax.axvline(density[indices[-1]], color='b', linestyle=':', linewidth=1)
+
+        ax.legend(frameon=False)
+        plt.tight_layout()
+        plt.show()
+        return indices
+
+    def print_report(self, indices, scales, method_kwargs=None, **kwargs):
+        """Benchmark and compare matrix-exponential computation methods.
+
+        Args:
+            indices: Iterable of 5 integer indices into ``self.laplacians`` /
+                ``self.times``, mapped to the labels
+                ['min', 'q25', 'median', 'q75', 'max'].
+            scales: Iterable of diffusion scale factors (``lamda``) to sweep.
+            method_kwargs: Optional dict mapping a method name to a dict of
+                extra keyword args for that method, e.g.
+                ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
+        """
+        method_kwargs = method_kwargs or {}
+        labels = ['min', 'q25', 'median', 'q75', 'max']
+        laplacians = {
+            label: {
+                'L': self.laplacians[idx],
+                'tau': self.times[idx + 1] - self.times[idx],
+            }
+            for label, idx in zip(labels, indices)
+        }
+        methods = ['dense_expm', 'sparse_expm', 'mfp_exp', 'parallel_expm']
+        num_nodes = self.num_nodes
+        reference = 'dense_expm'
+
+        scales = list(scales)
+        min_scale_idx = int(np.argmin(scales))
+        max_scale_idx = int(np.argmax(scales))
+
+        results = {}
+        outputs = {}
+        for method in methods:
+            this_kwargs = {**kwargs, **method_kwargs.get(method, {})}
+            for label, data in laplacians.items():
+                times = []
+                mats = []
+                for lamda in scales:
+                    t = time.perf_counter()
+                    T = self._compute_single_T(
+                        L=data['L'], tau_k=data['tau'], lamda=lamda,
+                        num_nodes=num_nodes, method=method,
+                        **this_kwargs
                     )
-                    # normalize T to correct precision errors
-                    inplace_csr_row_normalize(self.T_lin[lamda][t_s][-1])
-                else:
-                    self.T_lin[lamda][t_s] = self.T_lin[lamda][t_s] @ \
-                                      self.inter_T_lin[lamda][t_s][k]
-                    # normalize T to correct precision errors
-                    inplace_csr_row_normalize(self.T_lin[lamda][t_s])
+                    times.append(time.perf_counter() - t)
+                    mats.append(T)
+                results[(method, label)] = times
+                outputs[(method, label)] = mats
 
-            t_end = time.time()-t0
-
-            self._compute_times[
-                f"trans_matrix_lin_{lamda}_{t_s}_rev{reverse_time}"] = t_end
-
-            logger.info(f"Finished in {t_end}s")
-        logger.info(
-            f"Transition matrices already computed for lamda={lamda}"
-        )
-
-    def _compute_stationary_transition(self,
-                                       t_start=None,
-                                       t_stop=None,
-                                       use_sparse_stoch=True):
-
-        if not hasattr(self, "laplacians"):
-            self.compute_laplacian_matrices(t_start=t_start,
-                                            t_stop=t_stop)
-        logger.info("Computing stationary transition matrices")
-
-        self._stationary_trans = []
-
-        I = eye(self.num_nodes,
-                dtype=np.float64, format="csc")
-
-#        I = np.eye(self.num_nodes, dtype=np.float64)
-
-        t0 = time.time()
-        for k in range(len(self.laplacians)):
-            if not k % 1000:
-                logger.info(f"{k} over {len(self.laplacians)}")
-                logger.info(f"{time.time()-t0:.2f}s")
-
-            if use_sparse_stoch:
-                self._stationary_trans.append(
-                    sparse_stationary_trans(I - self.laplacians[k])
+        mfp_mae = {}  # label -> list of per-scale MAE
+        for label in laplacians:
+            errs = []
+            for T_ref, T_approx in zip(
+                outputs[(reference, label)], outputs[('mfp_exp', label)]
+            ):
+                errs.append(
+                    np.mean(np.abs(to_dense(T_ref) - to_dense(T_approx)))
                 )
+            mfp_mae[label] = errs
 
-            else:
-                self._stationary_trans.append(
-                    compute_stationary_transition(I - self.laplacians[k])
-                )
+        # Aggregate MAE across labels, per scale
+        mae_avg = np.mean([np.mean(mfp_mae[lbl]) for lbl in laplacians])
+        mae_min_scale = np.mean([mfp_mae[lbl][min_scale_idx] for lbl in laplacians])
+        mae_max_scale = np.mean([mfp_mae[lbl][max_scale_idx] for lbl in laplacians])
 
-        t_end = time.time() - t0
+        # Report
+        for method in methods:
+            print(f"\n=== {method} ===")
+            method_total = 0.0
+            for label in laplacians:
+                times = results[(method, label)]
+                method_total += sum(times)
+                line = (f"  L_{label:<7} avg={np.mean(times):.4f}s  "
+                        f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
+                if method == 'mfp_exp':
+                    errs = mfp_mae[label]
+                    line += (f"  MAE(avg={np.mean(errs):.3e}, "
+                            f"min_scale={errs[min_scale_idx]:.3e}, "
+                            f"max_scale={errs[max_scale_idx]:.3e})")
+                print(line)
+            print(f"  total: {method_total:.4f}s")
+            if method == 'mfp_exp':
+                print(f"  overall MAE vs {reference}:  "
+                    f"avg={mae_avg:.3e}  "
+                    f"min_scale(={scales[min_scale_idx]:g})={mae_min_scale:.3e}  "
+                    f"max_scale(={scales[max_scale_idx]:g})={mae_max_scale:.3e}")
 
-        self._compute_times["_stationary_trans"] = t_end
+        totals = {
+            m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
+            for m in methods
+        }
+        best = min(totals, key=totals.get)
+        print(f"\nRecommended method: {best} "
+            f"({totals[best]:.4f}s total, fastest of the three)")
 
-        logger.info(f"Stationary transition matrices computation took {t_end}s")
+    def _compute_delta_trans_mat(self, lamda, round_zeros=True, tol=1e-8):
+        """Compute differences between consecutive inter-event matrices."""
+        if not hasattr(self, "inter_T") or lamda not in self.inter_T:
+            return
+
+        if not hasattr(self, "delta_inter_T"):
+            self.delta_inter_T = {}
+
+        if lamda in self.delta_inter_T:
+            logger.debug(
+                f"delta_inter_T already computed for {lamda=}"
+            )
+            return
+
+        self.delta_inter_T[lamda] = [
+            self.inter_T[lamda][k + 1] - self.inter_T[lamda][k]
+            for k in range(len(self.inter_T[lamda]) - 1)
+        ]
+
+        if round_zeros:
+            for M in self.delta_inter_T[lamda]:
+                set_to_zeroes(M, tol=tol)
+
 
     def _merge_overlapping_events(self):
         """
@@ -2345,10 +2277,10 @@ class ContTempNetwork:
         A = self.compute_static_adjacency_matrix()
 
         # loop over nodes
+
         for i, n1 in enumerate(self.node_array):
-
-            for n2 in (A[n1, :] > 0).nonzero()[1]:
-
+            for j in (A[i, :] > 0).nonzero()[1]:
+                n2 = self.node_array[j]
                 mask_12 = np.logical_and(
                     self.events_table.source_nodes.values == n1,
                     self.events_table.target_nodes.values == n2
@@ -2381,10 +2313,14 @@ class ContTempNetwork:
                         merged += 1
                     else:
                         ev1 = ev2
-                logger.info(f"n1,n2 ({n1},{n2}): {merged} merged")
+                if merged !=0: 
+                    logger.debug(f"n1,n2 ({n1},{n2}): {merged} merged")
 
         num_merged = (events_to_keep == False).sum()
-        logger.info(f"Merged {num_merged} events.")
+        if num_merged !=0: 
+            logger.info(f"Merged {num_merged} events.")
+        else: 
+            logger.debug(f"Merged {num_merged} events.")
 
         self.events_table = self.events_table.loc[events_to_keep]
 
@@ -2402,70 +2338,6 @@ class ContTempNetwork:
 
         return num_merged
 
-    def _compute_delta_trans_mat(self, lamda, round_zeros=True, tol=1e-8):
-        """Comptes and  matrix differences between each consecutive inter_T.
-
-        The computed difference is put in a attribute `delta_inter_T` the
-        self.delta_inter_T[
-            lamda][k] = self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
-
-        The length of self.delta_inter_T[lamda] is len(self.inter_T[lamda]) - 1
-
-        """
-        if hasattr(self, "inter_T") and lamda in self.inter_T.keys():
-
-            if not hasattr(self, "delta_inter_T"):
-                self.delta_inter_T = dict()
-
-            if lamda not in self.delta_inter_T.keys():
-
-                self.delta_inter_T[lamda] = [
-                    self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
-                    for k in range(len(self.inter_T[lamda])-1)
-                ]
-
-                if round_zeros:
-                    for M in self.delta_inter_T[lamda]:
-                        set_to_zeroes(M, tol=tol)
-
-            else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), " : ",
-                      f"delta_inter_T has already been computed with lamda={lamda}")
-
-        else:
-            # TODO: switch to logger
-            print("PID ", os.getpid(), " : ", "delta_inter_T has not been computed")
-
-        if hasattr(self, "inter_T_lin") and lamda in self.inter_T_lin.keys():
-
-            if not hasattr(self, "delta_inter_T_lin"):
-                self.delta_inter_T_lin = dict()
-
-            if lamda not in self.delta_inter_T_lin.keys():
-
-                self.delta_inter_T_lin[lamda] = dict()
-
-                for t_s in self.inter_T_lin[lamda].keys():
-
-                    self.delta_inter_T_lin[lamda][t_s] = [
-                        self.inter_T_lin[
-                            lamda][t_s][k+1] - self.inter_T_lin[lamda][t_s][k]
-                        for k in range(len(self.inter_T_lin[lamda][t_s])-1)
-                    ]
-
-                    if round_zeros:
-                        for M in self.delta_inter_T_lin[lamda][t_s]:
-                            set_to_zeroes(M, tol=tol)
-
-            else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), " : ",
-                      f"delta_inter_T_lin has already been computed with lamda={lamda}")
-
-        else:
-            # TODO: switch to logger
-            print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
 
 
 class ContTempInstNetwork(ContTempNetwork):
@@ -2473,10 +2345,6 @@ class ContTempInstNetwork(ContTempNetwork):
 
     This is a subclass of ContTempNetwork for continuous time temporal
     networks where events do not have a duration.
-
-    In practice, it is implemented as a ContTempNetwork where 
-    ending_times_k = starting_times_k+1 and where durations (tau_k) = 1  
-    for all events for the computation of the transition matrices.
 
     Parameters
     ----------
@@ -2490,69 +2358,63 @@ class ContTempInstNetwork(ContTempNetwork):
     starting_times: Python list
         List of starting times of each event
 
-    relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in 
-        self.node_to_label_dict. Default is `True`
+    label_to_node_dict: Python dict
+        User may input this to map the nodes in arbitary order.
 
-    reset_event_table_index: boolean
-        Reset the index of the `events_table` DataFrame. Default is `True`.
-
-    node_to_label_dict: Python dict
-        If `relabel_nodes` is `False, this can be used to save the original labels
-        of the nodes.
-
-    events_table: Pandas Dataframe
+    events_table: Pandas Dataframe or Url/path to csv file
         Dataframe with columns 'source_nodes', 'target_nodes', 'starting_times'
-        and 'ending_times' and index corresponding to event index. Used for
-        instantiating a new ConTempNetwork from the event_table of an other one.
+        and index corresponding to event index. Used for
+        instantiating a new ContTempInstNetwork from the event_table of an other one.
     """
-
     def __init__(self,
-                 source_nodes=[],
-                 target_nodes=[],
-                 starting_times=[],
-                 relabel_nodes=True,
-                 reset_event_table_index=True,
-                 node_to_label_dict=None,
-                 events_table=None):
+                 source_nodes=None,
+                 target_nodes=None,
+                 starting_times=None,
+                 label_to_node_dict=None,
+                 events_table=None,
+                 ):
 
-        if events_table is None:
-            ending_times = [t + self._DEFAULT_DURATION
-                            for t in starting_times]
-        else:
-            # Instant networks store events_tables without an ending_times
-            # column. The parent constructor's events_table branch requires
-            # ending_times, so we synthesize it here as start + default
-            # duration. For CSV inputs we read the file first, then forward a
-            # DataFrame to the parent.
+        if source_nodes is None:
+            source_nodes = []
+        if target_nodes is None:
+            target_nodes = []
+        if starting_times is None:
+            starting_times = []
+
+        if events_table is not None:
             if isinstance(events_table, (str, Path)):
                 events_table = pd.read_csv(str(events_table))
-            if isinstance(events_table, pd.DataFrame) and \
-                    self._ENDINGS not in events_table.columns:
-                events_table = events_table.copy()
-                events_table[self._ENDINGS] = (
-                    events_table[self._STARTS] + self._DEFAULT_DURATION
-                )
-            ending_times = []  # ignored when events_table is provided
+
+            if isinstance(events_table, pd.DataFrame):
+                if not all(col in events_table.columns
+                           for col in ["source_nodes", "target_nodes", "starting_times"]):
+                    raise ValueError(
+                        "events_table must contain columns 'source_nodes', "
+                        "'target_nodes', and 'starting_times'")
+                source_nodes = events_table["source_nodes"].values
+                target_nodes = events_table["target_nodes"].values
+                starting_times = events_table["starting_times"].values
+            else:
+                raise ValueError(
+                    "events_table must be a pandas DataFrame or a path to a csv file")
 
         super().__init__(source_nodes=source_nodes,
                          target_nodes=target_nodes,
                          starting_times=starting_times,
-                         ending_times=ending_times,
-                         relabel_nodes=relabel_nodes,
-                         reset_event_table_index=reset_event_table_index,
-                         node_to_label_dict=node_to_label_dict,
+                         ending_times=starting_times,
+                         label_to_node_dict=label_to_node_dict,
                          merge_overlapping_events=False,
-                         events_table=events_table)
-
-        self.events_table["durations"] = [1.0]*self.events_table.shape[0]
-        self.instantaneous_events = True
+                         )
+        
+        # remove duration column as it doesnt make sense for instantaneous events
+        self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
 
     def compute_laplacian_matrices(self,
                                    *,
                                    t_start=None,
                                    t_stop=None,
-                                   save_adjacencies=False):
+                                   save_adjacencies=False,
+                                   dynamics="rw"):
         """Compute all laplacian matrices and saves them in self.laplacians.
 
         Computes from the first time index before or equal to t_start until
@@ -2583,6 +2445,7 @@ class ContTempInstNetwork(ContTempNetwork):
             t_start=t_start,
             t_stop=t_stop,
             save_adjacencies=save_adjacencies,
+            dynamics=dynamics,
         )
 
     # --- pulse-dynamics hook overrides --------------------------------
@@ -2608,18 +2471,16 @@ class ContTempInstNetwork(ContTempNetwork):
         state.Dm1.data.fill(1.0)
         state.degrees.fill(0.0)
 
-    def compute_inter_transition_matrices(self,
-                                          lamda=None,
-                                          t_start=None,
-                                          t_stop=None,
-                                          use_sparse_stoch=False,
-                                          dense_expm=True):
+
+    def compute_inter_transition_matrices(self, *, lamda=None, t_start=None,
+                                          t_stop=None, fix_tau_k=True,
+                                          dynamics=None,
+                                          method="dense_expm", n_jobs=1,
+                                          **kwargs):
+
         """Compute interevent transition matrices.
 
         T_k(lamda) = expm(-lamda*L_k).
-
-        Here, for instantaneous events, all events are assumed to have the 
-        same duration of unit time (i.e. tau_k =1 for all k).
 
         The transition matrix T_k is saved in `self.inter_T[lamda][k]`,
         where self.inter_T is a dictionary with lamda as keys and
@@ -2636,560 +2497,8 @@ class ContTempInstNetwork(ContTempNetwork):
             t_start=t_start,
             t_stop=t_stop,
             fix_tau_k=True,
-            use_sparse_stoch=use_sparse_stoch,
-            dense_expm=dense_expm
+            dynamics=dynamics,
+            method=method,
+            n_jobs=n_jobs,
+            **kwargs,
         )
-
-    def compute_lin_inter_transition_matrices(self,
-                                              lamda=None,
-                                              t_start=None,
-                                              t_stop=None,
-                                              t_s=10,
-                                              use_sparse_stoch=False):
-        """Compute interevent transition matrices as a linear approximation.
-
-        Approximation is done for expm(-lamda*L_k) based on the discrete time
-        transition matrix.
-
-        Here, for instantaneous events, all events are assumed to have the 
-        same duration of unit time (i.e. tau_k =1 for all k).
-
-        `t_s` is the time value for which the linear approximation reaches the
-        stationary transition matrix (default is `t_s=10`).
-
-        The transition matrix T_k_lin is saved in 
-        `self.inter_T_lin[lamda][t_s][k]`,
-        where `self.inter_T_lin` is a dictionary with lamda as keys and
-        lists of transition matrices as values.
-
-        will compute from self.times[self._k_start_laplacians]
-        until self.times[self._k_stop_laplacians-1]
-
-        the transition matrix at step k, is the probability transition matrix
-        between times[k] and times[k+1]
-        """
-        super().compute_lin_inter_transition_matrices(
-            lamda=lamda,
-            t_start=t_start,
-            t_stop=t_stop,
-            t_s=t_s,
-            fix_tau_k=True,
-            use_sparse_stoch=use_sparse_stoch
-        )
-
-
-def lin_approx_trans_matrix(T, t, Pi=None, t_s=10):
-    r"""Linear approximation of the continuous time transition matrix.
-
-    :math:`T(t) = e^{-tL}` based on an interpolation between :math:`I` and
-    :math:`T` and a second interpolation between :math:`T` and :math:`\Pi`,
-    the transition matrix at stationarity.
-
-    For each connected component of the graph, :math:`T(t)` is approximated as
-
-    .. math::
-        \tilde{T}(t) & = & (1-t) I + tT \text{ for } 0\leq t \leq 1 \\
-            \tilde{T}(t) & = & \frac{1}{1-t_s}[T(t-t_s) + \Pi(1-t)] \text{ for } 1 < t \leq t_s \\
-            \tilde{T}(t) & = & \Pi \text{ for } t > t_s
-
-    where  :math:`t_s` is the mixing time of the random walk
-    (default is `t_s=10`).
-
-    Parameters
-    ----------
-        T : scipy.sparse csr matrix
-        Transition matrix of the discrete time random walk
-    t : float
-        Time, greater or equal to zero.
-    Pi : scipy.sparse matrix
-        Transition matrix of the discrete time random walk at stationarity.
-        If None, it will be computed from T.
-    t_s : float
-        Stationarity time at which the interpolation reaches Pi.
-
-    Returns
-    -------
-        Tapprox : scipy.sparse.csr matrix
-        Linear approximation of expmL at time t.
-
-    """
-    assert isspmatrix_csr(T)
-
-    num_nodes = T.shape[0]
-    I = eye(num_nodes,
-            dtype=np.float64, format="csr")
-
-    if t < 0:
-        raise ValueError("t must be >= 0")
-
-    elif t <= 1:
-        return (1-t)*I + t*T.tocsr()
-    else:
-
-        if Pi is None:
-            Pi = compute_stationary_transition(T)
-
-        if t < t_s:
-
-            return (1/(1-t_s))*(T*(t-t_s)+Pi*(1-t))
-        else:
-            return Pi
-
-
-def compute_stationary_transition(T):
-    """Compute the transition matrix at stationarity for matrix `T`
-
-    Parameters
-    ----------
-        T : scipy.sparse matrix or numpy.ndarray
-        Transition matrix of the discrete time random walk.
-        Can be a CSC or CSR matrix.
-
-    Returns
-    -------
-        Pi : scipy.sparse.csr matrix
-        Stationary transition matrix.
-
-    """
-    num_nodes = T.shape[0]
-
-    # otherwise 0 values may count as an edge
-    T.eliminate_zeros()
-    T.sort_indices()
-
-    n_comp, comp_labels = connected_components(T, directed=False)
-    comp_sizes = np.bincount(comp_labels)
-    cmp_to_indices = {
-        cmp: (comp_labels == cmp).nonzero()[0]
-        for cmp in range(n_comp)
-    }
-
-    # constructors for sparse array
-    data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
-    indices = np.zeros((comp_sizes**2).sum(), dtype=np.int32)
-    indptr = np.zeros(num_nodes+1, dtype=np.int32)
-
-    # vector of degrees (number of nonzero elements of each row)
-    if isspmatrix(T):
-        degs = np.diff(T.indptr)
-    else:
-        degs = (T > 0).sum(1)
-
-    data_ind = 0
-    for row in range(num_nodes):
-        cmp = comp_labels[row]
-        cmp_degs = degs[cmp_to_indices[cmp]]
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_degs/cmp_degs.sum()
-        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_to_indices[cmp]
-        indptr[row] = data_ind
-        data_ind += comp_sizes[cmp]
-    indptr[num_nodes] = data_ind
-
-    # Stationary transition matrix
-
-    return csr_matrix(
-        (data, indices, indptr),
-        shape=(num_nodes, num_nodes),
-        dtype=np.float64
-    )
-
-
-def compute_subspace_expm(A,
-                          n_comp=None,
-                          comp_labels=None,
-                          thresh_ratio=None,
-                          normalize_rows=True):
-    """Compute the exponential matrix of `A`.
-
-    The computation is done by applying expm on each connected subgraphs
-    defined by A and recomposing it to return expm(A).
-
-    Parameters
-    ----------
-        A : scipy.sparse.csc_matrix
-
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
-        zero. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-
-
-    Returns
-    -------
-        expm(A) : scipy.sparse.csr_matrix
-        matrix exponential of A
-
-    """
-    num_nodes = A.shape[0]
-
-    # otherwise 0 values may count as an edge
-    A.eliminate_zeros()
-    A.sort_indices()
-
-    if (n_comp is None) or (comp_labels is None):
-        n_comp, comp_labels = connected_components(A, directed=False)
-    comp_sizes = np.bincount(comp_labels)
-    cmp_indices = [
-        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
-    ]
-
-    logger.info(f"subspace_expm with {n_comp} components")
-
-    # constructors for sparse array
-    data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
-    indices = np.zeros((comp_sizes**2).sum(), dtype=np.int32)
-    indptr = np.zeros(num_nodes+1, dtype=np.int32)
-
-    # if nproc == 1:
-    #     expm_func = lambda M: expm(M)
-    # else:
-    #     expm_func = lambda M: compute_parallel_expm(M, nproc=nproc,
-    #                                                 thresh_ratio=None,
-    #                                                 normalize_rows=False)
-    subnets_expms = []
-    for i, cmp_ind in enumerate(cmp_indices):
-        logger.info(
-            f"Computing component {i} over {n_comp}, with size {cmp_ind.size}"
-        )
-
-        subnets_expms.append(expm(A[cmp_ind, :][:, cmp_ind]).toarray())
-
-    # reconstruct csr sparse matrix
-    logger.info("Reconstructing expm mat")
-    data_ind = 0
-    for row in range(num_nodes):
-        cmp = comp_labels[row]
-        cmp_expm = subnets_expms[cmp]
-        sub_expm_row, = np.where(cmp_indices[cmp] == row)
-
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
-
-        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
-
-        indptr[row] = data_ind
-
-        data_ind += comp_sizes[cmp]
-
-    indptr[num_nodes] = data_ind
-
-    expmA = csr_matrix(
-        (data, indices, indptr),
-        shape=(num_nodes, num_nodes),
-        dtype=np.float64
-    )
-
-    if thresh_ratio is not None:
-        expmA.data[expmA.data < expmA.data.max() / thresh_ratio] = 0.0
-        expmA.eliminate_zeros()
-    if normalize_rows:
-        inplace_csr_row_normalize(expmA)
-
-    return expmA
-
-
-def csc_row_normalize(X):
-    """Row normalize scipy sparse csc matrices.
-    returns a copy of X row-normalized and in CSC format.
-    """
-    X = X.tocsr()
-
-    for i in range(X.shape[0]):
-        row_sum = X.data[X.indptr[i]:X.indptr[i+1]].sum()
-        if row_sum != 0:
-            X.data[X.indptr[i]:X.indptr[i+1]] /= row_sum
-
-    return X.tocsc()
-
-
-def find_spectral_gap(L):
-    """L is assummed to be connected"""
-    Lcsr = L.tocsr()
-
-    I = eye(L.shape[0],
-            dtype=np.float64,
-            format="csr")
-
-    degs = np.diff((I-Lcsr).indptr)
-
-    D12 = diags(np.sqrt(degs),
-                format="csr")
-    Dm12 = diags(1/np.sqrt(degs),
-                 format="csr")
-
-    Lsym = D12 @ Lcsr @ Dm12
-
-    # stationary solution
-    Pi = np.vstack([degs/degs.sum()]*L.shape[0])
-
-    gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
-
-    return gap
-
-
-def remove_nnz_rowcol(L):
-    """CSC or CSR matrix with removed zero row and columns
-
-    This also returns an array of the indices of rows/columns with non-zero
-    values and the (linear) size of L.
-
-    Returns
-    -------
-    L_small, nonzero_indices, size
-
-    """
-    # indicies with zero sum row AND col
-    nonzerosum_rowcols = ~np.logical_and(L.getnnz(1) == 0,
-                                         L.getnnz(0) == 0)
-
-    nonzero_indices, = (nonzerosum_rowcols).nonzero()
-
-    return (
-        L[nonzerosum_rowcols][:, nonzerosum_rowcols],
-        nonzero_indices,
-        L.shape[0]
-    )
-
-
-def numpy_rebuild_nnz_rowcol(T_data,
-                             T_indices,
-                             T_indptr,
-                             zero_indices):
-    """Returns a CSR matrix.
-
-    The CSR matrix (data, indices, rownnz, shape) is built from the CSR matrix
-    T_small but with added row-colums at zero_indicies (with 1 on the diagonal)
-
-    """
-    n_rows = T_indptr.size-1 + zero_indices.size
-
-    data = np.zeros(T_data.size+zero_indices.size, dtype=np.float64)
-    indices = np.zeros(T_data.size+zero_indices.size, dtype=np.int32)
-    indptr = np.zeros(n_rows+1, dtype=np.int32)
-    new_col_inds = np.zeros(T_indptr.size-1, dtype=np.int32)
-    Ts_indices = np.zeros(T_indices.size, dtype=np.int32)
-    zero_set = set(zero_indices)
-
-    # map col indices to new positions
-    k = 0
-    for i in range(n_rows):
-        if i not in zero_set:
-            new_col_inds[k] = i
-            k += 1
-
-    for k, i in enumerate(T_indices):
-        Ts_indices[k] = new_col_inds[i]
-
-    row_id_small_t = -1
-    data_ind = 0
-    for row_id in range(n_rows):
-        row_id_small_t += 1
-        if row_id in zero_set:
-            # add a row with just 1 on the diagonal
-            data[data_ind] = 1.0
-            indices[data_ind] = row_id
-            indptr[row_id+1] = indptr[row_id]+1
-
-            row_id_small_t -= 1
-            data_ind += 1
-
-        else:
-            row_start = T_indptr[row_id_small_t]
-            row_end = T_indptr[row_id_small_t+1]
-
-            num_data_row = row_end - row_start
-
-            data[data_ind:data_ind+num_data_row] = T_data[row_start:row_end]
-            indices[
-                data_ind:data_ind+num_data_row] = Ts_indices[row_start:row_end]
-            indptr[row_id+1] = indptr[row_id]+num_data_row
-
-            data_ind += num_data_row
-
-    return (data, indices, indptr, n_rows)
-
-
-def sparse_lapl_expm(L,
-                     fact,
-                     dense_expm=True,
-                     nproc=1,
-                     thresh_ratio=None,
-                     normalize_rows=True):
-    """Computes the matrix exponential of a laplacian L.
-
-    The exponential, expm(-fact*L), is computed considering only the non-zeros
-    rows/cols of L
-
-    Parameters
-    ----------
-    L : scipy sparse csc matrix
-        Laplacian matrix with large proportion of zero rows/cols.
-    fact : float
-        factor in front of the laplacian
-    dense_expm : boolean
-        Whether to compute the expm on the small Laplacian as a dense
-        or sparse array. Default is True.
-    nproc : int, optional
-        number of parallel processes for dense_expm=False. The default is 1.
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to
-        zero. For dense_expm=False. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-        For dense_expm=False
-
-    Returns
-    -------
-    expm(-fact*L) : `SparseStochMat` object
-        Transition matrix
-
-    """
-    if L.getnnz() == 0:  # zero matrix
-        # return identity
-        return SparseStochMat.create_diag(L.shape[0])
-
-    L_small, nz_inds, size = remove_nnz_rowcol(L)
-
-    if nproc == 1:
-        expm_func = partial(compute_subspace_expm,
-                            A=-fact*L_small,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    else:
-        expm_func = partial(compute_subspace_expm_parallel,
-                            A=-fact*L_small,
-                            nproc=nproc,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    if dense_expm:
-        T_small = csr_matrix(expm(-fact*L_small.toarray()))
-    else:
-
-        # for large networks, try subspace expm
-        L_small.eliminate_zeros()
-        if L_small.shape[0] >= 1000:
-            n_comp, comp_labels = connected_components(L_small, directed=False)
-            if n_comp > 1 :
-                T_small = expm_func(n_comp=n_comp,
-                                    comp_labels=comp_labels)
-            else:
-                T_small = expm(-fact*L_small).tocsr()
-        else:
-            T_small = expm(-fact*L_small).tocsr()
-
-    return SparseStochMat(size, T_small.data, T_small.indices,
-                          T_small.indptr, nz_inds)
-
-
-def sparse_lin_approx(T, t, Pi=None, t_s=10, nz_rowcols=None):
-    """Linear approximation of a continuous time transition matrix.
-
-    This is desgned for sparse transition matrices.
-
-    Performs computation using `lin_approx_trans_matrix` 
-    on a smallest L matrices with no zeros 
-    row/cols and returns a SparseStochMat 
-
-    Parameters
-    ----------
-    T : scipy sparse csr matrix
-        Original full size laplacian matrix.
-    t : float
-        Interpolation time.
-    Pi : scipcy sparse csr matrix, optional
-        Transition matrix at stationarity. Same shape that T.
-        The default is None, i.e. computed from T.
-    t_s : float, optional
-        Stationarity time at which the interpolation reaches Pi.
-        The default is 10.
-    nz_rowcols : ndarray of int32
-        indices of T of nonzero offdiagonal rows/cols to build a
-        SparseStochMat.
-
-    Returns
-    -------
-    Tapprox : SparseStochMat object
-            Linear approximation at time t.
-
-    """
-    T_ss = SparseStochMat.from_full_csr_matrix(T, nz_rowcols=nz_rowcols)
-
-    if Pi is None:
-        Pi_small = compute_stationary_transition(T_ss.T_small)
-    elif isinstance(Pi, SparseStochMat):
-        Pi_small = Pi.T_small
-    elif isinstance(Pi, csr_matrix):
-        Pi_small = SparseStochMat.from_full_csr_matrix(
-            Pi, nz_rowcols=nz_rowcols
-        ).T_small
-    else:
-        raise TypeError("Pi must be a csr or SparseStochMat.")
-
-    Tapprox_small = lin_approx_trans_matrix(T_ss.T_small,
-                                            t=t,
-                                            Pi=Pi_small,
-                                            t_s=t_s)
-
-    return SparseStochMat(T_ss.size, Tapprox_small.data, Tapprox_small.indices,
-                          Tapprox_small.indptr, T_ss.nz_rowcols)
-
-
-def sparse_stationary_trans(T):
-    """Parameters
-    ----------
-    T : scipy sparse csr matrix
-        Discrete time transition matrix.
-
-    Returns
-    -------
-    Pi : scipy sparse csr matrix
-        Transition matrix at stationarity
-
-    """
-    T_ss = SparseStochMat.from_full_csr_matrix(T.tocsr())
-
-    Pi_small = compute_stationary_transition(T_ss.T_small)
-
-    return SparseStochMat(T_ss.size, Pi_small.data, Pi_small.indices,
-                          Pi_small.indptr, T_ss.nz_rowcols)
-
-
-def set_to_ones(Tcsr, tol=1e-8):
-    """In-place replacement of ones in sparse matrix within the tolerence.
-
-    Replace values within a tolerance to one with actual ones.
-    """
-    Tcsr.data[np.abs(Tcsr.data - 1) <= tol] = 1
-
-
-def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
-    """In-place replacement of zeroes in sparse matrix within a tolerance.
-
-    Replace values that are, within the tolerence, close to zero with actual
-    zeroes.
-
-    If tol is None, does nothing
-    """
-    if tol is not None:
-        if isinstance(Tcsr, SparseStochMat):
-            Tcsr.set_to_zeroes(tol, relative=relative)
-        elif isinstance(Tcsr, (csr_matrix, csc_matrix)):
-            if Tcsr.data.size > 0:
-                if relative:
-                    # tol = tol*np.abs(Tcsr.data).max()
-                    # finding the max of the absolute value without making a
-                    # copy of the whole array
-                    tol = tol*np.abs([Tcsr.data.min(), Tcsr.data.max()]).max()
-
-                if use_absolute_value:
-                    Tcsr.data[np.abs(Tcsr.data) <= tol] = 0
-                else:
-                    Tcsr.data[Tcsr.data <= tol] = 0
-
-                Tcsr.eliminate_zeros()
-        else:
-            raise TypeError("Tcsr must be csc,csr or SparseStochMat")
