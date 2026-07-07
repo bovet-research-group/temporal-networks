@@ -13,13 +13,16 @@ The package sets up a default logger on import. You can adjust the logging level
 
 Author
 ------
-Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+Alexandre Bovet <alexandre.bovet@uzh.ch>
 
 
 Contributors
 ............
 
 - Jonas I. Liechti <j-i-l@t4d.ch>
+- Yasaman Asgari <yasaman.asgari@uzh.ch>
+- Juni Schindler <juni.schindler@uzh.ch>
+- Samuel Koovely <samuel.koovely@uzh.ch>
 
 License
 -------
@@ -42,8 +45,25 @@ setup_logger()  # Set up the logger with the default level
 
 from .temporal_network import (  # noqa: F401
     ContTempNetwork,
+    ContTempInstNetwork,
+)
+from .subspace_expm import (  # noqa: F401
+    compute_subspace_expm,
+    compute_subspace_expm_parallel,
+    sparse_lapl_expm)
+
+from .utils import (  # noqa: F401
+    csc_row_normalize,
+    inplace_csr_row_normalize,
+    remove_nnz_rowcol,
+    set_to_ones,
     set_to_zeroes,
-    sparse_lapl_expm
+)
+
+from .synth_temp_network import (  # noqa: F401
+    SynthTempNetwork,
+    Individual,
+    make_step_block_probs,
 )
 
 def set_log_level(level):
