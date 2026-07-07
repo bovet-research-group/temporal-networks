@@ -15,9 +15,10 @@ random walk by exponentiating those Laplacians.
 import numpy as np
 from matplotlib import pyplot as plt
 import seaborn as sns
-import tempnet as tn
+from tempnet.temporal_network_2 import ContTempNetwork
 import networkx as nx
 from functools import reduce
+from pathlib import Path
 
 # %%
 # Building the temporal network
@@ -42,7 +43,7 @@ target_nodes = [1, 2, 2, 2]
 starting_times = [0, 1, 2.5, 3]
 ending_times = [3.5, 2, 4, 4]
 
-tnet = tn.ContTempNetwork(
+tnet = ContTempNetwork(
     source_nodes=source_nodes,
     target_nodes=target_nodes,
     starting_times=starting_times,
@@ -269,7 +270,11 @@ plt.show()
 # of the cumulative static graph.
 
 entropy_lamda = 1
-entropy_curve = tnet.compute_entropy(lamda=entropy_lamda)
+entropy_dynamics = "heat"
+entropy_curve = tnet.compute_entropy(
+    lamda=entropy_lamda,
+    dynamics=entropy_dynamics,
+)
 entropy_indices = entropy_curve[:, 0].astype(int)
 entropy_values = np.asarray(tnet.S[entropy_lamda])
 entropy_upper_bound = tnet.compute_entropy_upper_bound(return_times=True)
@@ -292,7 +297,12 @@ ax.plot(
 )
 ax.set_xlabel("Time")
 ax.set_ylabel("Conditional entropy")
-ax.set_title(rf"Entropy curve for $\lambda={entropy_lamda}$")
+ax.set_title(rf"Heat diffusion entropy curve for $\lambda={entropy_lamda}$")
 ax.grid(True, alpha=0.3)
 ax.legend()
+fig.savefig(
+    Path(__file__).with_name("plot_01_toy_network_entropy_upper_bound.png"),
+    dpi=200,
+    bbox_inches="tight",
+)
 plt.show()
