@@ -16,6 +16,62 @@ from scipy.sparse import csr_matrix
 from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
 
 
+def test_compute_entropy_interval_network_matches_two_node_formula():
+    lamda = 1.0
+    net = ContTempNetwork(
+        source_nodes=[0],
+        target_nodes=[1],
+        starting_times=[0.0],
+        ending_times=[1.0],
+    )
+
+    entropy_signal = net.compute_entropy(lamda=lamda)
+
+    p_stay = (1 + np.exp(-2 * lamda)) / 2
+    p_move = (1 - np.exp(-2 * lamda)) / 2
+    expected = -(p_stay * np.log(p_stay) + p_move * np.log(p_move))
+
+    assert entropy_signal.shape == (1, 2)
+    assert entropy_signal[0, 0] == 0.0
+    assert entropy_signal[0, 1] == pytest.approx(expected)
+    assert net.S[lamda] == pytest.approx([expected])
+
+
+def test_compute_entropy_alpha_sampling_returns_subset_without_full_cache():
+    lamda = 1.0
+    net = ContTempInstNetwork(
+        source_nodes=[0, 1, 2, 3],
+        target_nodes=[1, 2, 3, 0],
+        starting_times=[0.0, 1.0, 2.0, 3.0],
+    )
+
+    sampled_entropy = net.compute_entropy(lamda=lamda, alpha_sampling=0.5)
+
+    assert sampled_entropy.shape[1] == 2
+    assert 1 <= sampled_entropy.shape[0] <= len(net.inter_T[lamda])
+    assert lamda not in net.S
+    assert np.all(np.diff(sampled_entropy[:, 0]) >= 0)
+
+
+def test_compute_entropy_upper_bound_uses_component_sizes():
+    net = ContTempNetwork(
+        source_nodes=[0, 2, 1],
+        target_nodes=[1, 3, 2],
+        starting_times=[0.0, 0.0, 1.0],
+        ending_times=[1.0, 1.0, 2.0],
+    )
+
+    bound = net.compute_entropy_upper_bound()
+
+    assert bound.shape == (2, 2)
+    assert bound[:, 0] == pytest.approx([0.0, 1.0])
+    assert bound[:, 1] == pytest.approx([np.log(2), np.log(4)])
+
+    time_bound = net.compute_entropy_upper_bound(return_times=True)
+    assert time_bound[:, 0] == pytest.approx([1.0, 2.0])
+    assert time_bound[:, 1] == pytest.approx(bound[:, 1])
+
+
 class TestTempNetwork:
     def setup_method(self):
         # ###
@@ -645,4 +701,3 @@ class TestContTempNetworkEndingTimesRequired:
             ending_times=[],
         )
         assert net.num_events == 0
-
