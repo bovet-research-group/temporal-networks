@@ -266,12 +266,33 @@ plt.show()
 # .. math::
 #   S(t) = - \sum_i p_i(0) \sum_j T_{ij}(0, t) \log T_{ij}(0, t)
 #
-# where we use the uniform initial distribution over nodes. Calling
-# ``compute_entropy`` computes the cumulative transition matrices when needed,
-# stores the full entropy signal in ``tnet.S[lambda]``, and returns a two-column
-# array with transition indices and entropy values. We can also compute a
-# component-size upper bound for the same curve from the connected components
-# of the cumulative static graph.
+# where we use the uniform initial distribution over nodes. From a network
+# science perspective, the entropy curve tracks how the temporal activation of
+# edges opens diffusion pathways through the network. When new edges appear,
+# heat can spread faster and reach a larger portion of the network, which is
+# reflected by increases in entropy production. Flat portions indicate time
+# intervals where the currently available temporal paths do not substantially
+# expand the set of nodes reached by the diffusion.
+#
+# Calling ``compute_entropy`` computes the cumulative transition matrices when
+# needed, stores the full entropy signal in ``tnet.S[lambda]``, and returns a
+# two-column array with transition indices and entropy values.
+#
+# The dashed curve is a component-size upper bound, not a second diffusion
+# process. For each time ``t``, it aggregates the static graph from the start
+# of the network up to ``t`` and finds its connected components. If a cumulative
+# component has size ``|C|``, heat starting inside it cannot spread to more than
+# ``|C|`` nodes, so its entropy contribution is bounded by ``log(|C|)``. The
+# plotted bound averages this over components:
+#
+# .. math::
+#   \sum_C \frac{|C|}{N} \log |C|
+#
+# Isolated nodes contribute zero, and the largest possible value is
+# ``log(N)``, reached only when all nodes are in one cumulative component. The
+# entropy curve can remain below this upper bound because temporal ordering can
+# make paths asymmetric: even when the cumulative graph is connected, not all
+# nodes are equally reachable through time-respecting diffusion paths.
 
 entropy_lamda = 1
 entropy_dynamics = "heat"
