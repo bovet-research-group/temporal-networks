@@ -819,6 +819,117 @@ class TestWindowedTransitionMatrices:
 
 
 # --------------------------------------------------------------------------- #
+# inter_T must not be mutated by derived computations
+# --------------------------------------------------------------------------- #
+class TestInterTNotMutated:
+    """``compute_transition_matrices`` must not modify ``self.inter_T``.
+
+    ``self.inter_T[lamda]`` holds the inter-event transition matrices, the
+    primary data from which the accumulated transition matrices ``self.T``
+    are *derived*. Computing a derived quantity must therefore leave
+    ``inter_T`` untouched.
+
+    The current implementation's ``clean()`` helper (see
+    ``compute_transition_matrices``) calls ``set_to_zeroes(Tk, tol)`` and
+    ``inplace_csr_row_normalize(Tk)`` directly on the matrices stored in
+    ``self.inter_T[lamda]``. Even the seed matrix is affected, because
+    ``inter[k_init].tocsr()`` returns the stored object itself when it is
+    already CSR (SciPy only copies with ``copy=True``). Consequences:
+
+    * ``inter_T`` silently loses precision: entries below the caller's
+      ``tol`` are zeroed *in the stored input data*,
+    * anything using ``inter_T`` afterwards (``save_inter_T``, plotting,
+      recomputation) operates on altered matrices,
+    * results become dependent on how many times, and with which ``tol``,
+      ``compute_transition_matrices`` was previously called on the same
+      instance (non-idempotence).
+
+    These tests are *red* until ``clean()`` operates on copies, or cleaning
+    is applied only to the accumulated product and never to the stored
+    inter-event factors.
+    """
+
+    LAMDA = 1.0
+    COARSE_TOL = 1e-2   # coarse on purpose: makes the in-place zeroing visible
+
+    @pytest.fixture
+    def net_with_inter_T(self):
+        """Network with one very short inter-event step (tau = 1e-4).
+
+        The step [1, 1.0001] yields a transition matrix close to the
+        identity, with off-diagonal entries of order 1e-4. Those entries
+        fall below the relative threshold ``COARSE_TOL * max|T|`` used by
+        ``set_to_zeroes``, so an in-place ``clean()`` visibly zeroes stored
+        ``inter_T`` data (beyond mere normalization round-off).
+        """
+        net = ContTempNetwork(
+            source_nodes=["A", "B", "A", "A"],
+            target_nodes=["B", "C", "C", "B"],
+            starting_times=[0, 1, 1.0001, 6],
+            ending_times=[2, 3, 5, 7],
+        )
+        net.compute_laplacian_matrices()
+        net.compute_inter_transition_matrices(lamda=self.LAMDA)
+        return net
+
+    def test_inter_T_unchanged_by_compute_transition_matrices(
+        self, net_with_inter_T,
+    ):
+        """Byte-for-byte: inter_T must be identical before and after."""
+        net = net_with_inter_T
+        before = [to_dense(T).copy() for T in net.inter_T[self.LAMDA]]
+
+        net.compute_transition_matrices(
+            lamda=self.LAMDA, force_csr=True, tol=self.COARSE_TOL,
+        )
+
+        for k, (b, T) in enumerate(zip(before, net.inter_T[self.LAMDA])):
+            np.testing.assert_array_equal(
+                to_dense(T), b,
+                err_msg=(
+                    f"inter_T[{k}] was mutated by"
+                    " compute_transition_matrices"
+                ),
+            )
+
+    def test_transition_matrices_idempotent_wrt_previous_runs(
+        self, net_with_inter_T,
+    ):
+        """T computed after a coarse-tol run must equal a fresh computation.
+
+        With the in-place mutation, the first (coarse-tol) run zeroes small
+        entries of ``inter_T``, so the second run with ``tol=None`` on the
+        same instance no longer reproduces the result obtained on a fresh
+        network.
+        """
+        net = net_with_inter_T
+        net.compute_transition_matrices(
+            lamda=self.LAMDA, force_csr=True, tol=self.COARSE_TOL,
+        )
+        del net.T          # force full recomputation on the same instance
+        net.compute_transition_matrices(
+            lamda=self.LAMDA, force_csr=True, tol=None,
+        )
+
+        fresh = ContTempNetwork(events_table=net.events_table)
+        fresh.compute_laplacian_matrices()
+        fresh.compute_inter_transition_matrices(lamda=self.LAMDA)
+        fresh.compute_transition_matrices(
+            lamda=self.LAMDA, force_csr=True, tol=None,
+        )
+
+        np.testing.assert_allclose(
+            to_dense(net.T[self.LAMDA][-1]),
+            to_dense(fresh.T[self.LAMDA][-1]),
+            atol=1e-14,
+            err_msg=(
+                "tol=None run polluted by earlier coarse-tol mutation"
+                " of inter_T"
+            ),
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Real-data tests (mice dataset)
 # --------------------------------------------------------------------------- #
 class TestMice:
