@@ -734,6 +734,91 @@ class TestTransitionMatrices:
 
 
 # --------------------------------------------------------------------------- #
+# Windowed (t_start/t_stop) transition matrices
+# --------------------------------------------------------------------------- #
+class TestWindowedTransitionMatrices:
+    """Inter-event transition matrices must use taus from the Laplacian window.
+
+    ``compute_laplacian_matrices(t_start=..., t_stop=...)`` restricts the
+    computation to a sub-range of the event-time grid: ``self.laplacians[j]``
+    then corresponds to the time step
+    ``[times[k0 + j], times[k0 + j + 1]]`` with
+    ``k0 = self._k_start_laplacians``.
+
+    ``compute_inter_transition_matrices`` must therefore pair each Laplacian
+    with the inter-event time of *its own* step,
+    ``tau_j = times[k0 + j + 1] - times[k0 + j]``.
+
+    The current implementation instead computes
+    ``taus[j] = times[j + 1] - times[j]`` (i.e. always starting from
+    ``times[0]``), so as soon as ``k0 > 0`` every transition matrix
+    ``T_j = expm(-tau_j * lamda * L_j)`` is built with the tau of the wrong
+    time step. These tests capture that erroneous behaviour (they are *red*
+    until the tau indexing is fixed):
+
+    1. ``test_windowed_inter_T_uses_window_taus`` pins the general contract:
+       the inter_T sequence of a windowed computation must equal the
+       corresponding slice of the inter_T sequence computed over the full
+       time range.
+    2. ``test_windowed_tau_matches_expm_directly`` checks the first windowed
+       transition matrix against an explicitly computed
+       ``expm(-tau0 * lamda * L_0)`` with ``tau0`` taken at the window start.
+
+    The event times are chosen so that the inter-event gaps are non-uniform
+    (grid ``[0, 2, 10, 11, 25, 26]``); with uniform gaps the misaligned taus
+    would accidentally produce correct results.
+    """
+
+    LAMDA = 1.0
+
+    @pytest.fixture
+    def uneven_events(self):
+        """Events with non-uniform gaps: times grid [0, 2, 10, 11, 25, 26]."""
+        return make_df(
+            sources=[0, 1, 0],
+            targets=[1, 2, 2],
+            starts=[0, 10, 25],
+            ends=[2, 11, 26],
+        )
+
+    def test_windowed_inter_T_uses_window_taus(self, uneven_events):
+        full = ContTempNetwork(events_table=uneven_events)
+        full.compute_laplacian_matrices()
+        full.compute_inter_transition_matrices(lamda=self.LAMDA)
+
+        win = ContTempNetwork(events_table=uneven_events)
+        win.compute_laplacian_matrices(t_start=10, t_stop=26)
+        win.compute_inter_transition_matrices(lamda=self.LAMDA)
+
+        k0 = win._k_start_laplacians  # offset into the full time grid
+        assert k0 > 0, "fixture must exercise a window with k_start > 0"
+        assert len(win.inter_T[self.LAMDA]) == len(win.laplacians)
+
+        for j, T_win in enumerate(win.inter_T[self.LAMDA]):
+            T_full = full.inter_T[self.LAMDA][k0 + j]
+            np.testing.assert_allclose(
+                to_dense(T_win), to_dense(T_full), atol=1e-12,
+                err_msg=f"window step {j} != full step {k0 + j}",
+            )
+
+    def test_windowed_tau_matches_expm_directly(self, uneven_events):
+        from scipy.linalg import expm as dense_expm
+
+        net = ContTempNetwork(events_table=uneven_events)
+        net.compute_laplacian_matrices(t_start=10, t_stop=26)
+        net.compute_inter_transition_matrices(lamda=self.LAMDA)
+
+        k0 = net._k_start_laplacians
+        tau0 = net.times[k0 + 1] - net.times[k0]
+        expected = dense_expm(
+            -tau0 * self.LAMDA * net.laplacians[0].toarray()
+        )
+        np.testing.assert_allclose(
+            to_dense(net.inter_T[self.LAMDA][0]), expected, atol=1e-12,
+        )
+
+
+# --------------------------------------------------------------------------- #
 # Real-data tests (mice dataset)
 # --------------------------------------------------------------------------- #
 class TestMice:
