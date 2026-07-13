@@ -1106,6 +1106,62 @@ class TestSolverErrorPaths:
 
 
 # --------------------------------------------------------------------------- #
+# events_table index normalization
+# --------------------------------------------------------------------------- #
+class TestEventsTableIndexNormalization:
+    """The constructor must leave ``events_table`` with a RangeIndex 0..n-1.
+
+    The event index is the join key of the whole pipeline:
+    ``_compute_time_grid`` stores it as the ``id`` level of the time grid,
+    and the Laplacian loop resolves events with
+    ``events_table.loc[id, ...]``. The constructor used to guarantee a
+    clean index (``reset_event_table_index`` on main); the integration
+    branch dropped that without replacement, so the invariant is assumed
+    but never enforced. These tests show three ways it now breaks:
+
+    * lists input with unsorted starting times: ``sort_values`` reorders
+      rows but keeps the old index, so the index no longer matches the
+      event (= time) order;
+    * a DataFrame with duplicate index labels (e.g. from ``pd.concat``):
+      ``loc[id]`` resolves to several rows and the (times, id) grid can
+      no longer distinguish the events, corrupting the Laplacian loop;
+    * a DataFrame with a *named* index: ``reset_index()`` inside
+      ``_compute_time_grid`` then produces a column named after the index
+      instead of ``"index"``, raising ``KeyError`` far from the cause.
+    """
+
+    def test_unsorted_lists_input_gets_reset_index(self):
+        net = ContTempNetwork(
+            source_nodes=[0, 1], target_nodes=[1, 2],
+            starting_times=[5.0, 1.0],  # deliberately unsorted
+            ending_times=[6.0, 2.0],
+        )
+        # rows are sorted by starting time; the index must follow suit
+        assert list(net.events_table.index) == [0, 1]
+
+    def test_duplicate_index_dataframe_is_handled(self):
+        df = pd.concat([
+            make_df([0], [1], starts=[0.0], ends=[1.0]),
+            make_df([1], [2], starts=[2.0], ends=[3.0]),
+        ])  # index is [0, 0]
+        net = ContTempNetwork(events_table=df)
+        assert list(net.events_table.index) == [0, 1]
+
+        # end-to-end: the grid [0, 1, 2, 3] must give 3 laplacian steps
+        net.compute_laplacian_matrices()
+        assert len(net.laplacians) == 3
+
+    def test_named_index_dataframe_is_handled(self):
+        df = make_df([0, 1], [1, 2], starts=[0.0, 2.0], ends=[1.0, 3.0])
+        df.index.name = "event_id"
+        net = ContTempNetwork(events_table=df)
+
+        # must not raise KeyError on the "index" column in the time grid
+        net.compute_laplacian_matrices()
+        assert len(net.laplacians) == 3
+
+
+# --------------------------------------------------------------------------- #
 # Real-data tests (mice dataset)
 # --------------------------------------------------------------------------- #
 class TestMice:
