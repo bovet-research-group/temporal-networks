@@ -930,6 +930,141 @@ class TestInterTNotMutated:
 
 
 # --------------------------------------------------------------------------- #
+# Instantaneous (pulse) network semantics: ending_times == starting_times
+# --------------------------------------------------------------------------- #
+class TestInstNetworkPulseSemantics:
+    """Contract of ``ContTempInstNetwork`` under zero-duration pulses.
+
+    Adopted convention: instantaneous events are represented with
+    ``ending_times == starting_times`` (zero duration). This is the honest
+    representation for pulse dynamics -- the time grid consists exactly of
+    the unique pulse times, and inter-event taus are the true gaps between
+    pulses -- but several parts of the machinery still assume strictly
+    positive durations. These tests capture the resulting defects (red
+    until fixed):
+
+    R1  Every pulse must produce a Laplacian / inter_T step -- including
+        the *last* one. The Laplacian loop only iterates over grid times
+        strictly smaller than ``t_stop = times[-1]``; with zero durations
+        the last grid point *is* the last pulse, so its Laplacian is
+        silently dropped.
+
+    R2  Aggregating an instantaneous network into a static adjacency
+        matrix must count events per node pair. The parent implementation
+        aggregates event *durations*, which are all zero here, so it
+        silently returns an all-zero matrix.
+
+    R3  Activity window queries (``active_nodes``, ``num_active_nodes``,
+        ``num_active_edges``) must include a pulse lying exactly at
+        ``t_start``. The overlap mask ``ending_times > t_start`` excludes
+        zero-duration events at the window boundary -- in particular, the
+        default full window (``t_start = start_time``) misses the very
+        first pulse of the network.
+
+    R4  An ``events_table`` carrying an ``ending_times`` column that
+        conflicts with the zero-duration convention must be rejected with
+        a ``ValueError`` -- not silently overwritten. Silently replacing
+        user data hides the mistake of loading an interval network into
+        ``ContTempInstNetwork``. (Fixing this requires updating
+        ``test_existing_ending_times_column_preserved``, which currently
+        pins the silent overwrite.)
+    """
+
+    @pytest.fixture
+    def pulse_network(self):
+        """Three pulses at t = 0, 1, 5: (A,B), (B,C), (A,B)."""
+        return ContTempInstNetwork(
+            source_nodes=["A", "B", "A"],
+            target_nodes=["B", "C", "B"],
+            starting_times=[0.0, 1.0, 5.0],
+        )
+
+    # --- R1: the last pulse must not be dropped --------------------------- #
+
+    def test_one_laplacian_per_pulse(self, pulse_network):
+        """3 pulses -> 3 Laplacian steps (currently only 2 are computed)."""
+        pulse_network.compute_laplacian_matrices()
+        assert len(pulse_network.laplacians) == 3
+
+    def test_last_pulse_laplacian_reflects_its_event(self, pulse_network):
+        """The step for t=5 must couple A and B (pulse (A,B) at t=5)."""
+        pulse_network.compute_laplacian_matrices()
+        L_last = to_dense(pulse_network.laplacians[-1])
+        # nodes: A->0, B->1, C->2; pulse (A,B): rw laplacian couples 0 and 1
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-1.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ])
+        np.testing.assert_allclose(L_last, expected)
+
+    # --- R2: static adjacency must count pulses, not sum zero durations --- #
+
+    def test_static_adjacency_counts_events(self, pulse_network):
+        """Full-range aggregation: (A,B) twice, (B,C) once.
+
+        With zero-duration events the parent's duration-sum aggregation
+        yields an all-zero matrix; the meaningful aggregation for pulses
+        is the event count per node pair.
+        """
+        A = pulse_network.compute_static_adjacency_matrix().toarray()
+        expected = np.array([
+            [0.0, 2.0, 0.0],
+            [2.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+        ])
+        np.testing.assert_allclose(A, expected)
+
+    # --- R3: boundary pulses must count as active -------------------------- #
+
+    def test_default_window_counts_all_pulses(self, pulse_network):
+        """The full default window must cover all 3 events and 3 nodes.
+
+        The first pulse lies exactly at t_start = start_time = 0; the
+        current mask ``ending_times > t_start`` drops it.
+        """
+        assert pulse_network.num_active_edges() == 3
+        assert pulse_network.num_active_nodes() == 3
+
+    def test_pulse_at_window_start_is_active(self, pulse_network):
+        """A pulse exactly at t_start must be included in the window.
+
+        Window [1, 2] contains only the (B,C) pulse at t = 1.
+        """
+        assert pulse_network.num_active_edges(t_start=1, t_end=2) == 1
+        nodes = pulse_network.active_nodes(t_start=1, t_end=2)
+        assert sorted(nodes) == [1, 2]  # B and C
+
+    # --- R4: conflicting ending_times must be rejected, not overwritten ---- #
+
+    def test_conflicting_ending_times_column_raises(self):
+        """An events_table with nonzero durations must raise ValueError.
+
+        Silently overwriting the user's ending_times hides the mistake of
+        feeding an interval network into ContTempInstNetwork.
+        """
+        df = make_df(
+            sources=[0, 1, 2],
+            targets=[1, 2, 0],
+            starts=[0.0, 1.0, 2.0],
+            ends=[10.0, 20.0, 30.0],  # conflicts with zero-duration pulses
+        )
+        with pytest.raises(ValueError):
+            ContTempInstNetwork(events_table=df)
+
+    def test_consistent_ending_times_column_accepted(self):
+        """ending_times equal to starting_times is consistent and allowed."""
+        df = make_df(
+            sources=[0, 1, 2],
+            targets=[1, 2, 0],
+            starts=[0.0, 1.0, 2.0],
+            ends=[0.0, 1.0, 2.0],
+        )
+        net = ContTempInstNetwork(events_table=df)
+        assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
+
+
+# --------------------------------------------------------------------------- #
 # Real-data tests (mice dataset)
 # --------------------------------------------------------------------------- #
 class TestMice:
