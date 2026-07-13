@@ -1065,6 +1065,47 @@ class TestInstNetworkPulseSemantics:
 
 
 # --------------------------------------------------------------------------- #
+# Solver error paths must fail with meaningful exceptions
+# --------------------------------------------------------------------------- #
+class TestSolverErrorPaths:
+    """Invalid solver arguments must raise ``ValueError``, not crash.
+
+    Two defects in the current implementation:
+
+    * ``_compute_single_T`` validates ``method`` only inside
+      ``compute_inter_transition_matrices``; called directly (as
+      ``print_report`` and the test suite do) with an unknown method it
+      falls through all branches and raises ``UnboundLocalError`` on the
+      unbound ``T``.
+    * ``mfp_exp`` sets its normality factor ``ai`` only for
+      ``non_norm in (0, 1)``; any other value raises ``NameError`` on the
+      undefined ``ai`` instead of rejecting the argument.
+
+    Red until both functions validate their inputs explicitly.
+    """
+
+    def test_compute_single_T_unknown_method_raises_value_error(self):
+        net = ContTempNetwork(
+            source_nodes=[0], target_nodes=[1],
+            starting_times=[0.0], ending_times=[1.0],
+        )
+        net.compute_laplacian_matrices()
+        with pytest.raises(ValueError):
+            net._compute_single_T(
+                net.laplacians[0], 1.0, 1.0, net.num_nodes, "no_such_method",
+            )
+
+    def test_mfp_exp_invalid_non_norm_raises_value_error(self):
+        from scipy.sparse import csr_matrix
+
+        from tempnet.expm_with_tol import mfp_exp
+
+        H = csr_matrix(np.array([[-1.0, 1.0], [1.0, -1.0]]))
+        with pytest.raises(ValueError):
+            mfp_exp(H, err=1e-8, non_norm=2)
+
+
+# --------------------------------------------------------------------------- #
 # Real-data tests (mice dataset)
 # --------------------------------------------------------------------------- #
 class TestMice:
