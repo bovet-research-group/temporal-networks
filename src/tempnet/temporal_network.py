@@ -2,13 +2,12 @@
 #
 # Temporal networks `tempnet`
 #
-# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
 #
-# Contributors: 
-# Yasaman Asgari <yasaman.asgari@uzh.ch>
-# Juni Schindler <juni.schindler@uzh.ch>
-# Samuel Koovely <samuel.koovely@uzh.ch>
-
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
 # Software Foundation; either version 3 of the License, or (at your option) any

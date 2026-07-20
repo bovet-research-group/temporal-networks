@@ -1,3 +1,28 @@
+"""
+#
+# Temporal networks `tempnet`
+#
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+"""
+
 """Sparse matrix exponential with tolerance-based filtering."""
 
 from typing import Literal
@@ -40,9 +65,10 @@ def mfp_exp(
 
     Notes
     -----
-    This is a Python translation of Wu Feng's implementation of the algorithm
+    This is a Python translation of Wu Feng's MATLAB implementation of the algorithm
     proposed in "High-performance computation of large sparse matrix
     exponential". Original author: Wu Feng (vonwu@dlut.edu.cn), 2019-08-19.
+    Original code: https://www.rocewea.com/1.html
     """
 
     n_rows = H.shape[0]

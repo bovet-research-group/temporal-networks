@@ -13,7 +13,7 @@ The package sets up a default logger on import. You can adjust the logging level
 
 Author
 ------
-Alexandre Bovet <alexandre.bovet@uzh.ch>
+Alexandre Bovet <alexandre.bovet@uzh.ch> 
 
 
 Contributors
@@ -21,7 +21,6 @@ Contributors
 
 - Jonas I. Liechti <j-i-l@t4d.ch>
 - Yasaman Asgari <yasaman.asgari@uzh.ch>
-- Juni Schindler <juni.schindler@uzh.ch>
 - Samuel Koovely <samuel.koovely@uzh.ch>
 
 License
