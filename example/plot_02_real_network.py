@@ -1,4 +1,31 @@
 """
+#
+# Temporal networks `tempnet`
+#
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+"""
+
+
+"""
 Mouse contact network (empirical data)
 =======================================
 
@@ -18,7 +45,6 @@ and finally the forward transition matrices at several time scales.
 # Load libraries
 # --------------
 import tempfile
-from functools import reduce
 from pathlib import Path
 
 import numpy as np
@@ -50,19 +76,6 @@ with tempfile.TemporaryDirectory() as tmpdir:
     event_table = pd.read_csv(Path(tmpdir) / FILE_NAME, compression="gzip")
 
 # %%
-# Filter the events
-# -----------------
-# We round the times, and keep only the
-# first day of activity.
-
-event_table = event_table.round(2)
-
-# filter 1 hour
-event_table = event_table[event_table['ending_times'] <= 24*3600].reset_index(
-    drop=True
-)
-
-# %%
 # Inspect the first few rows of the event table.
 
 print(event_table.head())
@@ -71,18 +84,18 @@ print(event_table.head())
 # Build the continuous-time temporal network
 # ------------------------------------------
 
-tempo = tn.ContTempNetwork(events_table=event_table)
+tnet = tn.ContTempNetwork(events_table=event_table)
 
 # %%
 # Now we find the number of nodes and number of events.
 
-print(tempo)
+print(tnet)
 
 # %%
 # We can also access the variables directly from the object:
 
-print('Number of mice', tempo.num_nodes)
-print('Number of events', tempo.num_events)
+print('Number of mice', tnet.num_nodes)
+print('Number of events', tnet.num_events)
 
 # %%
 # Event-duration distribution
@@ -90,14 +103,10 @@ print('Number of events', tempo.num_events)
 # Histogram of contact durations on log-linear and log-log axes.
 
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), dpi=200)
-sns.histplot(data=tempo.events_table, x='durations', ax=ax[0],
+sns.histplot(data=tnet.events_table, x='durations', ax=ax[0],
              log_scale=(True, False))
-sns.histplot(data=tempo.events_table, x='durations', ax=ax[1],
+sns.histplot(data=tnet.events_table, x='durations', ax=ax[1],
              log_scale=(True, True))
-ax[0].axvline(0.25, color='k', linestyle='--')
-ax[0].axvline(2, color='k', linestyle='--')
-ax[0].axvline(200, color='k', linestyle='--')
-
 plt.tight_layout()
 plt.show()
 
@@ -105,9 +114,10 @@ plt.show()
 # Static aggregated adjacency matrix
 # ----------------------------------
 # We aggregate the temporal network into a static weighted adjacency matrix
-# and display it on linear and logarithmic colour scales.
+# and display it on linear and logarithmic colour scales, filtered for the first 
+# day of the network. 
 
-A = tempo.compute_static_adjacency_matrix()
+A = tnet.compute_static_adjacency_matrix( start_time=None, end_time=24*3600)
 A_dense = A.toarray()
 
 fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, dpi=200, figsize=(12, 5))
@@ -136,29 +146,36 @@ plt.show()
 # Convert to a NetworkX graph
 # ---------------------------
 # We then transform it into a NetworkX object to visualise and perform other
-# algorithms and measure computation.
+# algorithms. 
 
 static = nx.from_numpy_array(A.toarray())
 
 # %%
 # Check whether the aggregated network is connected.
+# And because it is not, retrieve the largest connected component. 
 
 print(nx.is_connected(static))
 
+# nodes of the largest connected component
+gcc_nodes = max(nx.connected_components(static), key=len)
+
+# subgraph induced by those nodes
+gcc = static.subgraph(gcc_nodes).copy()
+
 # %%
-# Draw the aggregated static network, with edge widths scaled by weight.
+# Draw the largest connected network, with edge widths scaled by weight.
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 
-pos = nx.spring_layout(static, seed=412)
-weights = [static[u][v]["weight"] for u, v in static.edges()]
+pos = nx.spring_layout(gcc, seed=412)
+weights = [gcc[u][v]["weight"] for u, v in gcc.edges()]
 max_w = max(weights)
 widths = [2 * np.log10(w) / np.log10(max_w) for w in weights]
 
-nx.draw(static, pos, with_labels=False, width=widths, node_color="teal",
+nx.draw(gcc, pos, with_labels=False, width=widths, node_color="teal",
         node_size=5)
 
-plt.title("Aggregated Static Network")
+plt.title("Aggregated Static Network\n Day 1")
 plt.show()
 
 # %%
@@ -168,8 +185,8 @@ plt.show()
 # minimum start time and maximum end time -- we can query the network
 # directly:
 
-print("Start:", tempo.start_time)
-print("End:", tempo.end_time)
+print("Start:", tnet.start_time)
+print("End:", tnet.end_time)
 
 # %%
 # Active nodes over time
@@ -177,8 +194,8 @@ print("End:", tempo.end_time)
 # Number of active nodes in each one-hour window across a full day.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_active = [tempo.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
-fig, ax = plt.subplots(nrows=1, ncols=1)
+n_active = [tnet.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
+fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 ax.plot(t[:-1], n_active, marker='.')
 
 ax.set_xticks(t)
@@ -193,7 +210,7 @@ plt.show()
 # Number of active edges/events in each one-hour window.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_edge_active = [tempo.num_active_edges(t[i], t[i + 1])
+n_edge_active = [tnet.num_active_edges(t[i], t[i + 1])
                  for i in range(len(t) - 1)]
 
 fig, ax = plt.subplots(nrows=1, ncols=1)
@@ -209,23 +226,23 @@ plt.show()
 # Mouse contact timeline
 # ---------------------------
 # The activity of events and nodes depends on the time of day. We can also
-# investigate the network in the first hour.
+# investigate the network in the first half an hour.
 # Each contact is drawn as a horizontal bar; rows correspond to individual
 # mice.
 
-fig, ax = plt.subplots(figsize=(10, 5))
-et = tempo.events_table
-et = et[et['ending_times'] <= 3600]
+fig, ax = plt.subplots(figsize=(10, 5), dpi=200)
+et = tnet.events_table
+et = et[et['ending_times'] <= 1800]
 
 for _, row in et.iterrows():
-    tgt = row[tempo._TARGETS]
-    t0 = row[tempo._STARTS]
-    t1 = row[tempo._ENDINGS]
+    tgt = row['target_nodes']
+    t0 = row['starting_times']
+    t1 = row['ending_times']
     ax.barh(tgt, t1 - t0, left=t0, height=0.6, color='steelblue', alpha=0.6)
 
 ax.set_xlabel('Time (s)')
 ax.set_ylabel('Mouse ID')
-ax.set_title('Mouse contact timeline — first 1 hour')
+ax.set_title('Mouse contact timeline — first 30 minutes')
 plt.tight_layout()
 plt.show()
 # %%
@@ -234,29 +251,57 @@ plt.show()
 # Now we want to compute the forward transition matrices by
 # first computing the Laplacians for the 1st hour
 # to keep the example fast enough.
-
-tempo = tn.ContTempNetwork(events_table=et)
-tempo.compute_laplacian_matrices()
+tnet.compute_laplacian_matrices(t_start=None, t_stop=1800)
 
 # %%
-# We then proceed to computing the forward transition matrix for 3 time
-# scales. It may take few minutes to run this.
+# Inspecting the density of the Laplacians
+# ----------------------------------------
+# Different intervals produce Laplacians of very different sparsity. The
+# helper below plots the distribution of densities and returns a set of
+# representative indices (the min, lower-quartile, median, upper-quartile, and
+# max-density snapshots) that we reuse for benchmarking.
+
+indices = tnet.plot_density_of_laplacians()
+
+# %%
+# Benchmarking the matrix-exponential methods
+# -------------------------------------------
+# Computing a transition matrix requires a matrix exponential, and
+# ``tempnet`` offers more than one strategy for this. :meth:`print_report`
+# times each method across a range of diffusion scales and the representative
+# Laplacians selected above, then recommends the fastest option for this
+# dataset. 
+
+scales = np.logspace(-6, 6, 10)
+tnet.print_report(
+    indices, scales,
+    method_kwargs={
+        'mfp_exp': {'err': 1e-6},
+        'parallel_expm': {'nproc': 4, 'normalize_rows': True},
+    },
+)
+# %%
+# Computing the transition matrices
+# ---------------------------------------
+# Finally we build thetransition matrices for 2 time
+# scales that the flow-stability clustering consumes. 
+# It may take few minutes to run this.
 
 scales = [1e-6, 1]
 for i, s in enumerate(scales):
-    tempo.compute_inter_transition_matrices(lamda=s)
-
-forward_transition_matrices = [
-    reduce(lambda a, b: a @ b, tempo.inter_T[s]) for s in scales
-]
+    tnet.compute_inter_transition_matrices(
+    lamda=s,
+    method="parallel_expm",
+    n_jobs=1,nproc= 4, normalize_rows= True)
+    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False, force_csr=True, tol=1e-8)
 
 # %%
 # Visualise the forward transition matrices for each time scale.
 
 norm = LogNorm(vmin=1e-6, vmax=1)
-fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4))
-for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
-    sns.heatmap(matrix.toarray(), ax=ax[i], square=True, cbar=False,
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4), dpi=500)
+for i, lamda in enumerate(scales):
+    sns.heatmap(tnet.T[lamda].toarray(), ax=ax[i], square=True, cbar=False,
                 norm=norm)
     ax[i].set_title(rf'$\lambda$={lamda}')
     ax[i].set_xticks([])
@@ -265,3 +310,13 @@ for i, (lamda, matrix) in enumerate(zip(scales, forward_transition_matrices)):
 fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
              fraction=0.046, pad=0.04)
 plt.show()
+
+## Save
+# As computing the transition matrices for different lambdas can be
+# computationally expensive, one can save and load the network to access it later.
+tmp_path = Path(r'')  # <-- put your actual directory here, e.g. Path(r'C:\Users\you\data')
+tnet.save(tmp_path / "mice_network.pkl")
+
+# Load
+# and we can load it later with
+tnet = tn.ContTempNetwork.load(tmp_path / "mice_network.pkl")

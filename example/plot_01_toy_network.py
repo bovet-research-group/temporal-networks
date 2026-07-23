@@ -1,4 +1,32 @@
 """
+#
+# Temporal networks `tempnet`
+#
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+"""
+
+
+
+"""
 Toy Temporal Network
 =================================================
 
@@ -11,38 +39,35 @@ We build a small toy network, aggregate it into a static graph, compute the
 sequence of random-walk Laplacians, and finally simulate a continuous-time
 random walk by exponentiating those Laplacians.
 """
-
-import numpy as np
+# %%
 from matplotlib import pyplot as plt
 import seaborn as sns
 import tempnet as tn
 import networkx as nx
-from functools import reduce
 
 # %%
 # Building the temporal network
 # -----------------------------
-# Consider a small toy network with four edges:
+# Consider a small toy network with three edges:
 #
 # ===== ====== =================
 # Edge  Nodes  Active interval
 # ===== ====== =================
-# 1     0, 1   [0, 3]
-# 2     1, 2   [1, 2]
-# 3     0, 2   [2, 4]
-# 4     1, 2   [3, 4]
+# 1     0, 1   [0, 1.5]
+# 2     1, 2   [1.5, 2.5]
+# 3     1, 2   [3.5, 4]
 # ===== ====== =================
 #
 # To construct the temporal network, define four parallel lists -- one each for
 # source nodes, target nodes, start times, and end times -- then pass them to
 # the constructor. Each index across the four lists corresponds to a single edge.
 
-source_nodes = [0, 1, 0, 1]
-target_nodes = [1, 2, 2, 2]
-starting_times = [0, 1, 2, 3]
-ending_times = [3, 2, 4, 4]
+source_nodes = [0, 1, 1]
+target_nodes = [1, 2, 2]
+starting_times = [0, 1.5, 3.5]
+ending_times = [1.5, 2.5, 4]
 
-tempo = tn.ContTempNetwork(
+tnet = tn.ContTempNetwork(
     source_nodes=source_nodes,
     target_nodes=target_nodes,
     starting_times=starting_times,
@@ -53,26 +78,14 @@ tempo = tn.ContTempNetwork(
 # We can print the object to see the number of nodes and events, or access
 # them through properties.
 
-print(tempo)
-print("num_nodes, num_events:", tempo.num_nodes, tempo.num_events)
+print(tnet)
+print("num_nodes, num_events:", tnet.num_nodes, tnet.num_events)
 
 # %%
 # The full cleaned dataframe is available in one go, including a ``durations``
 # column derived from the start and end times.
 
-print(tempo.events_table)
-
-# %%
-# Distribution of edge activation durations
-# -----------------------------------------
-# The ``durations`` column lets us inspect the distribution of edge activation
-# periods, shown here in both linear and log scale.
-
-fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(12, 4), dpi=200)
-sns.histplot(data=tempo.events_table, x="durations", ax=ax[0], discrete=True)
-sns.histplot(data=tempo.events_table, x="durations", ax=ax[1], log_scale=(True, True))
-plt.tight_layout()
-plt.show()
+print(tnet.events_table)
 
 # %%
 # Aggregating into a static network
@@ -81,20 +94,21 @@ plt.show()
 # into a static graph. This is visualized as a heatmap, where each cell's color
 # represents the total weight of edge activations between a pair of nodes.
 
-A = tempo.compute_static_adjacency_matrix()
+A = tnet.compute_static_adjacency_matrix().toarray()
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
-sns.heatmap(A.toarray(), ax=ax, annot=True, cbar_kws={"label": "Weight"})
+sns.heatmap(A, ax=ax, annot=True, cbar_kws={"label": "Weight"})
 ax.set_xlabel("Nodes")
 ax.set_ylabel("Nodes")
 ax.set_title("Aggregated Network Adjacency Matrix")
 plt.show()
 
+
 # %%
 # We then transform it into a NetworkX object to visualise and run other
 # algorithms on it.
 
-static = nx.from_numpy_array(A.toarray())
+static = nx.from_numpy_array(A)
 
 pos = nx.circular_layout(static)
 
@@ -106,23 +120,18 @@ plt.title("Aggregated Static Network")
 plt.show()
 
 # %%
-# Alternatively, we can represent edge weights as the thickness of each edge.
+# Aggregating into a static network over a period
+# -----------------------------------------------
+# You can also choose the period to aggregate over by passing
+# start_time and end_time to the function.
+
+A_period = tnet.compute_static_adjacency_matrix(start_time=0, end_time=2).toarray()
 
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
-
-weights = [static[u][v]["weight"] for u, v in static.edges()]
-max_w = max(weights)
-widths = [3 * w / max_w for w in weights]
-
-nx.draw(
-    static,
-    pos,
-    with_labels=True,
-    width=widths,
-    node_color="lightblue",
-    node_size=500,
-)
-plt.title("Aggregated Static Network")
+sns.heatmap(A_period, ax=ax, annot=True, cbar_kws={"label": "Weight"})
+ax.set_xlabel("Nodes")
+ax.set_ylabel("Nodes")
+ax.set_title("Aggregated Network Adjacency Matrix (t = 0 to 2)")
 plt.show()
 
 # %%
@@ -131,11 +140,11 @@ plt.show()
 # Back in the temporal representation, we can access the list of nodes, all
 # timestamps, and the start/end of the network (the minimum start time and
 # maximum end time).
-tempo._compute_time_grid()
-print("Node array", tempo.node_array)
-print("Timestamps", tempo.times)
-print("Start:", tempo.start_time)
-print("End:", tempo.end_time)
+tnet._compute_time_grid()
+print("Node array", tnet.node_array)
+print("Timestamps", tnet.times)
+print("Start:", tnet.start_time)
+print("End:", tnet.end_time)
 
 # %%
 # Random-walk Laplacians
@@ -162,15 +171,15 @@ print("End:", tempo.end_time)
 # (:math:`A_{ii} = 1`, :math:`d_i = 1`). This yields one Laplacian per interval
 # :math:`[t_i, t_{i+1})`.
 
-tempo.compute_laplacian_matrices()
+tnet.compute_laplacian_matrices(dynamics='heat')
 
 # %%
 # We can directly access the delta Laplacian matrices for inspection.
 
-fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
-for i in range(4):
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.laplacians), figsize=(16, 4))
+for i, L in enumerate(tnet.laplacians):
     sns.heatmap(
-        tempo.laplacians[i].toarray(),
+        L.toarray(),
         ax=ax[i],
         square=True,
         annot=True,
@@ -180,9 +189,9 @@ for i in range(4):
         cmap="seismic",
     )
     ax[i].set_title(
-        rf"$t_{{\text{{start}}}}$={tempo.times[i]}"
+        rf"$t_{{\text{{start}}}}$={tnet.times[i]}"
         "\t"
-        rf"$t_{{\text{{end}}}}$={tempo.times[i + 1]}"
+        rf"$t_{{\text{{end}}}}$={tnet.times[i + 1]}"
     )
 fig.suptitle("Delta Laplacians")
 plt.show()
@@ -193,25 +202,21 @@ plt.show()
 # With the random-walk Laplacians computed, we simulate the continuous-time
 # random walk by computing the **matrix exponential** of each Laplacian, scaled
 # by the duration of the corresponding interval and the walker's transition
-# rate. For two consecutive timestamps :math:`t_i` and :math:`t_{i+1}`,
+# rate. For two consecutive timestamps :math:`t_1` and :math:`t_2`,
 #
 # .. math::
+#   \hat{T}(t_1, t_2; \lambda_{\mathrm{RW}}) = e^{-(t_2 - t_1)\lambda_{\mathrm{RW}} L_{\mathrm{RW}}}
 #
-#    T_{\lambda_{\mathrm{RW}}}^{(i)} =
-#       \exp\!\left(-\lambda_{\mathrm{RW}}\, \Delta t\, L_{\mathrm{rw}}^{(i)}\right)
-#
-# where :math:`\Delta t = t_{i+1} - t_i` and :math:`\lambda_{\mathrm{RW}}` is
-# the rate of the random walker. The entry :math:`T_{jk}^{(i)}` gives the
-# probability that a walker starting at node :math:`j` at time :math:`t_i`
-# reaches node :math:`k` at time :math:`t_{i+1}`.
+# where :math:`\lambda_{\mathrm{RW}}` is the rate of the random walker.
+# The entry :math:`\hat{T}_{jk}` gives the probability that a walker starting at node
+# :math:`j` at time :math:`t_1` reaches node :math:`k` at time :math:`t_2`.
+lamda=1
+tnet.compute_inter_transition_matrices(lamda=lamda)
 
-tempo.compute_inter_transition_matrices(lamda=1)
-inter_transition_matrices = tempo.inter_T[1]
-
-fig, ax = plt.subplots(nrows=1, ncols=4, figsize=(16, 4))
-for i in range(4):
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.inter_T[lamda]), figsize=(16, 4))
+for i, matrix in enumerate(tnet.inter_T[lamda]):
     sns.heatmap(
-        inter_transition_matrices[i].toarray(),
+        matrix.toarray(),
         ax=ax[i],
         square=True,
         annot=True,
@@ -221,9 +226,9 @@ for i in range(4):
         vmax=1,
     )
     ax[i].set_title(
-        rf"$t_{{\text{{start}}}}$={tempo.times[i]}"
+        rf"$t_{{\text{{start}}}}$={tnet.times[i]}"
         "\t"
-        rf"$t_{{\text{{end}}}}$={tempo.times[i + 1]}"
+        rf"$t_{{\text{{end}}}}$={tnet.times[i + 1]}"
     )
 fig.suptitle(r"Inter transition matrices for $\lambda=1$")
 plt.show()
@@ -235,8 +240,13 @@ plt.show()
 # matrices:
 #
 # .. math::
+#   T(t_1, t_2; \lambda_{\mathrm{RW}}) = \hat{T}(t_1, t_m; \lambda_{\mathrm{RW}}) \left[ \prod_{k=m}^{n-1} \hat{T}(t_k, t_{k+1}; \lambda_{\mathrm{RW}}) \right] \hat{T}(t_n, t_2; \lambda_{\mathrm{RW}})
 #
-#    T_{\lambda_{\mathrm{RW}}} = \prod_{i=0}^{T-1} T_{\lambda_{\mathrm{RW}}}^{(i)}
+# with :math:`m < n`, :math:`t_m \geq t_1` being the time of the first event
+# after, or at, :math:`t_1` and :math:`t_n < t_2` the time of the last event
+# before :math:`t_2`. To compute the transition matrix corresponding to the
+# time-reversed evolution of the network, from :math:`t_2` to :math:`t_1`, we
+# perform the matrix product in the reversed order.
 #
 # The entry :math:`T_{jk}` gives the probability that a walker with rate
 # :math:`\lambda_{\mathrm{RW}}`, starting at node :math:`j` at the beginning of
@@ -248,17 +258,18 @@ plt.show()
 # - **High rate** (:math:`\lambda_{\mathrm{RW}} \gg 1`): the walker mixes
 #   rapidly, washing out temporal structure.
 
+
 fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
 for i, lamda in enumerate([1e-2, 0.1, 10]):
-    tempo.compute_inter_transition_matrices(lamda=lamda)
-    matrix = reduce(lambda a, b: a @ b, tempo.inter_T[lamda])
+    tnet.compute_inter_transition_matrices(lamda=lamda)
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=False)
     sns.heatmap(
-        matrix.toarray(),
+        tnet.T[lamda].toarray(),
         ax=ax[i],
         square=True,
         annot=True,
         cbar=False,
-        fmt=".3f",
+        fmt=".2f",
         vmin=0,
         vmax=1,
     )
