@@ -296,12 +296,8 @@ class ContTempNetwork:
                 `matrices_list = ['laplacians',
                                   'adjacencies',
                                   'inter_T',
-                                  'inter_T_lin',
                                   'T',
-                                  'T_lin',
-                                  '_stationary_trans',
-                                  'delta_inter_T',
-                                  'delta_inter_T_lin',]`
+                                  'delta_inter_T',]`
         attributes_list: list of strings
             List of attribute names to save.
             The default list is:
@@ -323,12 +319,8 @@ class ContTempNetwork:
         matrices = ["laplacians",
                     "adjacencies",
                     "inter_T",
-                    "inter_T_lin",
                     "T",
-                    "T_lin",
-                    "_stationary_trans",
-                    "delta_inter_T",
-                    "delta_inter_T_lin"]
+                    "delta_inter_T"]
 
         if matrices_list is None:
             matrices_list = matrices
@@ -378,12 +370,8 @@ class ContTempNetwork:
                 `matrices_list = ['laplacians',
                                   'adjacencies',
                                   'inter_T',
-                                  'inter_T_lin',
                                   'T',
-                                  'T_lin',
-                                  '_stationary_trans',
-                                  'delta_inter_T',
-                                  'delta_inter_T_lin',]`
+                                  'delta_inter_T',]`
         attributes_list: list of strings
             List of attribute names to load.
             The default list is:
@@ -403,12 +391,8 @@ class ContTempNetwork:
         matrices = ["laplacians",
                     "adjacencies",
                     "inter_T",
-                    "inter_T_lin",
                     "T",
-                    "T_lin",
-                    "_stationary_trans",
-                    "delta_inter_T",
-                    "delta_inter_T_lin"]
+                    "delta_inter_T"]
 
         if matrices_list is None:
             matrices_list = matrices
@@ -636,7 +620,7 @@ class ContTempNetwork:
     @staticmethod
     def load_inter_T(filename):
         """
-        Loads inter_T and inter_T_lin from 'filename'.
+        Loads inter_T from 'filename'.
 
         The file must have been generated with `save_inter_T`.
 
@@ -697,39 +681,6 @@ class ContTempNetwork:
                         return_dict["inter_T"][lamda].append(
                             return_dict["inter_T"][lamda][-1] + dT
                         )
-
-        if "inter_T_lin" in load_dict.keys():
-            return_dict["inter_T_lin"] = dict()
-
-            if load_dict.get("is_sparse_stoch", False):
-
-                for lamda in load_dict["inter_T_lin"].keys():
-                    return_dict["inter_T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["inter_T_lin"][lamda].keys():
-
-                        return_dict["inter_T_lin"][lamda][t_s] = [
-                            SparseStochMat(**mat_dict)
-                            for mat_dict in load_dict[
-                                "inter_T_lin"][lamda][t_s]
-                        ]
-
-            else:
-                for lamda in load_dict["inter_T_lin"].keys():
-                    return_dict["inter_T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["inter_T_lin"][lamda].keys():
-
-                        return_dict["inter_T_lin"][lamda][t_s] = [
-                            load_dict[
-                                "inter_T_lin"][lamda][t_s]["trans_mat_lin0"]
-                        ]
-
-                        for dT in load_dict["inter_T_lin"][lamda][t_s][
-                                "delta_inter_T_lin"]:
-                            return_dict["inter_T_lin"][lamda][t_s].append(
-                                return_dict["inter_T_lin"][lamda][t_s][-1] + dT
-                            )
 
         del load_dict
         return return_dict
@@ -822,7 +773,7 @@ class ContTempNetwork:
 
     @staticmethod
     def load_T(filename):
-        """Loads T and T_lin from 'filename' that was saved with save_T.
+        """Loads T from 'filename' that was saved with save_T.
 
         Returns a dictionary with the T restored.
 
@@ -872,28 +823,6 @@ class ContTempNetwork:
             else:
                 for lamda in load_dict["T"].keys():
                     return_dict["T"][lamda] = load_dict["T"][lamda]
-
-        if "T_lin" in load_dict.keys():
-            return_dict["T_lin"] = dict()
-
-            if load_dict.get("is_sparse_stoch", False):
-
-                for lamda in load_dict["T_lin"].keys():
-                    return_dict["T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["T_lin"][lamda].keys():
-
-                        return_dict["T_lin"][lamda][t_s] = \
-                            SparseStochMat(**load_dict["T_lin"][lamda][t_s])
-
-            else:
-                for lamda in load_dict["T_lin"].keys():
-                    return_dict["T_lin"][lamda] = dict()
-
-                    for t_s in load_dict["T_lin"][lamda].keys():
-
-                        return_dict["T_lin"][lamda][t_s] = \
-                                            load_dict["T_lin"][lamda][t_s]
 
         del load_dict
         return return_dict
@@ -1558,36 +1487,6 @@ class ContTempNetwork:
         else:
             # TODO: switch to logger
             print("PID ", os.getpid(), " : ", "delta_inter_T has not been computed")
-
-        if hasattr(self, "inter_T_lin") and lamda in self.inter_T_lin.keys():
-
-            if not hasattr(self, "delta_inter_T_lin"):
-                self.delta_inter_T_lin = dict()
-
-            if lamda not in self.delta_inter_T_lin.keys():
-
-                self.delta_inter_T_lin[lamda] = dict()
-
-                for t_s in self.inter_T_lin[lamda].keys():
-
-                    self.delta_inter_T_lin[lamda][t_s] = [
-                        self.inter_T_lin[
-                            lamda][t_s][k+1] - self.inter_T_lin[lamda][t_s][k]
-                        for k in range(len(self.inter_T_lin[lamda][t_s])-1)
-                    ]
-
-                    if round_zeros:
-                        for M in self.delta_inter_T_lin[lamda][t_s]:
-                            set_to_zeroes(M, tol=tol)
-
-            else:
-                # TODO: switch to logger
-                print("PID ", os.getpid(), " : ",
-                      f"delta_inter_T_lin has already been computed with lamda={lamda}")
-
-        else:
-            # TODO: switch to logger
-            print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
 
 
 class ContTempInstNetwork(ContTempNetwork):
