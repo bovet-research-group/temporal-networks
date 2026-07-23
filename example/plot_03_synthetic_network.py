@@ -1,20 +1,57 @@
 """
+#
+# Temporal networks `tempnet`
+#
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+"""
+
+
+"""
 Synthetic temporal network with community structure
 ====================================================
 
 This example uses :class:`~tempnet.synth_temp_network.SynthTempNetwork` to
-generate a synthetic continuous-time temporal network of 12 agents organised
-into three communities of four.  Within-community contacts are more frequent
-than cross-community ones (block probability structure).
+generate a synthetic continuous-time temporal network.
 
-The simulation produces a stream of time-stamped contact events that are
-then loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
+The model works as follows:
 
-Two plots are produced:
+1. We first define a set of nodes for the network. In this example, 12 agents
+   are organized into communities.
+2. Each node is assigned an activation rate, ``lambda_activation``.
+3. Each node activates on its own (Poissonian) clock, with a waiting time drawn
+   from an exponential distribution with mean ``inter_tau=1/lambda_activation``. 
+4. Each time a node activates, it chooses ``num_partner_per_activation``
+   partner(s) according to the selection strategy (uniform, within-group, or
+   block-probability based, here we do an example with blocks).
+5. Each resulting interaction gets a duration drawn from another exponential
+   with rate ``activ_distro_scale=1/lambda_duration``. When the edge ends, the partner 
+   becomes available again for that node's future activations.
 
-1. **Contact timeline** — each contact is drawn as a horizontal bar coloured
-   by community membership of the source node.
-2. **Event-duration distribution** — histogram of all contact durations.
+In the simulation below, agents are organized into three communities of four.
+Within-community contacts are more frequent than cross-community ones (a block
+probability structure).
+
+The simulation produces a stream of time-stamped contact events that are then
+loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
 """
 
 # %%
@@ -90,16 +127,29 @@ print(
 # %%
 # Build a ContTempNetwork
 # -----------------------
+# The simulated synthetic network is inherently **directed**: the connection
+# from ``u`` to ``v`` is generated independently of the one from ``v`` to
+# ``u``. As a result, there can be moments where both the ``u → v`` and
+# ``v → u`` edges are active simultaneously.
+#
+# The ``tempnet`` package, however, works with **undirected** networks. When the
+# network is constructed, overlapping reciprocal edges are merged into a single
+# undirected edge, and the Laplacians are then built from this undirected
+# representation.
+#
+# Note that the Markov property of the resulting process still holds approximately, 
+# as long as edge durations are short compared to the inter-event times.
 
-network = ContTempNetwork(
+tnet = ContTempNetwork(
     source_nodes=sim.indiv_sources,
     target_nodes=sim.indiv_targets,
     starting_times=sim.start_times,
     ending_times=sim.end_times,
+    merge_overlapping_events=True
 )
 
-print(f"Nodes : {network.nodes}")
-print(f"Events: {len(network.events_table)}")
+print(f"Nodes : {tnet.nodes}")
+print(f"Events: {len(tnet.events_table)}")
 
 # %%
 # Plot 1: Contact timeline
@@ -116,12 +166,12 @@ node_to_group = {
 
 fig, ax = plt.subplots(figsize=(10, 5))
 
-et = network.events_table
+et = tnet.events_table
 for _, row in et.iterrows():
-    src = int(row[ContTempNetwork._SOURCES])
-    tgt = int(row[ContTempNetwork._TARGETS])
-    t0 = row[ContTempNetwork._STARTS]
-    t1 = row[ContTempNetwork._ENDINGS]
+    src = int(row['source_nodes'])
+    tgt = int(row['target_nodes'])
+    t0 = row['starting_times']
+    t1 = row['ending_times']
     color = GROUP_COLORS[node_to_group[src]]
     ax.barh(tgt, t1 - t0, left=t0, height=0.6, color=color, alpha=0.7)
 
@@ -141,9 +191,7 @@ plt.show()
 # Plot 2: Event-duration distribution
 # ------------------------------------
 
-durations = (
-    et[ContTempNetwork._ENDINGS] - et[ContTempNetwork._STARTS]
-).values
+durations = et['durations'].values
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.hist(durations, bins=30, edgecolor='white')
