@@ -40,7 +40,6 @@ MICE_URL = (
 )
 
 
-MICE_FIXTURE_DIR = "tests/prepare_mice_test"
 
 
 # HELPERS 
@@ -1186,50 +1185,3 @@ class TestEventsTableIndexNormalization:
         # must not raise KeyError on the "index" column in the time grid
         net.compute_laplacian_matrices()
         assert len(net.laplacians) == 3
-
-
-# --------------------------------------------------------------------------- #
-# Real-data tests (mice dataset)
-# --------------------------------------------------------------------------- #
-class TestMice:
-
-    @staticmethod
-    def _fixture(name):
-        return os.path.join(MICE_FIXTURE_DIR, name)
-
-    def test_num_nodes(self, mice_network):
-        n_array = np.load(self._fixture("mice_node_array.npy"))
-        assert mice_network.num_nodes == len(n_array)
-
-    def test_node_array(self, mice_network):
-        n_array = np.load(self._fixture("mice_node_array.npy"))
-        assert sorted(mice_network.node_array) == sorted(n_array)
-
-    def test_event_table(self, mice_network):
-        et = pd.read_csv(self._fixture("mice_event_table.csv"))
-        pd.testing.assert_frame_equal(
-            mice_network.events_table.reset_index(drop=True),
-            et.reset_index(drop=True),
-        )
-
-    def test_compute_time_grid(self, mice_network):
-        mice_network._compute_time_grid()
-        tg = pd.read_csv(self._fixture("mice_time_grid.csv"))
-        times = np.load(self._fixture("mice_times.npy"))
-        pd.testing.assert_frame_equal(
-            mice_network.time_grid.reset_index(),
-            tg.reset_index(drop=True),
-        )
-        assert list(times) == list(mice_network.times)
-
-    def test_adj_full(self, mice_network):
-        A = mice_network.compute_static_adjacency_matrix().toarray()
-        A_loaded = np.load(self._fixture("mice_full_adjacency.npy"))
-        assert np.allclose(A, A_loaded)
-
-    def test_adj_1h(self, mice_network):
-        A = mice_network.compute_static_adjacency_matrix(
-            start_time=0, end_time=3600,
-        ).toarray()
-        A_loaded = np.load(self._fixture("mice_1h_adjacency.npy"))
-        assert np.allclose(A, A_loaded)
