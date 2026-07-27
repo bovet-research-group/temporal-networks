@@ -42,8 +42,19 @@ setup_logger()  # Set up the logger with the default level
 
 from .temporal_network import (  # noqa: F401
     ContTempNetwork,
+    ContTempInstNetwork,
+    lin_approx_trans_matrix,
+    compute_stationary_transition,
+    compute_subspace_expm,
+    csc_row_normalize,
+    find_spectral_gap,
+    remove_nnz_rowcol,
+    numpy_rebuild_nnz_rowcol,
+    sparse_lapl_expm,
+    sparse_lin_approx,
+    sparse_stationary_trans,
+    set_to_ones,
     set_to_zeroes,
-    sparse_lapl_expm
 )
 
 def set_log_level(level):
