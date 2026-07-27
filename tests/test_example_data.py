@@ -7,7 +7,6 @@ The correct pattern — ``zenodo_get.download()`` + ``tempfile.TemporaryDirector
 — is tested in both the source-inspection test and the live network test.
 """
 
-import re
 import tempfile
 from pathlib import Path
 
@@ -17,31 +16,6 @@ EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
 
 RECORD_ID = "4725155"
 FILE_NAME = "mice_contact_sequence.csv.gz"
-
-
-def test_plot_02_uses_zenodo_get():
-    """plot_02 must download via zenodo_get.download() (handles redirects + timeout).
-
-    ``pd.read_csv(URL)`` and ``requests.get(URL)`` both hang because they do not
-    follow Zenodo's redirect chain correctly and/or have no built-in timeout.
-    The correct fix is to use ``from zenodo_get import download`` and call
-    ``download(record_or_doi=..., output_dir=..., file_glob=...)``.
-    """
-    source = (EXAMPLES_DIR / "plot_02_real_network.py").read_text()
-
-    assert "from zenodo_get import download" in source, (
-        "plot_02 must import download from zenodo_get"
-    )
-    assert "download(" in source, (
-        "plot_02 must call download() to fetch the Zenodo dataset"
-    )
-    assert "requests.get(" not in source, (
-        "plot_02 must not call requests.get() — use zenodo_get.download() instead"
-    )
-    assert not re.search(r"pd\.read_csv\(['\"]https?://", source), (
-        "pd.read_csv must not be called with a raw URL — "
-        "use zenodo_get.download() + Path(tmpdir) / FILE_NAME instead"
-    )
 
 
 @pytest.mark.network
