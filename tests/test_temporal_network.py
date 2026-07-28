@@ -338,12 +338,6 @@ def test_sparse_lapl_expm():
 
 
 
-def test_sparse_stationary_trans():
-    """
-    """
-    from tempnet.temporal_network import sparse_stationary_trans
-    pass
-
 
 def test_set_to_ones():
     """
