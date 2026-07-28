@@ -2079,34 +2079,6 @@ class ContTempNetwork:
         else:
             # TODO: switch to logger
             print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
-    def active_nodes(self, t_start, t_end):
-        """Return the nodes active within the given time window."""
-        assert t_start < t_end , \
-            "t_end should be bigger than t_start"
-
-        t_start=max(self.start_time, t_start)
-        t_end=min(self.end_time, t_end)    
-        mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
-        edges = self.events_table[mask]
-        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
-        return np.array(list(nodes))
-
-    def num_active_nodes(self, t_start, t_end):
-        """Return the number of nodes active within the given time window."""
-        nodes=self.active_nodes(t_start, t_end)
-        return len(nodes)
-
-
-    def num_active_edges(self, t_start, t_end):
-        """Return the number of edges active within the given time window."""
-        assert t_start < t_end , \
-            "t_end should be bigger than t_start"
-
-        t_start=max(self.start_time, t_start)
-        t_end=min(self.end_time, t_end)   
-        
-        mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
-        return mask.sum()
 
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
