@@ -30,8 +30,8 @@ Start by getting a local copy of the repository:
 git clone https://github.com/bovet-research-group/temporal-networks.git
 cd temporal-networks
 ```
-
-Initialize a virtual environment and install the project in editable mode
+We recommend using [uv](https://docs.astral.sh/uv/) to manage environments and
+dependencies. Initialize a virtual environment and install the project in editable mode
 together with all development dependencies (`testing` + `docs` groups):
 
 ```bash
