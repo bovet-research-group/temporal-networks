@@ -1,0 +1,50 @@
+# Builds Sphinx docs and deploys to GitHub Pages on every push to main.
+#
+# Prerequisites (configured outside this workflow):
+#   * GitHub Pages enabled in repo settings, source: "GitHub Actions"
+
+name: Deploy Documentation
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write       # OIDC deploy to GitHub Pages
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+          pip install --group docs
+
+      - name: Build documentation
+        run: sphinx-build -b html docs public
+
+      - name: Upload pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
