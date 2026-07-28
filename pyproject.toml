@@ -43,8 +43,8 @@ docs = [
     "sphinx-copybutton>=0.5.2",
     "matplotlib>=3.9.0",
     "zenodo-get>=3.0.0",
-      "seaborn>=0.13.2",
-  "networkx>=3.3"
+    "seaborn>=0.13.2",
+    "networkx>=3.3"
 ]
 
 
