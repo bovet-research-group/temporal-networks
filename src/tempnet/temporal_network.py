@@ -1383,6 +1383,224 @@ class ContTempNetwork:
             f"Transition matrices already computed for lamda={lamda}"
         )
 
+    def _active_mask(self, t_start=None, t_end=None):
+        """Boolean mask of events overlapping the window.
+
+        An event overlaps when it starts before ``t_end`` and ends after
+        ``t_start`` (half-open on both ends). The requested window is clamped
+        to the graph's own span ``[start_time, end_time]``.
+        """
+        if t_start is None:
+            t_start = self.start_time
+        if t_end is None:
+            t_end = self.end_time
+        assert t_start < t_end, "t_end should be bigger than t_start"
+        t_start = max(self.start_time, t_start)
+        t_end = min(self.end_time, t_end)
+        return (self.events_table["starting_times"] < t_end) & \
+            (self.events_table["ending_times"] > t_start)
+
+    def active_nodes(self, t_start=None, t_end=None):
+        """Return the nodes that are active within a given time window.
+
+        A node is considered active if it is an endpoint of at least one event
+        that overlaps the interval ``[t_start, t_end)``. An event overlaps the
+        window when it starts before ``t_end`` and ends after ``t_start``.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Sorted array of unique node ids active within the window.
+            Empty if no events overlap.
+        """
+        edges = self.events_table[self._active_mask(t_start, t_end)]
+        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
+        return np.sort(list(nodes))
+
+    def num_active_nodes(self, t_start=None, t_end=None):
+        """Return the number of nodes active within a given time window.
+
+        A node is active if it is an endpoint of at least one event overlapping
+        ``[t_start, t_end)``.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active nodes in the window. Zero if no events overlap.
+        """
+        return len(self.active_nodes(t_start, t_end))
+
+    def num_active_edges(self, t_start=None, t_end=None):
+        """Return the number of edges active within a given time window.
+
+        An edge (event) is counted as active if it overlaps the interval
+        ``[t_start, t_end)``, that is, it starts before ``t_end`` and ends
+        after ``t_start``.
+
+        Note that this counts *events*, so if the same node pair interacts
+        multiple times within the window, each interaction is counted
+        separately.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active events overlapping the window. Zero if none.
+        """
+        return int(self._active_mask(t_start, t_end).sum())
+
+    def compute_lin_transition_matrices(self,
+                                        lamda=None,
+                                        t_start=None,
+                                        t_stop=None,
+                                        t_s=10, save_intermediate=True,
+                                        reverse_time=False):
+        """Compute transition matrices and saves them in a dict of lists.
+
+        The transition matrices are save as `self.T_lin[lamda][t_s]` where
+        `self.T_lin[lamda][t_s][k]` is the product of all interevent
+        transition matrices from t_0 to t_k computed with lamda and t_s.
+        """
+        if not hasattr(self, "inter_T_lin") \
+                or lamda not in self.inter_T_lin.keys() \
+                or t_s not in self.inter_T_lin[lamda].keys():
+            raise Exception("Compute inter_T_lin first.")
+
+        if not hasattr(self, "T_lin"):
+            self.T_lin = dict()
+
+        compute = True
+
+        if lamda in self.T_lin.keys():
+            if t_s in self.T_lin[lamda].keys():
+                compute = False
+                logger.info("Transition matrices already computed "
+                            f"for lamda={lamda}, t_s={t_s}")
+
+        if compute:
+
+            if reverse_time:
+                k_init = len(self.inter_T_lin[lamda][t_s])-1
+                k_range = reversed(range(k_init))
+                logger.info("Reversed time computation.")
+            else:
+                k_init = 0
+                k_range = range(1, len(self.inter_T_lin[lamda][t_s]))
+
+            # initial conditions
+            if lamda not in self.T_lin.keys():
+                self.T_lin[lamda] = dict()
+                if save_intermediate:
+                    self.T_lin[lamda][t_s] = [
+                            self.inter_T_lin[lamda][t_s][k_init]]
+                else:
+                    self.T_lin[lamda][t_s] = self.inter_T_lin[
+                            lamda][t_s][k_init]
+
+            if t_s not in self.T_lin[lamda].keys():
+                if save_intermediate:
+                    self.T_lin[lamda][t_s] = [self.inter_T_lin[
+                        lamda][t_s][k_init]]
+                else:
+                    self.T_lin[lamda][t_s] = self.inter_T_lin[
+                            lamda][t_s][k_init]
+
+            logger.info(
+                f"Computing transition matrix for lamda={lamda}, t_s={t_s}"
+            )
+
+            t0 = time.time()
+
+            for k in k_range:
+                if not k % 1000:
+                    logger.info(
+                        f"{k} over {len(self.inter_T_lin[lamda][t_s])}")
+                    logger.info(f"{time.time()-t0:.2f}s")
+                if save_intermediate:
+                    self.T_lin[lamda][t_s].append(
+                        self.T_lin[lamda][t_s][-1] @ self.inter_T_lin[
+                            lamda][t_s][k]
+                    )
+                    # normalize T to correct precision errors
+                    inplace_csr_row_normalize(self.T_lin[lamda][t_s][-1])
+                else:
+                    self.T_lin[lamda][t_s] = self.T_lin[lamda][t_s] @ \
+                                      self.inter_T_lin[lamda][t_s][k]
+                    # normalize T to correct precision errors
+                    inplace_csr_row_normalize(self.T_lin[lamda][t_s])
+
+            t_end = time.time()-t0
+
+            self._compute_times[
+                f"trans_matrix_lin_{lamda}_{t_s}_rev{reverse_time}"] = t_end
+
+            logger.info(f"Finished in {t_end}s")
+        logger.info(
+            f"Transition matrices already computed for lamda={lamda}"
+        )
+
+    def _compute_stationary_transition(self,
+                                       t_start=None,
+                                       t_stop=None,
+                                       use_sparse_stoch=True):
+
+        if not hasattr(self, "laplacians"):
+            self.compute_laplacian_matrices(t_start=t_start,
+                                            t_stop=t_stop)
+        logger.info("Computing stationary transition matrices")
+
+        self._stationary_trans = []
+
+        I = eye(self.num_nodes,
+                dtype=np.float64, format="csc")
+
+#        I = np.eye(self.num_nodes, dtype=np.float64)
+
+        t0 = time.time()
+        for k in range(len(self.laplacians)):
+            if not k % 1000:
+                logger.info(f"{k} over {len(self.laplacians)}")
+                logger.info(f"{time.time()-t0:.2f}s")
+
+            if use_sparse_stoch:
+                self._stationary_trans.append(
+                    sparse_stationary_trans(I - self.laplacians[k])
+                )
+
+            else:
+                self._stationary_trans.append(
+                    compute_stationary_transition(I - self.laplacians[k])
+                )
+
+        t_end = time.time() - t0
+
+        self._compute_times["_stationary_trans"] = t_end
+
+        logger.info(f"Stationary transition matrices computation took {t_end}s")
+
     def _merge_overlapping_events(self):
         """
         Merge temporally overlapping undir. event between each pair of nodes.
