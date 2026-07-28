@@ -292,18 +292,7 @@ def test_ContTempInstNetwork():
     pass
 
 
-def test_lin_approx_trans_matrix():
-    """
-    """
-    from tempnet.temporal_network import lin_approx_trans_matrix
-    pass
 
-
-def test_compute_stationary_transition():
-    """
-    """
-    from tempnet.temporal_network import compute_stationary_transition
-    pass
 
 
 def test_compute_subspace_expm():
@@ -348,18 +337,6 @@ def test_sparse_lapl_expm():
     pass
 
 
-def test_sparse_lin_approx():
-    """
-    """
-    from tempnet.temporal_network import sparse_lin_approx
-    pass
-
-
-def test_sparse_stationary_trans():
-    """
-    """
-    from tempnet.temporal_network import sparse_stationary_trans
-    pass
 
 
 def test_set_to_ones():
