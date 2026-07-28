@@ -1,10 +1,9 @@
-"""
 # Temporal networks `tempnet`
 #
 # Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
-# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
-#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
-#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>,
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>,
+#                    Samuel Koovely <samuel.koovely@uzh.ch>,
 #                    Jonas Liechti <jonas@t4d.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
@@ -19,11 +18,10 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-"""
 
 """
 Toy Temporal Network
-=================================================
+====================
 
 This example introduces the core temporal-network workflow in ``tempnet``.
 A **temporal network** is a graph whose edges are active only during specific
