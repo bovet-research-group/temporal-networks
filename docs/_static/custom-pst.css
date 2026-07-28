@@ -1,0 +1,31 @@
+html {
+  --pst-color-link: green;
+  --pst-color-inline-code: green!important;
+}
+
+html[data-theme="light"] {
+  --pst-color-link: black;
+  --sbt-color-announcement: rgb(97, 97, 97);
+  --pst-color-primary: #176de8;
+}
+html[data-theme="dark"] {
+  --pst-color-link: lightgreen;
+  --sbt-color-announcement: rgb(97, 97, 97);
+  --pst-color-primary: #176de8;
+}
+
+/* External link indicator — appends ⎋ after external refs except Python stdlib */
+a.reference.external:not([href*="docs.python.org"])::after {
+    content: "\00A0⎋";
+    font-size: 0.75em;
+    opacity: 0.6;
+}
+/* Suppress the ⎋ marker when the link wraps a partner logo */
+a.reference.external:not([href*="docs.python.org"]):has(> img)::after {
+    content: none;
+}
+
+/* Hide sphinx-gallery execution time note at the bottom of example pages */
+.sphx-glr-timing {
+    display: none;
+}

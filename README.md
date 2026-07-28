@@ -1,18 +1,26 @@
 # temporal-networks
+
+<!-- header-start -->
 A library for analyzing temporal networks.
+<!-- header-end -->
 
 ## Installation
 
-The `tempnet` package requires Python versions of 3.10.0 or higher.
-To ensure reproducible environments and precise dependency resolution, we
-recommend using the open-source package manager `uv`:
+<!-- installation-start -->
+The `tempnet` package requires Python 3.10 or higher.
 
-After a virtual environment is initialized, `tempnet` can be installed via the
-following execution:
+Install from PyPI:
 
 ```bash
-uv pip install git+https://github.com/bovet-research-group/temporal-networks.git
+pip install tempnet
 ```
+
+To install directly from source:
+
+```bash
+pip install git+https://github.com/bovet-research-group/temporal-networks.git
+```
+<!-- installation-end -->
 
 ## Development
 
@@ -22,10 +30,37 @@ Start by getting a local copy of the repository:
 git clone https://github.com/bovet-research-group/temporal-networks.git
 cd temporal-networks
 ```
-
-Initialize a virtual environment and install the project directly in editable
-mode with:
+We recommend using [uv](https://docs.astral.sh/uv/) to manage environments and
+dependencies. Initialize a virtual environment and install the project in editable mode
+together with all development dependencies (`testing` + `docs` groups):
 
 ```bash
 uv sync
 ```
+
+Alternatively, with plain pip (requires pip ≥ 25.1):
+
+```bash
+pip install -e . --group dev
+```
+
+### Running the tests
+
+```bash
+uv run pytest
+```
+
+Tests marked `network` download data from Zenodo and are skipped by default.
+Run them explicitly when you have internet access:
+
+```bash
+uv run pytest -m network
+```
+
+### Building the documentation locally
+
+```bash
+sphinx-build -b html docs docs/_build/html
+```
+
+Then open `docs/_build/html/index.html` in a browser.
