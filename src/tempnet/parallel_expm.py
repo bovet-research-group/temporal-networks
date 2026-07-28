@@ -22,7 +22,6 @@
 import os
 import time
 from multiprocessing import Pool, RawArray
-
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, isspmatrix_csc, vstack
 from scipy.sparse.csgraph import connected_components
