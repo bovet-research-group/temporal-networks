@@ -280,6 +280,11 @@ class ContTempNetwork:
         return str(self.__class__) + \
               f" with {self.num_nodes} nodes and {self.num_events} events"
 
+    @property
+    def nodes(self):
+        """Sorted list of original node labels."""
+        return sorted(self.label_to_node_dict.keys())
+
     def save(self, filename,
              matrices_list=None,
              attributes_list=None):
@@ -2075,7 +2080,6 @@ class ContTempNetwork:
             # TODO: switch to logger
             print("PID ", os.getpid(), " : ", "delta_inter_T_lin has not been computed")
 
-
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
@@ -2284,6 +2288,8 @@ class ContTempInstNetwork(ContTempNetwork):
             fix_tau_k=True,
             use_sparse_stoch=use_sparse_stoch
         )
+
+
 
 
 def lin_approx_trans_matrix(T, t, Pi=None, t_s=10):
@@ -2801,3 +2807,4 @@ def set_to_zeroes(Tcsr, tol=1e-8, relative=True, use_absolute_value=False):
                 Tcsr.eliminate_zeros()
         else:
             raise TypeError("Tcsr must be csc,csr or SparseStochMat")
+
