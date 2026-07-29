@@ -1502,19 +1502,40 @@ class ContTempNetwork:
             logger.info(f"PID {os.getpid()} : delta_inter_T has not been computed")
 
     def _active_mask(self, t_start=None, t_end=None):
-        """Boolean mask of events overlapping the window.
+        """Boolean mask of events overlapping the window ``(t_start, t_end)``.
 
-        An event overlaps when it starts before ``t_end`` and ends after
-        ``t_start`` (half-open on both ends). The requested window is clamped
-        to the graph's own span ``[start_time, end_time]``.
+        Both window boundaries are exclusive (open interval). An event is
+        considered active when it starts strictly before ``t_end`` and ends
+        strictly after ``t_start``.
+
+        As a consequence of the strict comparisons:
+
+        - an event ending exactly at ``t_start`` is **not** included, and
+        - an event starting exactly at ``t_end`` is **not** included.
+
+        Parameters
+        ----------
+        t_start : float, optional
+            Start of the window. Defaults to ``self.start_time``.
+        t_end : float, optional
+            End of the window. Defaults to ``self.end_time``.
+
+        Returns
+        -------
+        pandas.Series of bool
+            Mask selecting events that overlap the open window.
         """
         if t_start is None:
             t_start = self.start_time
         if t_end is None:
             t_end = self.end_time
-        assert t_start < t_end, "t_end should be bigger than t_start"
-        t_start = max(self.start_time, t_start)
-        t_end = min(self.end_time, t_end)
+
+        if not t_start < t_end:
+            raise ValueError("t_end should be bigger than t_start")
+        
+        assert t_start >= self.start_time, f"t_start should be >= network start_time = {self.start_time}"
+        assert t_end <= self.end_time, f"t_end should be <= network end_time = {self.end_time}"
+
         return (self.events_table["starting_times"] < t_end) & \
             (self.events_table["ending_times"] > t_start)
 
@@ -1522,8 +1543,10 @@ class ContTempNetwork:
         """Return the nodes that are active within a given time window.
 
         A node is considered active if it is an endpoint of at least one event
-        that overlaps the interval ``[t_start, t_end)``. An event overlaps the
-        window when it starts before ``t_end`` and ends after ``t_start``.
+        that overlaps the open interval ``(t_start, t_end)``. Both boundaries
+        are exclusive: an event overlaps the window when it starts strictly
+        before ``t_end`` and ends strictly after ``t_start`` (see
+        :meth:`_active_mask`).
 
         Parameters
         ----------
@@ -1547,7 +1570,8 @@ class ContTempNetwork:
         """Return the number of nodes active within a given time window.
 
         A node is active if it is an endpoint of at least one event overlapping
-        ``[t_start, t_end)``.
+        the open interval ``(t_start, t_end)`` (both boundaries exclusive; see
+        :meth:`active_nodes`).
 
         Parameters
         ----------
@@ -1567,9 +1591,10 @@ class ContTempNetwork:
     def num_active_events(self, t_start=None, t_end=None):
         """Return the number of events active within a given time window.
 
-        An event is counted as active if it overlaps the interval
-        ``[t_start, t_end)``, that is, it starts before ``t_end`` and ends
-        after ``t_start``.
+        An event is counted as active if it overlaps the open interval
+        ``(t_start, t_end)``, that is, it starts strictly before ``t_end`` and
+        ends strictly after ``t_start`` (both boundaries exclusive; see
+        :meth:`_active_mask`).
 
         Note that this counts *events*, so if the same node pair interacts
         multiple times within the window, each interaction is counted
@@ -1589,7 +1614,7 @@ class ContTempNetwork:
             Number of active events overlapping the window. Zero if none.
         """
         return int(self._active_mask(t_start, t_end).sum())
-
+    
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
