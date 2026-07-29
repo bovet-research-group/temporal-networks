@@ -1564,10 +1564,10 @@ class ContTempNetwork:
         """
         return len(self.active_nodes(t_start, t_end))
 
-    def num_active_edges(self, t_start=None, t_end=None):
-        """Return the number of edges active within a given time window.
+    def num_active_events(self, t_start=None, t_end=None):
+        """Return the number of events active within a given time window.
 
-        An edge (event) is counted as active if it overlaps the interval
+        An event is counted as active if it overlaps the interval
         ``[t_start, t_end)``, that is, it starts before ``t_end`` and ends
         after ``t_start``.
 

@@ -210,7 +210,7 @@ plt.show()
 # Number of active edges/events in each one-hour window.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_edge_active = [tnet.num_active_edges(t[i], t[i + 1])
+n_edge_active = [tnet.num_active_events(t[i], t[i + 1])
                  for i in range(len(t) - 1)]
 
 fig, ax = plt.subplots(nrows=1, ncols=1)

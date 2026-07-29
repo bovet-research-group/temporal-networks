@@ -70,12 +70,12 @@ class TestSimpleNetwork:
                     "ending_times", "durations"]:
             assert col in simple_network.events_table.columns
 
-    def test_active_edges(self, simple_network):
-        assert simple_network.num_active_edges(t_start=None, t_end=None)==4
-        assert simple_network.num_active_edges(t_start=1, t_end=2)==2
-        assert simple_network.num_active_edges(t_start=None, t_end=5)==3
-        assert simple_network.num_active_edges(t_start=6.5, t_end=None)==1
-        assert simple_network.num_active_edges(t_start=3.5, t_end=3.75)==0
+    def test_active_events(self, simple_network):
+        assert simple_network.num_active_events(t_start=None, t_end=None)==4
+        assert simple_network.num_active_events(t_start=1, t_end=2)==2
+        assert simple_network.num_active_events(t_start=None, t_end=5)==3
+        assert simple_network.num_active_events(t_start=6.5, t_end=None)==1
+        assert simple_network.num_active_events(t_start=3.5, t_end=3.75)==0
 
 
     def test_active_nodes(self, simple_network):
