@@ -920,7 +920,8 @@ class ContTempNetwork:
                                    *,
                                    t_start=None,
                                    t_stop=None,
-                                   save_adjacencies=False):
+                                   save_adjacencies=False, 
+                                   dynamics='rw'):
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -951,12 +952,23 @@ class ContTempNetwork:
             Default is False. Use to save adjacency matrices in
             `self.adjacencies`.
 
+        dynamics : str, optional
+            The dynamics to compute the laplacian. Default is 'rw'.
+            other option is `heat` laplacian.
+            If D is the degree matrix and A is the adjacency matrix: 
+                Heat=D-A 
+                Random walk=I-D^-1 A 
+
         Returns
         -------
         None.
 
         """
-        logger.info("Computing Laplacians")
+        if dynamics not in ['rw', 'heat']:
+            raise ValueError("dynamics must be 'rw' or 'heat'")
+        
+        logger.info(f"Computing Laplacians using {dynamics} method")
+
 
         if not hasattr(self, "time_grid"):
             self._compute_time_grid()
@@ -1012,6 +1024,7 @@ class ContTempNetwork:
             self.time_grid.index.get_level_values(
                 "times") < self._t_stop_laplacians
         )]
+        
         for k, (tk, time_ev) in enumerate(
                 time_grid_range.groupby(level="times")):
             if not k % 1000:
@@ -1056,7 +1069,14 @@ class ContTempNetwork:
             # T_D = Dm1 @ (Acsc + S)
             # L = I - T_D
 
-            self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+            if dynamics == 'rw':
+                self.laplacians.append(I - state.Dm1 @ (Acsc + state.S))
+                
+            elif dynamics == 'heat':
+                self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
+            
+            self.laplacian_dynamics=dynamics
+            
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
 
@@ -1066,7 +1086,7 @@ class ContTempNetwork:
 
         t_end = time.time()-t0
         self._compute_times["laplacians"] = t_end
-        logger.info(f"Finished in {t_end}")
+        logger.info(f"Finished computing laplacians in {t_end:.2f}")
 
     # ------------------------------------------------------------------
     # Laplacian-loop extension hooks.
