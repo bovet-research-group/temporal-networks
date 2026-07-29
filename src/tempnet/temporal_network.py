@@ -967,7 +967,7 @@ class ContTempNetwork:
         if dynamics not in ['rw', 'heat']:
             raise ValueError("dynamics must be 'rw' or 'heat'")
         
-        logger.info(f"Computing Laplacians using {dynamics} method")
+        logger.info(f"Computing Laplacians using {dynamics} dynamics.")
 
 
         if not hasattr(self, "time_grid"):
