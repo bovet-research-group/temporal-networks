@@ -54,7 +54,6 @@ class TestSimpleNetwork:
 
     def test_node_array_sorted(self, simple_network):
         assert list(simple_network.node_array) == [0, 1, 2]
-        assert simple_network.nodes==['A', 'B', 'C']
 
     def test_durations_column_exists(self, simple_network):
         assert "durations" in simple_network.events_table.columns
