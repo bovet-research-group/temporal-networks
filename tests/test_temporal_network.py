@@ -85,8 +85,6 @@ class TestSimpleNetwork:
         assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
         assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
 
-
-
     def test_index_reset(self, simple_network):
         assert list(simple_network.events_table.index) == list(
             range(simple_network.num_events)
