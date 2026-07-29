@@ -34,6 +34,74 @@ def simple_network():
         starting_times=[0, 1, 4, 6],
         ending_times=[2, 3, 5, 7])
 
+class TestSimpleNetwork: 
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacians_count(self, simple_network, dynamics):
+        """One Laplacian per inter-event step over the full grid.
+
+        times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps.
+        """
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        assert len(simple_network.laplacians) == 7
+
+    def test_laplacian_step_1_2_randomwalk(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Random-walk Laplacian I - D^-1 A."""
+        simple_network.compute_laplacian_matrices(dynamics="rw")
+        L = simple_network.laplacians[1].toarray()
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-0.5, 1.0, -0.5],
+            [0.0, -1.0, 1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_1_2_heat(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Heat kernel Laplacian."""
+        simple_network.compute_laplacian_matrices(dynamics="heat")
+        L = simple_network.laplacians[1].toarray()
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-1.0, 2.0, -1.0],
+            [0.0, -1.0, 1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_0_1_connected_block(self, simple_network):
+        """Step [0,1]: only A-B active; C isolated. C's diagonal is
+        convention-dependent, so only the A-B block and zero coupling to C
+        are asserted.
+        """
+        simple_network.compute_laplacian_matrices()
+        L = simple_network.laplacians[0].toarray()
+        assert L[0, 0] == 1
+        assert L[0, 1] == -1
+        assert L[1, 0] == -1
+        assert L[1, 1] == 1
+        assert L[0, 2] == 0
+        assert L[1, 2] == 0
+        assert L[2, 0] == 0
+        assert L[2, 1] == 0
+        assert L[2, 2] == 0  # self loop
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics):
+        """Step [3,4]: no active events, so the Laplacian is all zeros."""
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        L = simple_network.laplacians[3].toarray()
+        assert np.all(L == 0)
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_rows_sum_zero_connected_step(self, simple_network, dynamics):
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        n = simple_network.num_nodes
+        for i in range(len(simple_network.laplacians)):
+            L = simple_network.laplacians[i].toarray()
+            assert L.shape == (n, n)
+            assert np.allclose(L.sum(axis=1), 0.0)
+
 class TestTempNetwork:
     def setup_method(self):
         # ###
@@ -293,71 +361,6 @@ class TestTempNetwork:
             interval.events_table.reset_index(drop=True),
             inst.events_table.reset_index(drop=True),
         )
-    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
-    def test_laplacians_count(self, simple_network, dynamics):
-        """One Laplacian per inter-event step over the full grid.
-
-        times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps.
-        """
-        simple_network.compute_laplacian_matrices(dynamics=dynamics)
-        assert len(simple_network.laplacians) == 7
-
-    def test_laplacian_step_1_2_randomwalk(self, simple_network):
-        """Step [1,2]: A-B and B-C active. Random-walk Laplacian I - D^-1 A."""
-        simple_network.compute_laplacian_matrices(dynamics="rw")
-        L = simple_network.laplacians[1].toarray()
-        expected = np.array([
-            [1.0, -1.0, 0.0],
-            [-0.5, 1.0, -0.5],
-            [0.0, -1.0, 1.0],
-        ])
-        assert np.allclose(L, expected)
-
-
-    def test_laplacian_step_1_2_heat(self, simple_network):
-        """Step [1,2]: A-B and B-C active. Heat kernel Laplacian."""
-        simple_network.compute_laplacian_matrices(dynamics="heat")
-        L = simple_network.laplacians[1].toarray()
-        expected = np.array([
-            [1.0, -1.0, 0.0],
-            [-1.0, 2.0, -1.0],
-            [0.0, -1.0, 1.0],
-        ])
-        assert np.allclose(L, expected)
-
-
-    def test_laplacian_step_0_1_connected_block(self, simple_network):
-        """Step [0,1]: only A-B active; C isolated. C's diagonal is
-        convention-dependent, so only the A-B block and zero coupling to C
-        are asserted.
-        """
-        simple_network.compute_laplacian_matrices()
-        L = simple_network.laplacians[0].toarray()
-        assert L[0, 0] == 1
-        assert L[0, 1] == -1
-        assert L[1, 0] == -1
-        assert L[1, 1] == 1
-        assert L[0, 2] == 0
-        assert L[1, 2] == 0
-        assert L[2, 0] == 0
-        assert L[2, 1] == 0
-        assert L[2, 2] == 0  # self loop
-
-    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
-    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics):
-        """Step [3,4]: no active events, so the Laplacian is all zeros."""
-        simple_network.compute_laplacian_matrices(dynamics=dynamics)
-        L = simple_network.laplacians[3].toarray()
-        assert np.all(L == 0)
-
-    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
-    def test_laplacian_rows_sum_zero_connected_step(self, simple_network, dynamics):
-        simple_network.compute_laplacian_matrices(dynamics=dynamics)
-        n = simple_network.num_nodes
-        for i in range(len(simple_network.laplacians)):
-            L = simple_network.laplacians[i].toarray()
-            assert L.shape == (n, n)
-            assert np.allclose(L.sum(axis=1), 0.0)
 
 def test_ContTempNetworkErrors():
     with pytest.raises(AssertionError):
