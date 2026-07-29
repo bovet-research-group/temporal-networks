@@ -41,12 +41,13 @@ from .logger import setup_logger, get_logger
 setup_logger()  # Set up the logger with the default level
 
 from .temporal_network import (  # noqa: F401
-    ContTempNetwork,
-    sparse_lapl_expm
+    ContTempNetwork
 )
 from .utils import (set_to_zeroes,
 )
 
+from .subspace_expm import (  sparse_lapl_expm
+)
 def set_log_level(level):
     """
     Set the logging level for the package.

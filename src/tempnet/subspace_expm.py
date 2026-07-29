@@ -23,6 +23,12 @@ import os
 import time
 from multiprocessing import Pool, RawArray
 from .logger import get_logger
+from .utils import remove_nnz_rowcol
+from stochmat import inplace_csr_row_normalize, SparseStochMat
+
+from functools import partial
+
+
 # get the logger
 logger = get_logger()
 
@@ -271,3 +277,171 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
     return expmA
 
 
+def compute_subspace_expm(A,
+                          n_comp=None,
+                          comp_labels=None,
+                          thresh_ratio=None,
+                          normalize_rows=True):
+    """Compute the exponential matrix of `A`.
+
+    The computation is done by applying expm on each connected subgraphs
+    defined by A and recomposing it to return expm(A).
+
+    Parameters
+    ----------
+        A : scipy.sparse.csc_matrix
+
+    thresh_ratio: float, optional.
+        Threshold ratio used to trim negligible values in the resulting matrix.
+        Values smaller than `max(expm(A))/thresh_ratio` are set to 
+        zero. Default is None.
+    normalize_rows: bool, optional.
+        Whether rows of the resulting matrix are normalized to sum to 1.
+
+
+    Returns
+    -------
+        expm(A) : scipy.sparse.csr_matrix
+        matrix exponential of A
+
+    """
+    num_nodes = A.shape[0]
+
+    # otherwise 0 values may count as an edge
+    A.eliminate_zeros()
+    A.sort_indices()
+
+    if (n_comp is None) or (comp_labels is None):
+        n_comp, comp_labels = connected_components(A, directed=False)
+    comp_sizes = np.bincount(comp_labels)
+    cmp_indices = [
+        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
+    ]
+
+    logger.info(f"subspace_expm with {n_comp} components")
+
+    # constructors for sparse array
+    data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
+    indices = np.zeros((comp_sizes**2).sum(), dtype=np.int32)
+    indptr = np.zeros(num_nodes+1, dtype=np.int32)
+
+    # if nproc == 1:
+    #     expm_func = lambda M: expm(M)
+    # else:
+    #     expm_func = lambda M: compute_parallel_expm(M, nproc=nproc,
+    #                                                 thresh_ratio=None,
+    #                                                 normalize_rows=False)
+    subnets_expms = []
+    for i, cmp_ind in enumerate(cmp_indices):
+        logger.info(
+            f"Computing component {i} over {n_comp}, with size {cmp_ind.size}"
+        )
+
+        subnets_expms.append(expm(A[cmp_ind, :][:, cmp_ind]).toarray())
+
+    # reconstruct csr sparse matrix
+    logger.info("Reconstructing expm mat")
+    data_ind = 0
+    for row in range(num_nodes):
+        cmp = comp_labels[row]
+        cmp_expm = subnets_expms[cmp]
+        sub_expm_row, = np.where(cmp_indices[cmp] == row)
+
+        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
+
+        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
+
+        indptr[row] = data_ind
+
+        data_ind += comp_sizes[cmp]
+
+    indptr[num_nodes] = data_ind
+
+    expmA = csr_matrix(
+        (data, indices, indptr),
+        shape=(num_nodes, num_nodes),
+        dtype=np.float64
+    )
+
+    if thresh_ratio is not None:
+        expmA.data[expmA.data < expmA.data.max() / thresh_ratio] = 0.0
+        expmA.eliminate_zeros()
+    if normalize_rows:
+        inplace_csr_row_normalize(expmA)
+
+    return expmA
+
+
+def sparse_lapl_expm(L,
+                     fact,
+                     dense_expm=True,
+                     nproc=1,
+                     thresh_ratio=None,
+                     normalize_rows=True):
+    """Computes the matrix exponential of a laplacian L.
+
+    The exponential, expm(-fact*L), is computed considering only the non-zeros
+    rows/cols of L
+
+    Parameters
+    ----------
+    L : scipy sparse csc matrix
+        Laplacian matrix with large proportion of zero rows/cols.
+    fact : float
+        factor in front of the laplacian
+    dense_expm : boolean
+        Whether to compute the expm on the small Laplacian as a dense
+        or sparse array. Default is True.
+    nproc : int, optional
+        number of parallel processes for dense_expm=False. The default is 1.
+    thresh_ratio: float, optional.
+        Threshold ratio used to trim negligible values in the resulting matrix.
+        Values smaller than `max(expm(A))/thresh_ratio` are set to
+        zero. For dense_expm=False. Default is None.
+    normalize_rows: bool, optional.
+        Whether rows of the resulting matrix are normalized to sum to 1.
+        For dense_expm=False
+
+    Returns
+    -------
+    expm(-fact*L) : `SparseStochMat` object
+        Transition matrix
+
+    """
+    if L.getnnz() == 0:  # zero matrix
+        # return identity
+        return SparseStochMat.create_diag(L.shape[0])
+
+    L_small, nz_inds, size = remove_nnz_rowcol(L)
+
+    if nproc == 1:
+        expm_func = partial(compute_subspace_expm,
+                            A=-fact*L_small,
+                            thresh_ratio=thresh_ratio,
+                            normalize_rows=normalize_rows)
+
+    else:
+        expm_func = partial(compute_subspace_expm_parallel,
+                            A=-fact*L_small,
+                            nproc=nproc,
+                            thresh_ratio=thresh_ratio,
+                            normalize_rows=normalize_rows)
+
+    if dense_expm:
+        T_small = csr_matrix(expm(-fact*L_small.toarray()))
+    else:
+
+        # for large networks, try subspace expm
+        L_small.eliminate_zeros()
+        if L_small.shape[0] >= 1000:
+            n_comp, comp_labels = connected_components(L_small, directed=False)
+            if n_comp > 1 :
+                T_small = expm_func(n_comp=n_comp,
+                                    comp_labels=comp_labels)
+            else:
+                T_small = expm(-fact*L_small).tocsr()
+        else:
+            T_small = expm(-fact*L_small).tocsr()
+
+    return SparseStochMat(size, T_small.data, T_small.indices,
+                          T_small.indptr, nz_inds)
