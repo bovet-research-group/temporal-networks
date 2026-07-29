@@ -1501,6 +1501,94 @@ class ContTempNetwork:
         else:
             logger.info(f"PID {os.getpid()} : delta_inter_T has not been computed")
 
+    def _active_mask(self, t_start=None, t_end=None):
+        """Boolean mask of events overlapping the window.
+
+        An event overlaps when it starts before ``t_end`` and ends after
+        ``t_start`` (half-open on both ends). The requested window is clamped
+        to the graph's own span ``[start_time, end_time]``.
+        """
+        if t_start is None:
+            t_start = self.start_time
+        if t_end is None:
+            t_end = self.end_time
+        assert t_start < t_end, "t_end should be bigger than t_start"
+        t_start = max(self.start_time, t_start)
+        t_end = min(self.end_time, t_end)
+        return (self.events_table["starting_times"] < t_end) & \
+            (self.events_table["ending_times"] > t_start)
+
+    def active_nodes(self, t_start=None, t_end=None):
+        """Return the nodes that are active within a given time window.
+
+        A node is considered active if it is an endpoint of at least one event
+        that overlaps the interval ``[t_start, t_end)``. An event overlaps the
+        window when it starts before ``t_end`` and ends after ``t_start``.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Sorted array of unique node ids active within the window.
+            Empty if no events overlap.
+        """
+        edges = self.events_table[self._active_mask(t_start, t_end)]
+        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
+        return np.sort(list(nodes))
+
+    def num_active_nodes(self, t_start=None, t_end=None):
+        """Return the number of nodes active within a given time window.
+
+        A node is active if it is an endpoint of at least one event overlapping
+        ``[t_start, t_end)``.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active nodes in the window. Zero if no events overlap.
+        """
+        return len(self.active_nodes(t_start, t_end))
+
+    def num_active_edges(self, t_start=None, t_end=None):
+        """Return the number of edges active within a given time window.
+
+        An edge (event) is counted as active if it overlaps the interval
+        ``[t_start, t_end)``, that is, it starts before ``t_end`` and ends
+        after ``t_start``.
+
+        Note that this counts *events*, so if the same node pair interacts
+        multiple times within the window, each interaction is counted
+        separately.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active events overlapping the window. Zero if none.
+        """
+        return int(self._active_mask(t_start, t_end).sum())
 
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
