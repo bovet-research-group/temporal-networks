@@ -305,28 +305,21 @@ def test_compute_subspace_expm():
 def test_csc_row_normalize():
     """
     """
-    from tempnet.temporal_network import csc_row_normalize
+    from tempnet.utils import csc_row_normalize
     pass
 
 
 def test_find_spectral_gap():
     """
     """
-    from tempnet.temporal_network import find_spectral_gap
+    from tempnet.utils import find_spectral_gap
     pass
 
 
 def test_remove_nnz_rowcol():
     """
     """
-    from tempnet.temporal_network import remove_nnz_rowcol
-    pass
-
-
-def test_rebuild_nnz_rowcol():
-    """
-    """
-    from tempnet.temporal_network import numpy_rebuild_nnz_rowcol
+    from tempnet.utils import remove_nnz_rowcol
     pass
 
 
@@ -342,14 +335,14 @@ def test_sparse_lapl_expm():
 def test_set_to_ones():
     """
     """
-    from tempnet.temporal_network import set_to_ones
+    from tempnet.utils import set_to_ones
     pass
 
 
 def test_set_to_zeroes():
     """
     """
-    from tempnet.temporal_network import set_to_zeroes
+    from tempnet.utils import set_to_zeroes
     pass
 
 
