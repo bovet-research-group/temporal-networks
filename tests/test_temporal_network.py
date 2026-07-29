@@ -323,13 +323,6 @@ def test_remove_nnz_rowcol():
     pass
 
 
-def test_rebuild_nnz_rowcol():
-    """
-    """
-    from tempnet.utils import numpy_rebuild_nnz_rowcol
-    pass
-
-
 def test_sparse_lapl_expm():
     """
     """
