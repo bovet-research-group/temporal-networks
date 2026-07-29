@@ -966,8 +966,8 @@ class ContTempNetwork:
         """
         if dynamics not in ['rw', 'heat']:
             raise ValueError("dynamics must be 'rw' or 'heat'")
-        
-        logger.info(f"Computing Laplacians using {dynamics} dynamics.")
+        self.laplacian_dynamics=dynamics
+        logger.info(f"Computing Laplacians using {self.laplacian_dynamics} dynamics.")
 
 
         if not hasattr(self, "time_grid"):
@@ -1075,7 +1075,6 @@ class ContTempNetwork:
             elif dynamics == 'heat':
                 self.laplacians.append((diags(state.degrees) - Acsc).tocsc())
             
-            self.laplacian_dynamics=dynamics
             
             if save_adjacencies:
                 self.adjacencies.append(state.A.copy())
