@@ -127,7 +127,7 @@ def remove_nnz_rowcol(
 
 
 def set_to_zeroes(
-    Tcsr: SparseStochMat | csr_matrix | csc_matrix,
+    T: SparseStochMat | csr_matrix | csc_matrix,
     tol: float | None = 1e-8,
     relative: bool = True,
     use_absolute_value: bool = False,
@@ -141,13 +141,13 @@ def set_to_zeroes(
 
     Parameters
     ----------
-    Tcsr : :class:`stochmat.SparseStochMat`, \
+    T : :class:`stochmat.SparseStochMat`, \
             :class:`scipy.sparse.csr_matrix`, or \
             :class:`scipy.sparse.csc_matrix`
         Sparse matrix whose stored values are modified in place.
     tol : float or None, default=1e-8
         Threshold below which values are set to zero. If ``None``, the function
-        returns without modifying ``Tcsr``.
+        returns without modifying ``T``.
     relative : bool, default=True
         If ``True``, scale ``tol`` by the largest absolute stored value before
         thresholding SciPy sparse matrices.
@@ -163,17 +163,17 @@ def set_to_zeroes(
     Raises
     ------
     TypeError
-        If ``Tcsr`` is not a supported sparse matrix type.
+        If ``T`` is not a supported sparse matrix type.
     """
     if tol is not None:
         threshold = float(tol)
-        if isinstance(Tcsr, SparseStochMat):
-            Tcsr.set_to_zeroes(threshold, relative=relative)
-        elif isinstance(Tcsr, (csr_matrix, csc_matrix)):
-            data = Tcsr.data
+        if isinstance(T, SparseStochMat):
+            T.set_to_zeroes(threshold, relative=relative)
+        elif isinstance(T, (csr_matrix, csc_matrix)):
+            data = T.data
             if data.size > 0:
                 if relative:
-                    # tol = tol*np.abs(Tcsr.data).max()
+                    # tol = tol*np.abs(T.data).max()
                     # finding the max of the absolute value without making a
                     # copy of the whole array
                     threshold = (
@@ -186,9 +186,9 @@ def set_to_zeroes(
                 else:
                     data[data <= threshold] = 0
 
-                Tcsr.eliminate_zeros()
+                T.eliminate_zeros()
         else:
-            raise TypeError("Tcsr must be csc,csr or SparseStochMat")
+            raise TypeError("T must be csc,csr or SparseStochMat")
 
 
 def to_dense(M: ArrayLike | spmatrix | sparray | SparseStochMat) -> np.ndarray:

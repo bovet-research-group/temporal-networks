@@ -17,3 +17,4 @@
   default matrix list for `save()` and `load()`.
 
 - Moved `csc_row_normalize`,  `numpy_rebuild_nnz_rowcol`, `set_to_zeroes`, `set_to_ones`, `find_spectral_gap`, ` remove_nnz_rowcol` from `temporal_network.py` to `utils.py`. 
+- Change the name of `Tcsr` to just `T` in function `set_to_zeroes` in `utils.py`
