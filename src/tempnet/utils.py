@@ -255,3 +255,61 @@ def find_spectral_gap(L: csr_matrix | csc_matrix) -> np.ndarray:
     gap = eigsh(Lsym.toarray()-Pi, 1, sigma=0, return_eigenvectors=False)
 
     return gap
+
+
+def numpy_rebuild_nnz_rowcol(T_data,
+                             T_indices,
+                             T_indptr,
+                             zero_indices):
+    """Returns a CSR matrix.
+
+    The CSR matrix (data, indices, rownnz, shape) is built from the CSR matrix
+    T_small but with added row-colums at zero_indicies (with 1 on the diagonal)
+
+    """
+    n_rows = T_indptr.size-1 + zero_indices.size
+
+    data = np.zeros(T_data.size+zero_indices.size, dtype=np.float64)
+    indices = np.zeros(T_data.size+zero_indices.size, dtype=np.int32)
+    indptr = np.zeros(n_rows+1, dtype=np.int32)
+    new_col_inds = np.zeros(T_indptr.size-1, dtype=np.int32)
+    Ts_indices = np.zeros(T_indices.size, dtype=np.int32)
+    zero_set = set(zero_indices)
+
+    # map col indices to new positions
+    k = 0
+    for i in range(n_rows):
+        if i not in zero_set:
+            new_col_inds[k] = i
+            k += 1
+
+    for k, i in enumerate(T_indices):
+        Ts_indices[k] = new_col_inds[i]
+
+    row_id_small_t = -1
+    data_ind = 0
+    for row_id in range(n_rows):
+        row_id_small_t += 1
+        if row_id in zero_set:
+            # add a row with just 1 on the diagonal
+            data[data_ind] = 1.0
+            indices[data_ind] = row_id
+            indptr[row_id+1] = indptr[row_id]+1
+
+            row_id_small_t -= 1
+            data_ind += 1
+
+        else:
+            row_start = T_indptr[row_id_small_t]
+            row_end = T_indptr[row_id_small_t+1]
+
+            num_data_row = row_end - row_start
+
+            data[data_ind:data_ind+num_data_row] = T_data[row_start:row_end]
+            indices[
+                data_ind:data_ind+num_data_row] = Ts_indices[row_start:row_end]
+            indptr[row_id+1] = indptr[row_id]+num_data_row
+
+            data_ind += num_data_row
+
+    return (data, indices, indptr, n_rows)
