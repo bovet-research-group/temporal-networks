@@ -25,6 +25,10 @@ import numpy as np
 from scipy.sparse import lil_matrix
 from scipy.stats import expon
 
+from .logger import get_logger
+
+# get the logger
+logger = get_logger()
 
 
 class Distro:
@@ -281,7 +285,7 @@ class SynthTempNetwork:
         try:
             assert np.unique(self.indiv_ids_array).size == self.N
         except Exception as e:
-            print("Individuals ID must be unique.")
+            logger.debug("Individuals ID must be unique.")
             raise e
 
         # individuals group list
@@ -560,9 +564,9 @@ class SynthTempNetwork:
                 (time, event) = self.queue.get_nowait()
 
                 if verbose:
-                    print("treating event : ")
-                    print((time, event))
-                    print("--")
+                    logger.debug("treating event : ")
+                    logger.debug(f'{(time, event)}')
+                    logger.debug("--")
 
 
                 if not event[-1]: # not is_canceled
@@ -579,9 +583,9 @@ class SynthTempNetwork:
                             partner = self.get_new_partner(indiv_id)
 
                             if verbose>10:
-                                print("new interaction between : ", indiv_id, " and ", partner)
-                                print("starting at ", self.t)
-                                print("--")
+                                logger.debug(f"new interaction between : {indiv_id} and {partner}")
+                                logger.debug(f"starting at {self.t}")
+                                logger.debug("--")
 
                             if partner is not None:
                                 #update A and _last_times
@@ -630,9 +634,9 @@ class SynthTempNetwork:
                                 self._t_next_bin += self.dt
 
                                 if verbose:
-                                    print("t = ", self.t)
+                                    logger.debug(f"t = {self.t}")
 
 
             except Empty:
-                print("Priority queue is empty")
+                logger.debug("Priority queue is empty")
                 break
