@@ -44,7 +44,7 @@ from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from .logger import get_logger
 from .utils import set_to_zeroes
-from .subspace_expm import *
+from .faster_expm import *
 
 # get the logger
 logger = get_logger()

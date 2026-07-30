@@ -46,7 +46,7 @@ from .temporal_network import (  # noqa: F401
 from .utils import (set_to_zeroes,
 )
 
-from .subspace_expm import (  sparse_lapl_expm
+from .faster_expm import (  sparse_lapl_expm
 )
 def set_log_level(level):
     """
