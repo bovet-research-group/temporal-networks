@@ -163,3 +163,65 @@ print("End:", tnet.end_time)
 # this, we make the random walker stay in place by adding a self-loop
 # (:math:`A_{ii} = 1`, :math:`d_i = 1`). This yields one Laplacian per interval
 # :math:`[t_i, t_{i+1})`.
+
+tnet.compute_laplacian_matrices(dynamics='rw')
+
+# %%
+# We can directly access the delta Laplacian matrices for inspection.
+
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.laplacians), figsize=(16, 4))
+for i, L in enumerate(tnet.laplacians):
+    sns.heatmap(
+        L.toarray(),
+        ax=ax[i],
+        square=True,
+        annot=True,
+        cbar=False,
+        vmin=-1,
+        vmax=1,
+        cmap="seismic",
+    )
+    ax[i].set_title(
+        rf"$t_{{\text{{start}}}}$={tnet.times[i]}"
+        "\t"
+        rf"$t_{{\text{{end}}}}$={tnet.times[i + 1]}"
+    )
+fig.suptitle("Delta Laplacians")
+plt.show()
+
+# %%
+# Transition matrices
+# -------------------
+# With the random-walk Laplacians computed, we simulate the continuous-time
+# random walk by computing the **matrix exponential** of each Laplacian, scaled
+# by the duration of the corresponding interval and the walker's transition
+# rate. For two consecutive timestamps :math:`t_1` and :math:`t_2`,
+#
+# .. math::
+#   \hat{T}(t_1, t_2; \lambda_{\mathrm{RW}}) = e^{-(t_2 - t_1)\lambda_{\mathrm{RW}} L_{\mathrm{RW}}}
+#
+# where :math:`\lambda_{\mathrm{RW}}` is the rate of the random walker.
+# The entry :math:`\hat{T}_{jk}` gives the probability that a walker starting at node
+# :math:`j` at time :math:`t_1` reaches node :math:`k` at time :math:`t_2`.
+lamda=1
+tnet.compute_inter_transition_matrices(lamda=lamda)
+
+fig, ax = plt.subplots(nrows=1, ncols=len(tnet.inter_T[lamda]), figsize=(16, 4))
+for i, matrix in enumerate(tnet.inter_T[lamda]):
+    sns.heatmap(
+        matrix.toarray(),
+        ax=ax[i],
+        square=True,
+        annot=True,
+        cbar=False,
+        fmt=".3f",
+        vmin=0,
+        vmax=1,
+    )
+    ax[i].set_title(
+        rf"$t_{{\text{{start}}}}$={tnet.times[i]}"
+        "\t"
+        rf"$t_{{\text{{end}}}}$={tnet.times[i + 1]}"
+    )
+fig.suptitle(r"Inter transition matrices for $\lambda=1$")
+plt.show()
