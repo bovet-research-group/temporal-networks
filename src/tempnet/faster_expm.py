@@ -43,10 +43,11 @@ var_dict = {}
 def _init_worker(data, indices, indptr, N):
     # reconstruct A from shared arrays
     var_dict["A"] = csc_matrix((np.frombuffer(data, dtype=np.float64),
-                                  np.frombuffer(indices, dtype=np.int32),
-                                  np.frombuffer(indptr, dtype=np.int32)),
-                                 shape=(N,N))
+                                np.frombuffer(indices, dtype=np.int32),
+                                np.frombuffer(indptr, dtype=np.int32)),
+                               shape=(N, N))
     var_dict["N"] = N
+
 
 def _worker(args):
 
@@ -57,23 +58,23 @@ def _worker(args):
     delta_i[i] = 1.0
 
     Tcol_i = expm_multiply(var_dict["A"],
-                         delta_i)
+                           delta_i)
 
     if thresh_ratio is not None:
 
-        Tcol_i[Tcol_i<Tcol_i.max()/thresh_ratio]=0
+        Tcol_i[Tcol_i < Tcol_i.max()/thresh_ratio] = 0
 
     return csc_matrix(Tcol_i)
+
 
 def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
                           normalize_rows=True,
                           verbose=True):
     """Computes the exponential matrix of A by computing each column separately
-    exploiting the fact that the column i of expm(A) is expm_multiply(A,delta_i)
-    where delta i is the vector with zeros everywhere except on i.
-    This only works if A is equal to (minus) a Laplacian matrix
-    
-    
+    exploiting the fact that the column i of expm(A) is
+    expm_multiply(A, delta_i) where delta i is the vector with zeros everywhere
+    except on i. This only works if A is equal to (minus) a Laplacian matrix
+
     Parameters
     ----------
     A : scipy csc sparse matrix
@@ -83,8 +84,8 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
         number of parallel processes. The default is 1.
     thresh_ratio: float, optional.
         Threshold ratio used to trim negligible values in the resulting matrix.
-        For each columns `c`, values smaller than `max(c)/thresh_ratio` are set to 
-        zero. Default is None.
+        For each columns `c`, values smaller than `max(c)/thresh_ratio` are set
+        to zero. Default is None.
     normalize_rows: bool, optional.
         Whether rows of the resulting matrix are normalized to sum to 1.
 
@@ -106,11 +107,14 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
     data = RawArray("d", A.data)
 
     if verbose:
-        logger.info(f"PID { os.getpid()} : compute_parallel_expm starting a pool of {nproc} workers")
+        logger.info(
+            f"PID {os.getpid()} : compute_parallel_expm starting a pool of "
+            f"{nproc} workers"
+        )
     t0 = time.time()
     with Pool(nproc, initializer=_init_worker,
               initargs=(data, indices, indptr, N)) as p:
-        res = p.map(_worker, [(i,thresh_ratio) for i in range(N)])
+        res = p.map(_worker, [(i, thresh_ratio) for i in range(N)])
 
     # delete shared arrays
     global var_dict
@@ -123,9 +127,13 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
         inplace_csr_row_normalize(T)
 
     if verbose:
-        logger.info(f"PID {os.getpid()} : compute_parallel_expm took {time.time()-t0:.3f}s, computed expm has {T.getnnz()} non-zeros.")
+        logger.info(
+            f"PID {os.getpid()} : compute_parallel_expm took "
+            f"{time.time()-t0:.3f}s, computed expm has {T.getnnz()} non-zeros."
+        )
 
     return T
+
 
 def _stack_sparse_cols(col_list):
 
@@ -146,17 +154,21 @@ def _stack_sparse_cols(col_list):
         indptr[col+1] = ptr
 
 
-    return csc_matrix((data, indices, indptr), shape=(N,N))
+    return csc_matrix((data, indices, indptr), shape=(N, N))
+
 
 def _expm_worker(cmp_ind):
 
-    return expm(var_dict["A"][cmp_ind,:][:,cmp_ind]).toarray()
+    return expm(var_dict["A"][cmp_ind, :][:, cmp_ind]).toarray()
 
 
-def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=False,
-                           nproc=1,
-                           thresh_ratio=None,
-                           normalize_rows=True):
+def compute_subspace_expm_parallel(A,
+                                   n_comp=None,
+                                   comp_labels=None,
+                                   verbose=False,
+                                   nproc=1,
+                                   thresh_ratio=None,
+                                   normalize_rows=True):
     """Compute the exponential matrix of `A` by applying expm on each connected
     subgraphs defined by A and recomposing it to return expm(A).
     Small subgraphs are computed in parallel, each using scipy expm,
@@ -165,22 +177,22 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
     Parameters
     ----------
         A : scipy.sparse.csc_matrix
-        
+
     nproc : int, optional
         number of parallel processes. The default is 1.
     thresh_ratio: float, optional.
         Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
-        zero. Default is None.
+        Values smaller than `max(expm(A))/thresh_ratio` are set to zero.
+        Default is None.
     normalize_rows: bool, optional.
         Whether rows of the resulting matrix are normalized to sum to 1.
-        
+
 
     Returns
     -------
         expm(A) : scipy.sparse.csr_matrix
         matrix exponential of A
-            
+
     """
     num_nodes = A.shape[0]
 
@@ -189,14 +201,16 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
     A.sort_indices()
 
     if (n_comp is None) or (comp_labels is None):
-        n_comp, comp_labels = connected_components(A,directed=False)
+        n_comp, comp_labels = connected_components(A, directed=False)
     comp_sizes = np.bincount(comp_labels)
-    cmp_indices = [(comp_labels == cmp).nonzero()[0] for \
-                          cmp in range(n_comp)]
+    cmp_indices = [
+        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
+    ]
 
     if verbose:
-        logger.info(f"PID{ os.getpid()} : subspace_expm with {n_comp} components")
-
+        logger.info(
+            f"PID{os.getpid()} : subspace_expm with {n_comp} components"
+        )
 
     large_comps, = np.nonzero(comp_sizes >= 1000)
     small_comps, = np.nonzero(comp_sizes < 1000)
@@ -206,25 +220,30 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
     for cmp in large_comps:
         cmp_ind = cmp_indices[cmp]
         if verbose:
-            logger.info(f"PID { os.getpid()} : computing component {cmp} over {n_comp}, with size {cmp_ind.size} using expm_multiply")
-        subnets_expms[cmp] = compute_parallel_expm(A[cmp_ind,:][:,cmp_ind],
+            logger.info(
+                f"PID {os.getpid()} : computing component {cmp} over {n_comp},"
+                " with size {cmp_ind.size} using expm_multiply"
+            )
+        subnets_expms[cmp] = compute_parallel_expm(A[cmp_ind, :][:, cmp_ind],
                                                    nproc=nproc,
                                                    thresh_ratio=None,
                                                    normalize_rows=False,
                                                    verbose=verbose,
                                                    ).toarray()
 
-
-    Aindices = RawArray("i",A.indices)
-    Aindptr = RawArray("i",A.indptr)
+    Aindices = RawArray("i", A.indices)
+    Aindptr = RawArray("i", A.indptr)
     Adata = RawArray("d", A.data)
 
     # now compute small comps in parallel
     if verbose:
-            logger.info(f"PID {os.getpid()} : computing {small_comps.size} small components with {nproc} workers")
+            logger.info(
+                f"PID {os.getpid()} : computing {small_comps.size} small "
+                f"components with {nproc} workers"
+            )
     t0 = time.time()
     with Pool(nproc, initializer=_init_worker,
-          initargs=(Adata, Aindices, Aindptr, num_nodes)) as p:
+              initargs=(Adata, Aindices, Aindptr, num_nodes)) as p:
         res = p.map(_expm_worker, [cmp_indices[c] for c in small_comps])
 
     # delete shared arrays
@@ -232,7 +251,10 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
     var_dict = {}
 
     if verbose:
-            logger.info(f"PID {os.getpid()} : small components computation took {time.time()-t0:.3f}s")
+        logger.info(
+            f"PID {os.getpid()} : small components computation took "
+            f"{time.time()-t0:.3f}s"
+        )
     t0 = time.time()
 
     # organize results
@@ -246,14 +268,16 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
 
     # reconstruct csr sparse matrix
     if verbose:
-            logger.info(f"PID {os.getpid()}: reconstructing expm mat")
+        logger.info(
+            f"PID {os.getpid()}: reconstructing expm mat"
+        )
     data_ind = 0
     for row in range(num_nodes):
         cmp = comp_labels[row]
         cmp_expm = subnets_expms[cmp]
         sub_expm_row, = np.where(cmp_indices[cmp] == row)
 
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row,:]
+        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
 
         indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
 
@@ -262,11 +286,12 @@ def compute_subspace_expm_parallel(A, n_comp=None, comp_labels=None, verbose=Fal
         data_ind += comp_sizes[cmp]
     indptr[num_nodes] = data_ind
 
-    expmA = csr_matrix((data, indices, indptr), shape=(num_nodes,num_nodes),
-                    dtype=np.float64)
+    expmA = csr_matrix((data, indices, indptr),
+                       shape=(num_nodes, num_nodes),
+                       dtype=np.float64)
 
     if thresh_ratio is not None:
-        expmA.data[expmA.data<expmA.data.max()/thresh_ratio] = 0.0
+        expmA.data[expmA.data < expmA.data.max()/thresh_ratio] = 0.0
         expmA.eliminate_zeros()
     if normalize_rows:
         inplace_csr_row_normalize(expmA)
@@ -290,8 +315,8 @@ def compute_subspace_expm(A,
 
     thresh_ratio: float, optional.
         Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
-        zero. Default is None.
+        Values smaller than `max(expm(A))/thresh_ratio` are set to zero.
+        Default is None.
     normalize_rows: bool, optional.
         Whether rows of the resulting matrix are normalized to sum to 1.
 
