@@ -30,21 +30,19 @@ import pandas as pd
 from pathlib import Path
 from scipy.sparse import (
     coo_matrix,
-    csc_matrix,
     csr_matrix,
     diags,
     dok_matrix,
     eye,
-    isspmatrix,
     isspmatrix_csr,
     lil_matrix,
 )
-from scipy.sparse.linalg import eigsh, expm
+from scipy.sparse.linalg import expm
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from .logger import get_logger
+from .faster_expm import compute_subspace_expm, sparse_lapl_expm
 from .utils import set_to_zeroes
-from .faster_expm import *
 
 # get the logger
 logger = get_logger()
