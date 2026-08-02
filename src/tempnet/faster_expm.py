@@ -21,23 +21,20 @@
 
 import os
 import time
-from multiprocessing import Pool, RawArray
-from .logger import get_logger
-from .utils import remove_nnz_rowcol
-from stochmat import inplace_csr_row_normalize, SparseStochMat
-
 from functools import partial
-
-
-# get the logger
-logger = get_logger()
+from multiprocessing import Pool, RawArray
 
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, isspmatrix_csc, vstack
 from scipy.sparse.csgraph import connected_components
 from scipy.sparse.linalg import expm, expm_multiply
+from stochmat import inplace_csr_row_normalize, SparseStochMat
 
-from stochmat import inplace_csr_row_normalize
+from .logger import get_logger
+from .utils import remove_nnz_rowcol
+
+# get the logger
+logger = get_logger()
 
 # A global dictionary storing the variables passed from the initializer.
 var_dict = {}
