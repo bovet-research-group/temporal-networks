@@ -305,9 +305,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
 
         """
         save_dict = dict()
@@ -332,6 +333,7 @@ class ContTempNetwork:
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
                       "_overlapping_events_merged",
+                      "laplacian_dynamics",
                       "is_directed"]
 
         if attributes_list is None:
@@ -379,9 +381,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
 
         """
         matrices = ["laplacians",
@@ -404,6 +407,7 @@ class ContTempNetwork:
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
                       "_overlapping_events_merged",
+                      "laplacian_dynamics",
                       "is_directed"]
 
         if attributes_list is None:
