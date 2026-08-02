@@ -20,6 +20,6 @@
 - Change the name of `Tcsr` to just `T` in function `set_to_zeroes` in `utils.py`
 - Moved `numpy_rebuild_nnz_rowcol` from `utils.py` to `stochmat` package.
 - Added a new argument `dynamics` (`heat` and `rw`) for computing laplacians in `temporal_network.py`
- (function name: `compute_laplacian_matrices`)
- - Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `subspace_expm.py`
- - Renamed `parallel_expm.py` to `subspace_expm.py`.
+  (function name: `compute_laplacian_matrices`)
+- Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `faster_expm.py`.
+- Renamed `parallel_expm.py` to `faster_expm.py`.
