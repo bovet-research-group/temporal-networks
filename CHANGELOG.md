@@ -23,3 +23,6 @@
   (function name: `compute_laplacian_matrices`)
 - Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `faster_expm.py`.
 - Renamed `parallel_expm.py` to `faster_expm.py`.
+
+### Added
+- ASV benchmark suite (`benchmarks/`)
