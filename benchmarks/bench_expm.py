@@ -21,8 +21,11 @@ Design notes
   pinned to a single thread (via threadpoolctl), separating "multiprocessing
   loses against multithreaded BLAS" from "pure multiprocessing overhead".
 - ``peakmem_*`` benchmarks are run by ASV in independent processes from the
-  timing runs. Note: peak memory covers the *main* process only; memory of
-  Pool workers is not captured (use ``memray --follow-forks`` if needed).
+  timing runs and pin BLAS to one thread. Parallel peak-memory benchmarks
+  still sweep ``nproc``; the pinning only prevents nested BLAS thread pools
+  from turning memory measurements into oversubscription measurements.
+  Note: peak memory covers the *main* process only; memory of Pool workers
+  is not captured (use ``memray --follow-forks`` if needed).
 - Benchmarks are meant to be run locally (``asv run``), never in CI.
 """
 
@@ -194,17 +197,22 @@ class PeakMemExpmSerial(_SerialBase):
 
     Dense ``expm`` materializes an ``n x n`` array; the subspace
     decomposition only ever holds one component's dense block at a time,
-    so its peak should drop sharply as ``n_components`` grows.
+    so its peak should drop sharply as ``n_components`` grows. BLAS is
+    pinned to one thread because these benchmarks measure allocation
+    behaviour, not CPU throughput.
     """
 
     def peakmem_scipy_expm(self, size, n_components):
-        expm(self.A)
+        with threadpool_limits(1):
+            expm(self.A)
 
     def peakmem_compute_subspace_expm(self, size, n_components):
-        compute_subspace_expm(self.A.copy(), normalize_rows=False)
+        with threadpool_limits(1):
+            compute_subspace_expm(self.A.copy(), normalize_rows=False)
 
     def peakmem_sparse_lapl_expm_dense(self, size, n_components):
-        sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
+        with threadpool_limits(1):
+            sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
 
 
 class PeakMemExpmParallel(_ParallelBase):
@@ -213,33 +221,38 @@ class PeakMemExpmParallel(_ParallelBase):
     Measures the *main* process only: the shared ``RawArray`` copies of
     the input plus result assembly. Memory of the Pool workers is not
     captured by ASV's peakmem (use ``memray --follow-forks`` for a full
-    per-worker picture).
+    per-worker picture). The ``nproc`` axis is preserved, but BLAS is
+    pinned to one thread so the measurement reflects process-level
+    parallelism rather than nested BLAS oversubscription.
     """
 
     def peakmem_compute_subspace_expm_parallel(self, size, n_components,
                                                nproc):
-        compute_subspace_expm_parallel(
-            self.A.copy(),
-            nproc=nproc,
-            normalize_rows=False,
-            verbose=False,
-        )
+        with threadpool_limits(1):
+            compute_subspace_expm_parallel(
+                self.A.copy(),
+                nproc=nproc,
+                normalize_rows=False,
+                verbose=False,
+            )
 
     def peakmem_compute_parallel_expm(self, size, n_components, nproc):
-        compute_parallel_expm(
-            self.A.copy(),
-            nproc=nproc,
-            normalize_rows=False,
-            verbose=False,
-        )
+        with threadpool_limits(1):
+            compute_parallel_expm(
+                self.A.copy(),
+                nproc=nproc,
+                normalize_rows=False,
+                verbose=False,
+            )
 
     def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):
-        sparse_lapl_expm(
-            self.L.copy(),
-            fact=1.0,
-            dense_expm=False,
-            nproc=nproc,
-        )
+        with threadpool_limits(1):
+            sparse_lapl_expm(
+                self.L.copy(),
+                fact=1.0,
+                dense_expm=False,
+                nproc=nproc,
+            )
 
 
 class TimeSparseCore:
