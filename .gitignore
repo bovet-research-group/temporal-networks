@@ -73,6 +73,11 @@ instance/
 # Sphinx documentation
 docs/_build/
 
+# ASV benchmarks (environments and generated HTML are ignored;
+# raw results are committed to build up a benchmark history)
+.asv/*
+!.asv/results/
+
 # PyBuilder
 .pybuilder/
 target/

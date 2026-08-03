@@ -1,0 +1,9 @@
+{
+    "arch": "x86_64",
+    "cpu": "Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz",
+    "machine": "jil_iMac_fedora",
+    "num_cpu": "8",
+    "os": "Linux 6.18.3-200.fc43.x86_64",
+    "ram": "33534169088",
+    "version": 1
+}

@@ -1,0 +1,80 @@
+{
+    "bench_synth_network.TimeContTempNetworkFromSynth.time_build_network": {
+        "code": "class TimeContTempNetworkFromSynth:\n    def time_build_network(self, n_individuals):\n        ContTempNetwork(\n            source_nodes=self.sim.indiv_sources,\n            target_nodes=self.sim.indiv_targets,\n            starting_times=self.sim.start_times,\n            ending_times=self.sim.end_times,\n        )\n\n    def setup(self, n_individuals):\n        np.random.seed(42)\n        sim = SynthTempNetwork(\n            individuals=_make_individuals(n_individuals),\n            t_start=0,\n            t_end=200.0,\n        )\n        sim.run()\n        self.sim = sim\n        self.network = ContTempNetwork(\n            source_nodes=sim.indiv_sources,\n            target_nodes=sim.indiv_targets,\n            starting_times=sim.start_times,\n            ending_times=sim.end_times,\n        )",
+        "min_run_count": 2,
+        "name": "bench_synth_network.TimeContTempNetworkFromSynth.time_build_network",
+        "number": 0,
+        "param_names": [
+            "n_individuals"
+        ],
+        "params": [
+            [
+                "12",
+                "60",
+                "300"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "4c74d20098ae665e4aeef73814e1a9a009b0259474702bce03c05e89e98df59b",
+        "warmup_time": -1
+    },
+    "bench_synth_network.TimeContTempNetworkFromSynth.time_compute_laplacians": {
+        "code": "class TimeContTempNetworkFromSynth:\n    def time_compute_laplacians(self, n_individuals):\n        self.network.compute_laplacian_matrices()\n\n    def setup(self, n_individuals):\n        np.random.seed(42)\n        sim = SynthTempNetwork(\n            individuals=_make_individuals(n_individuals),\n            t_start=0,\n            t_end=200.0,\n        )\n        sim.run()\n        self.sim = sim\n        self.network = ContTempNetwork(\n            source_nodes=sim.indiv_sources,\n            target_nodes=sim.indiv_targets,\n            starting_times=sim.start_times,\n            ending_times=sim.end_times,\n        )",
+        "min_run_count": 2,
+        "name": "bench_synth_network.TimeContTempNetworkFromSynth.time_compute_laplacians",
+        "number": 0,
+        "param_names": [
+            "n_individuals"
+        ],
+        "params": [
+            [
+                "12",
+                "60",
+                "300"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "ac9b031f3d85e1929215413c5a50593441a0d58c186a5d168e6808891b7bca29",
+        "warmup_time": -1
+    },
+    "bench_synth_network.TimeSynthTempNetwork.time_run_simulation": {
+        "code": "class TimeSynthTempNetwork:\n    def time_run_simulation(self, n_individuals, t_end):\n        # construct inside the timed function: run() is not guaranteed to\n        # be idempotent across timing repeats (construction cost is\n        # negligible against the simulation itself)\n        sim = SynthTempNetwork(\n            individuals=_make_individuals(n_individuals),\n            t_start=0,\n            t_end=t_end,\n        )\n        sim.run()\n\n    def setup(self, n_individuals, t_end):\n        np.random.seed(42)",
+        "min_run_count": 2,
+        "name": "bench_synth_network.TimeSynthTempNetwork.time_run_simulation",
+        "number": 0,
+        "param_names": [
+            "n_individuals",
+            "t_end"
+        ],
+        "params": [
+            [
+                "12",
+                "60",
+                "300"
+            ],
+            [
+                "100.0",
+                "500.0"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "6a0d811e15ac603d175fd217bec127e990c9e211fc52b0c681f6fc3405429fd3",
+        "warmup_time": -1
+    },
+    "version": 2
+}
