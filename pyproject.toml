@@ -46,11 +46,17 @@ docs = [
     "seaborn>=0.13.2",
     "networkx>=3.3"
 ]
+benchmarks = [
+    "asv>=0.6.4",
+    "threadpoolctl>=3.5.0",
+    "psutil>=6.0.0",
+]
 
 
 dev = [
     { include-group = "testing" },
     { include-group = "docs" },
+    { include-group = "benchmarks" },
 ]
 
 

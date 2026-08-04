@@ -20,5 +20,7 @@
 - Change the name of `Tcsr` to just `T` in function `set_to_zeroes` in `utils.py`
 - Moved `numpy_rebuild_nnz_rowcol` from `utils.py` to `stochmat` package.
 - Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
-They compute the number of active edges and nodes within a range of the t_start and t_end. 
+  They compute the number of active edges and nodes within a range of the t_start and t_end. 
 
+### Added
+- ASV benchmark suite (`benchmarks/`)
