@@ -1523,10 +1523,6 @@ class ContTempNetwork:
         An event is considered active when it starts strictly before ``t_end`` and ends
         strictly after ``t_start``.
 
-        As a consequence of the strict comparisons:
-
-        - an event ending exactly at ``t_start`` is **not** included, and
-        - an event starting exactly at ``t_end`` is **not** included.
         Parameters
         ----------
         t_start : float, optional
