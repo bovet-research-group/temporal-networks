@@ -13,6 +13,8 @@ import numpy as np
 from tempnet import ContTempNetwork
 from tempnet.synth_temp_network import Individual, SynthTempNetwork
 
+from .common import pretty_name
+
 
 def _make_individuals(n_individuals, n_groups=3):
     """Seeded Individual list; resets accumulating class-level state."""
@@ -39,6 +41,7 @@ class TimeSynthTempNetwork:
     def setup(self, n_individuals, t_end):
         np.random.seed(42)
 
+    @pretty_name("Run SynthTempNetwork simulation")
     def time_run_simulation(self, n_individuals, t_end):
         # construct inside the timed function: run() is not guaranteed to
         # be idempotent across timing repeats (construction cost is
@@ -74,6 +77,7 @@ class TimeContTempNetworkFromSynth:
             ending_times=sim.end_times,
         )
 
+    @pretty_name("Build ContTempNetwork from simulated events")
     def time_build_network(self, n_individuals):
         ContTempNetwork(
             source_nodes=self.sim.indiv_sources,
@@ -82,5 +86,6 @@ class TimeContTempNetworkFromSynth:
             ending_times=self.sim.end_times,
         )
 
+    @pretty_name("Compute laplacians for simulated temporal network")
     def time_compute_laplacians(self, n_individuals):
         self.network.compute_laplacian_matrices()

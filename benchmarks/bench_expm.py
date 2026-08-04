@@ -53,7 +53,7 @@ except ImportError:
         sparse_lapl_expm,
     )
 
-from .common import block_laplacian
+from .common import block_laplacian, pretty_name
 
 NCPU = os.cpu_count() or 1
 
@@ -98,9 +98,11 @@ class TimeExpmSerial(_SerialBase):
     for a single component.
     """
 
+    @pretty_name("SciPy sparse expm baseline")
     def time_scipy_expm(self, size, n_components):
         expm(self.A)
 
+    @pretty_name("Serial subspace expm by connected component")
     def time_compute_subspace_expm(self, size, n_components):
         compute_subspace_expm(self.A.copy(), normalize_rows=False)
 
@@ -116,6 +118,7 @@ class TimeExpmParallel(_ParallelBase):
     diagnostics that attribute this).
     """
 
+    @pretty_name("Parallel subspace expm")
     def time_compute_subspace_expm_parallel(self, size, n_components, nproc):
         compute_subspace_expm_parallel(
             self.A.copy(),
@@ -123,6 +126,7 @@ class TimeExpmParallel(_ParallelBase):
             normalize_rows=False,
         )
 
+    @pretty_name("Parallel column-wise expm_multiply")
     def time_compute_parallel_expm(self, size, n_components, nproc):
         compute_parallel_expm(
             self.A.copy(),
@@ -130,6 +134,7 @@ class TimeExpmParallel(_ParallelBase):
             normalize_rows=False,
         )
 
+    @pretty_name("sparse_lapl_expm sparse branch")
     def time_sparse_lapl_expm_sparse(self, size, n_components, nproc):
         sparse_lapl_expm(
             self.L.copy(),
@@ -151,14 +156,17 @@ class TimeExpmSerialSingleThreadedBlas(_SerialBase):
     identical.
     """
 
+    @pretty_name("SciPy sparse expm baseline (BLAS=1)")
     def time_scipy_expm(self, size, n_components):
         with threadpool_limits(1):
             expm(self.A)
 
+    @pretty_name("Serial subspace expm (BLAS=1)")
     def time_compute_subspace_expm(self, size, n_components):
         with threadpool_limits(1):
             compute_subspace_expm(self.A.copy(), normalize_rows=False)
 
+    @pretty_name("sparse_lapl_expm dense branch (BLAS=1)")
     def time_sparse_lapl_expm_dense(self, size, n_components):
         with threadpool_limits(1):
             sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
@@ -175,6 +183,7 @@ class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
       outweighs the parallelism gain.
     """
 
+    @pretty_name("Parallel subspace expm (BLAS=1)")
     def time_compute_subspace_expm_parallel(self, size, n_components, nproc):
         with threadpool_limits(1):
             compute_subspace_expm_parallel(
@@ -183,6 +192,7 @@ class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
                 normalize_rows=False,
             )
 
+    @pretty_name("Parallel column-wise expm_multiply (BLAS=1)")
     def time_compute_parallel_expm(self, size, n_components, nproc):
         with threadpool_limits(1):
             compute_parallel_expm(
@@ -202,14 +212,17 @@ class PeakMemExpmSerial(_SerialBase):
     behaviour, not CPU throughput.
     """
 
+    @pretty_name("Peak memory: SciPy sparse expm")
     def peakmem_scipy_expm(self, size, n_components):
         with threadpool_limits(1):
             expm(self.A)
 
+    @pretty_name("Peak memory: serial subspace expm")
     def peakmem_compute_subspace_expm(self, size, n_components):
         with threadpool_limits(1):
             compute_subspace_expm(self.A.copy(), normalize_rows=False)
 
+    @pretty_name("Peak memory: sparse_lapl_expm dense branch")
     def peakmem_sparse_lapl_expm_dense(self, size, n_components):
         with threadpool_limits(1):
             sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
@@ -226,6 +239,7 @@ class PeakMemExpmParallel(_ParallelBase):
     parallelism rather than nested BLAS oversubscription.
     """
 
+    @pretty_name("Peak memory: parallel subspace expm")
     def peakmem_compute_subspace_expm_parallel(self, size, n_components,
                                                nproc):
         with threadpool_limits(1):
@@ -235,6 +249,7 @@ class PeakMemExpmParallel(_ParallelBase):
                 normalize_rows=False,
             )
 
+    @pretty_name("Peak memory: parallel column-wise expm_multiply")
     def peakmem_compute_parallel_expm(self, size, n_components, nproc):
         with threadpool_limits(1):
             compute_parallel_expm(
@@ -243,6 +258,7 @@ class PeakMemExpmParallel(_ParallelBase):
                 normalize_rows=False,
             )
 
+    @pretty_name("Peak memory: sparse_lapl_expm sparse branch")
     def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):
         with threadpool_limits(1):
             sparse_lapl_expm(
@@ -268,9 +284,11 @@ class TimeSparseCore:
         from .common import sparse_core_laplacian
         self.L = sparse_core_laplacian(size, active_fraction)
 
+    @pretty_name("SciPy expm on mostly-zero laplacian")
     def time_scipy_expm(self, size, active_fraction):
         expm(-self.L)
 
+    @pretty_name("sparse_lapl_expm trims inactive nodes")
     def time_sparse_lapl_expm_dense(self, size, active_fraction):
         sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
 
@@ -292,14 +310,18 @@ class TimeSyntheticNetwork:
         from .common import synthetic_temporal_laplacian
         return synthetic_temporal_laplacian(n_groups=3, n_per_group=20)
 
+    @pretty_name("SciPy expm on synthetic-network laplacian")
     def time_scipy_expm(self, L):
         expm(-L)
 
+    @pretty_name("Subspace expm on synthetic-network laplacian")
     def time_compute_subspace_expm(self, L):
         compute_subspace_expm(-L, normalize_rows=False)
 
+    @pretty_name("sparse_lapl_expm dense on synthetic-network laplacian")
     def time_sparse_lapl_expm_dense(self, L):
         sparse_lapl_expm(L.copy(), fact=1.0, dense_expm=True)
 
+    @pretty_name("sparse_lapl_expm sparse on synthetic-network laplacian")
     def time_sparse_lapl_expm_sparse(self, L):
         sparse_lapl_expm(L.copy(), fact=1.0, dense_expm=False)

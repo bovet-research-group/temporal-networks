@@ -34,7 +34,7 @@ except ImportError:
     # pre-refactor layout (main); keeps `asv continuous` working.
     from tempnet.parallel_expm import compute_subspace_expm_parallel
 
-from .common import block_laplacian
+from .common import block_laplacian, pretty_name
 
 NCPU = os.cpu_count() or 1
 
@@ -105,12 +105,14 @@ class TrackBlasThreads:
         L = block_laplacian(200, 1)
         expm(-L)
 
+    @pretty_name("BLAS threads available to SciPy")
     def track_blas_threads(self):
         infos = threadpool_info()
         if not infos:
             return 1
         return max(info["num_threads"] for info in infos)
 
+    @pretty_name("Logical CPU count")
     def track_cpu_count(self):
         return NCPU
 
@@ -132,6 +134,7 @@ class TrackPeakProcessCount:
     def setup(self, nproc):
         self.A = -block_laplacian(2000, 10)
 
+    @pretty_name("Peak worker process count")
     def track_peak_process_count(self, nproc):
         proc = psutil.Process()
 
@@ -165,6 +168,7 @@ class TrackOversubscriptionFactor:
             raise NotImplementedError("requires Linux /proc")
         self.A = -block_laplacian(2000, 10)
 
+    @pretty_name("Peak runnable threads / CPU count")
     def track_oversubscription_factor(self, nproc):
         proc = psutil.Process()
 

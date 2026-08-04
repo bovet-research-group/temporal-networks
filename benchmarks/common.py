@@ -8,6 +8,14 @@ import numpy as np
 from scipy.sparse import csc_matrix, diags
 
 
+def pretty_name(name):
+    """Set the human-readable ASV display name of a benchmark."""
+    def decorate(func):
+        func.pretty_name = name
+        return func
+    return decorate
+
+
 def path_graph_laplacian(size):
     """Heat Laplacian of a path graph with `size` nodes (one component)."""
     nodes = np.arange(size - 1)
