@@ -136,6 +136,7 @@ class TestSimpleNetwork:
             [1, 2, 0],
         ])
         assert np.allclose(A, expected)
+
     def test_adj_window_0_2(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix(
             start_time=0, end_time=2,
