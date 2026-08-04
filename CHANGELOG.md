@@ -19,8 +19,17 @@
 - Moved `csc_row_normalize`,  `numpy_rebuild_nnz_rowcol`, `set_to_zeroes`, `set_to_ones`, `find_spectral_gap`, ` remove_nnz_rowcol` from `temporal_network.py` to `utils.py`. 
 - Change the name of `Tcsr` to just `T` in function `set_to_zeroes` in `utils.py`
 - Moved `numpy_rebuild_nnz_rowcol` from `utils.py` to `stochmat` package.
-- Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
-  They compute the number of active edges and nodes within a range of the t_start and t_end. 
+- Added a new argument `dynamics` (`heat` and `rw`) for computing laplacians in `temporal_network.py`
+  (function name: `compute_laplacian_matrices`)
+- Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `faster_expm.py`.
+- Renamed `parallel_expm.py` to `faster_expm.py`.
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
+- Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
+  They compute the number of active edges and nodes within a range of the t_start and t_end. 
+
+### Fixed
+- Normalized default `events_table` input (`relabel_nodes=True`) consistently
+  with list-based input: DataFrame/CSV event tables are copied, relabelled,
+  sorted by `starting_times` and `ending_times`, and reindexed by default.

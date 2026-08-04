@@ -1,4 +1,688 @@
 {
+    "bench_expm.PeakMemExpmParallel.peakmem_compute_parallel_expm": {
+        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_parallel_expm(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            compute_parallel_expm(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmParallel.peakmem_compute_parallel_expm",
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "3e0518450e8d4b86d7c4f2645342785c7e27cf94051f5670367c7c987a559a3f"
+    },
+    "bench_expm.PeakMemExpmParallel.peakmem_compute_subspace_expm_parallel": {
+        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_subspace_expm_parallel(self, size, n_components,\n                                               nproc):\n        with threadpool_limits(1):\n            compute_subspace_expm_parallel(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmParallel.peakmem_compute_subspace_expm_parallel",
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "a6f4c7f87d5a421b438d376a9a6e2af0e87df3ca91f984b8793211cd2229fe80"
+    },
+    "bench_expm.PeakMemExpmParallel.peakmem_sparse_lapl_expm_sparse": {
+        "code": "class PeakMemExpmParallel:\n    def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            sparse_lapl_expm(\n                self.L.copy(),\n                fact=1.0,\n                dense_expm=False,\n                nproc=nproc,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmParallel.peakmem_sparse_lapl_expm_sparse",
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "8cfef9808aa4188b32e2f65c9087e3f396a412abf16ed4b74da2f31a5cf4e0e1"
+    },
+    "bench_expm.PeakMemExpmSerial.peakmem_compute_subspace_expm": {
+        "code": "class PeakMemExpmSerial:\n    def peakmem_compute_subspace_expm(self, size, n_components):\n        with threadpool_limits(1):\n            compute_subspace_expm(self.A.copy(), normalize_rows=False)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmSerial.peakmem_compute_subspace_expm",
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "6c2732725fd32b7831b97c0966c4e1c882b819071e2134d4b6154bf7679e5431"
+    },
+    "bench_expm.PeakMemExpmSerial.peakmem_scipy_expm": {
+        "code": "class PeakMemExpmSerial:\n    def peakmem_scipy_expm(self, size, n_components):\n        with threadpool_limits(1):\n            expm(self.A)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmSerial.peakmem_scipy_expm",
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "4daaa4901366a65a5414193e5cc205d3a891793cdb0bb3b82d2c951e56faafc5"
+    },
+    "bench_expm.PeakMemExpmSerial.peakmem_sparse_lapl_expm_dense": {
+        "code": "class PeakMemExpmSerial:\n    def peakmem_sparse_lapl_expm_dense(self, size, n_components):\n        with threadpool_limits(1):\n            sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "name": "bench_expm.PeakMemExpmSerial.peakmem_sparse_lapl_expm_dense",
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "timeout": 600,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "011337b7aefc2e31d29f42c0086d5f58b40b5e58ac62c6d31143b3d5e2750cd3"
+    },
+    "bench_expm.TimeExpmParallel.time_compute_parallel_expm": {
+        "code": "class TimeExpmParallel:\n    def time_compute_parallel_expm(self, size, n_components, nproc):\n        compute_parallel_expm(\n            self.A.copy(),\n            nproc=nproc,\n            normalize_rows=False,\n            verbose=False,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmParallel.time_compute_parallel_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "9b6bdab5678a986bd7f30f6400da9b4092c962937aed25e37691a249253db1ea",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmParallel.time_compute_subspace_expm_parallel": {
+        "code": "class TimeExpmParallel:\n    def time_compute_subspace_expm_parallel(self, size, n_components, nproc):\n        compute_subspace_expm_parallel(\n            self.A.copy(),\n            nproc=nproc,\n            normalize_rows=False,\n            verbose=False,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmParallel.time_compute_subspace_expm_parallel",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "3441b76edf7ffa82df027656ec9f1891b3c465c4fad67466e50187631a2408b1",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmParallel.time_sparse_lapl_expm_sparse": {
+        "code": "class TimeExpmParallel:\n    def time_sparse_lapl_expm_sparse(self, size, n_components, nproc):\n        sparse_lapl_expm(\n            self.L.copy(),\n            fact=1.0,\n            dense_expm=False,\n            nproc=nproc,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmParallel.time_sparse_lapl_expm_sparse",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "01b9b89a9bd3b267d8d4f2c76d8c814f90f2ab905bf860fd1ba426e6878f4f25",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmParallelSingleThreadedBlas.time_compute_parallel_expm": {
+        "code": "class TimeExpmParallelSingleThreadedBlas:\n    def time_compute_parallel_expm(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            compute_parallel_expm(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmParallelSingleThreadedBlas.time_compute_parallel_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "c485f27461675869d8d044cd13a96e1f05ac2ed50b6ab623ab75937793a3fe98",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmParallelSingleThreadedBlas.time_compute_subspace_expm_parallel": {
+        "code": "class TimeExpmParallelSingleThreadedBlas:\n    def time_compute_subspace_expm_parallel(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            compute_subspace_expm_parallel(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmParallelSingleThreadedBlas.time_compute_subspace_expm_parallel",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components",
+            "nproc"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ],
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "c2627756d1e4f784d660fa5089ad36fe73308ba5fec1648ae7c984d28c510607",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmSerial.time_compute_subspace_expm": {
+        "code": "class TimeExpmSerial:\n    def time_compute_subspace_expm(self, size, n_components):\n        compute_subspace_expm(self.A.copy(), normalize_rows=False)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmSerial.time_compute_subspace_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "eab0e3493de9e58c26fc51a2312e3f378645e0dfa232a2536390c121a2bbbb07",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmSerial.time_scipy_expm": {
+        "code": "class TimeExpmSerial:\n    def time_scipy_expm(self, size, n_components):\n        expm(self.A)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmSerial.time_scipy_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "8c04763b4f2ea2e1cc904b2d8e42970b377fb5a8300a897e3a20cef734891eb8",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmSerial.time_sparse_lapl_expm_dense": {
+        "code": "class TimeExpmSerial:\n    def time_sparse_lapl_expm_dense(self, size, n_components):\n        sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmSerial.time_sparse_lapl_expm_dense",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "29b2ce6040784359f2670978f7a1154489f63e52f0e1dbe73e4ed9db3e4982c1",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmSerialSingleThreadedBlas.time_compute_subspace_expm": {
+        "code": "class TimeExpmSerialSingleThreadedBlas:\n    def time_compute_subspace_expm(self, size, n_components):\n        with threadpool_limits(1):\n            compute_subspace_expm(self.A.copy(), normalize_rows=False)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmSerialSingleThreadedBlas.time_compute_subspace_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "578e3a13ba3016deb66699acc9021740eb65d278e3a0d9e2e8d30c801323359a",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeExpmSerialSingleThreadedBlas.time_scipy_expm": {
+        "code": "class TimeExpmSerialSingleThreadedBlas:\n    def time_scipy_expm(self, size, n_components):\n        with threadpool_limits(1):\n            expm(self.A)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeExpmSerialSingleThreadedBlas.time_scipy_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "n_components"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "1",
+                "10",
+                "100"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "afa17a594eb42ae70325620b81a0264f20aa2bda3466943b82e0b529202cac38",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSparseCore.time_scipy_expm": {
+        "code": "class TimeSparseCore:\n    def time_scipy_expm(self, size, active_fraction):\n        expm(-self.L)\n\n    def setup(self, size, active_fraction):\n        from .common import sparse_core_laplacian\n        self.L = sparse_core_laplacian(size, active_fraction)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSparseCore.time_scipy_expm",
+        "number": 0,
+        "param_names": [
+            "size",
+            "active_fraction"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "0.01",
+                "0.1",
+                "0.5"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "8ba7f4b8e54878a3b69fc2be1a119a135a7cfc3cd36241f51927e814eb23b96c",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSparseCore.time_sparse_lapl_expm_dense": {
+        "code": "class TimeSparseCore:\n    def time_sparse_lapl_expm_dense(self, size, active_fraction):\n        sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)\n\n    def setup(self, size, active_fraction):\n        from .common import sparse_core_laplacian\n        self.L = sparse_core_laplacian(size, active_fraction)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSparseCore.time_sparse_lapl_expm_dense",
+        "number": 0,
+        "param_names": [
+            "size",
+            "active_fraction"
+        ],
+        "params": [
+            [
+                "500",
+                "2000",
+                "8000"
+            ],
+            [
+                "0.01",
+                "0.1",
+                "0.5"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "2aaa579d4f01053f1ce66bb42dde6240a2c09f5f5dd8f61db8dac43ecdd50533",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSyntheticNetwork.time_compute_subspace_expm": {
+        "code": "class TimeSyntheticNetwork:\n    def time_compute_subspace_expm(self, L):\n        compute_subspace_expm(-L, normalize_rows=False)\n\n    def setup_cache(self):\n        from .common import synthetic_temporal_laplacian\n        return synthetic_temporal_laplacian(n_groups=3, n_per_group=20)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSyntheticNetwork.time_compute_subspace_expm",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "setup_cache_key": "bench_expm:293",
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "4dc93d0411de34988dab0a0d6029b72a0c18fa7f1c3cc92d668f9ad6733d3924",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSyntheticNetwork.time_scipy_expm": {
+        "code": "class TimeSyntheticNetwork:\n    def time_scipy_expm(self, L):\n        expm(-L)\n\n    def setup_cache(self):\n        from .common import synthetic_temporal_laplacian\n        return synthetic_temporal_laplacian(n_groups=3, n_per_group=20)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSyntheticNetwork.time_scipy_expm",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "setup_cache_key": "bench_expm:293",
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "cdfe1a37010d28ca69496f2881900006f3687bc108010275a60d37682833f935",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSyntheticNetwork.time_sparse_lapl_expm_dense": {
+        "code": "class TimeSyntheticNetwork:\n    def time_sparse_lapl_expm_dense(self, L):\n        sparse_lapl_expm(L.copy(), fact=1.0, dense_expm=True)\n\n    def setup_cache(self):\n        from .common import synthetic_temporal_laplacian\n        return synthetic_temporal_laplacian(n_groups=3, n_per_group=20)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSyntheticNetwork.time_sparse_lapl_expm_dense",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "setup_cache_key": "bench_expm:293",
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "d12683c533f81c1c706adbbc62f9573c57f7dd2c05b40d089978f6a0ccdc72b4",
+        "warmup_time": -1
+    },
+    "bench_expm.TimeSyntheticNetwork.time_sparse_lapl_expm_sparse": {
+        "code": "class TimeSyntheticNetwork:\n    def time_sparse_lapl_expm_sparse(self, L):\n        sparse_lapl_expm(L.copy(), fact=1.0, dense_expm=False)\n\n    def setup_cache(self):\n        from .common import synthetic_temporal_laplacian\n        return synthetic_temporal_laplacian(n_groups=3, n_per_group=20)",
+        "min_run_count": 2,
+        "name": "bench_expm.TimeSyntheticNetwork.time_sparse_lapl_expm_sparse",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "setup_cache_key": "bench_expm:293",
+        "timeout": 600,
+        "type": "time",
+        "unit": "seconds",
+        "version": "ebf6e19a600d428fc7ad07470bd19a7b0f953cf11ff41ce5fe9722c50edc37cb",
+        "warmup_time": -1
+    },
+    "bench_oversubscription.TrackBlasThreads.track_blas_threads": {
+        "code": "class TrackBlasThreads:\n    def track_blas_threads(self):\n        infos = threadpool_info()\n        if not infos:\n            return 1\n        return max(info[\"num_threads\"] for info in infos)\n\n    def setup(self):\n        # trigger BLAS initialization so threadpool_info sees the pools\n        L = block_laplacian(200, 1)\n        expm(-L)",
+        "name": "bench_oversubscription.TrackBlasThreads.track_blas_threads",
+        "param_names": [],
+        "params": [],
+        "type": "track",
+        "unit": "threads",
+        "version": "6469e4b09225d6cd33d991026dba55bf8c6c44cf6c5b5651c40ea6f49dad74d5"
+    },
+    "bench_oversubscription.TrackBlasThreads.track_cpu_count": {
+        "code": "class TrackBlasThreads:\n    def track_cpu_count(self):\n        return NCPU\n\n    def setup(self):\n        # trigger BLAS initialization so threadpool_info sees the pools\n        L = block_laplacian(200, 1)\n        expm(-L)",
+        "name": "bench_oversubscription.TrackBlasThreads.track_cpu_count",
+        "param_names": [],
+        "params": [],
+        "type": "track",
+        "unit": "threads",
+        "version": "6471a7d0605e4437a9fc4ad44a59fa132eb4e15451e0842dbc660a0b43da9585"
+    },
+    "bench_oversubscription.TrackOversubscriptionFactor.track_oversubscription_factor": {
+        "code": "class TrackOversubscriptionFactor:\n    def track_oversubscription_factor(self, nproc):\n        proc = psutil.Process()\n    \n        def sample():\n            pids = [proc.pid]\n            pids += [c.pid for c in proc.children(recursive=True)]\n            return _runnable_threads_proc(pids)\n    \n        peak = _peak_while(\n            sample,\n            lambda: compute_subspace_expm_parallel(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            ),\n        )\n        return round(peak / NCPU, 2)\n\n    def setup(self, nproc):\n        if not glob.glob(\"/proc/self/task/*/stat\"):\n            raise NotImplementedError(\"requires Linux /proc\")\n        self.A = -block_laplacian(2000, 10)",
+        "name": "bench_oversubscription.TrackOversubscriptionFactor.track_oversubscription_factor",
+        "param_names": [
+            "nproc"
+        ],
+        "params": [
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "timeout": 600,
+        "type": "track",
+        "unit": "x cpu_count",
+        "version": "a6b293d2d5646da50713b24264dea5c3bae7065f2edc110971e5bb343b8905ac"
+    },
+    "bench_oversubscription.TrackPeakProcessCount.track_peak_process_count": {
+        "code": "class TrackPeakProcessCount:\n    def track_peak_process_count(self, nproc):\n        proc = psutil.Process()\n    \n        return _peak_while(\n            lambda: len(proc.children(recursive=True)),\n            lambda: compute_subspace_expm_parallel(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            ),\n        )\n\n    def setup(self, nproc):\n        self.A = -block_laplacian(2000, 10)",
+        "name": "bench_oversubscription.TrackPeakProcessCount.track_peak_process_count",
+        "param_names": [
+            "nproc"
+        ],
+        "params": [
+            [
+                "1",
+                "2",
+                "4",
+                "8"
+            ]
+        ],
+        "timeout": 600,
+        "type": "track",
+        "unit": "processes",
+        "version": "30808ceaad1e451d48b94cdc412998bc2237fc7bce1b5ea4ba3bab869496303b"
+    },
     "bench_synth_network.TimeContTempNetworkFromSynth.time_build_network": {
         "code": "class TimeContTempNetworkFromSynth:\n    def time_build_network(self, n_individuals):\n        ContTempNetwork(\n            source_nodes=self.sim.indiv_sources,\n            target_nodes=self.sim.indiv_targets,\n            starting_times=self.sim.start_times,\n            ending_times=self.sim.end_times,\n        )\n\n    def setup(self, n_individuals):\n        np.random.seed(42)\n        sim = SynthTempNetwork(\n            individuals=_make_individuals(n_individuals),\n            t_start=0,\n            t_end=200.0,\n        )\n        sim.run()\n        self.sim = sim\n        self.network = ContTempNetwork(\n            source_nodes=sim.indiv_sources,\n            target_nodes=sim.indiv_targets,\n            starting_times=sim.start_times,\n            ending_times=sim.end_times,\n        )",
         "min_run_count": 2,

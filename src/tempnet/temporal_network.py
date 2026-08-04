@@ -24,30 +24,25 @@ import os
 import pickle
 import time
 from dataclasses import dataclass
-from functools import partial
 
 import numpy as np
 import pandas as pd
 from pathlib import Path
 from scipy.sparse import (
     coo_matrix,
-    csc_matrix,
     csr_matrix,
     diags,
     dok_matrix,
     eye,
-    isspmatrix,
     isspmatrix_csr,
     lil_matrix,
 )
-from scipy.sparse.csgraph import connected_components
-from scipy.sparse.linalg import eigsh, expm
-
-from .parallel_expm import compute_subspace_expm_parallel
+from scipy.sparse.linalg import expm
 from stochmat import inplace_csr_row_normalize, SparseStochMat
 
 from .logger import get_logger
-from .utils import set_to_zeroes,to_dense,remove_nnz_rowcol
+from .faster_expm import compute_subspace_expm, sparse_lapl_expm
+from .utils import set_to_zeroes
 
 # get the logger
 logger = get_logger()
@@ -91,6 +86,11 @@ class ContTempNetwork:
     relabel_nodes: boolean
         Relabel nodes from 0 to num_nodes and save original labels in
         self.node_to_label_dict. Default is `True`
+        If `False`, `events_table` is treated as a fast-path input and is not
+        copied, sorted, relabelled, or reindexed. The caller must provide a
+        fully normalized internal event table: node ids must be contiguous
+        integer ids starting at 0, events must be sorted by `starting_times`
+        and `ending_times`, and the index must be a zero-based RangeIndex.
 
     reset_event_table_index: boolean
         Reset the index of the `events_table` DataFrame. Default is `True`.
@@ -214,16 +214,22 @@ class ContTempNetwork:
                         f"The file at {events_table} could not be parsed."
                     )
             elif isinstance(events_table, pd.DataFrame):
-                # copy to avoid mutating caller's DataFrame when relabeling
-                self.events_table = events_table.copy() if relabel_nodes \
-                    else events_table
+                if relabel_nodes:
+                    # copy to avoid mutating caller's DataFrame when relabeling
+                    self.events_table = events_table.copy()
+                else:
+                    # Fast path: caller promises events_table is already in the
+                    # internal representation, including chronological order,
+                    # contiguous node ids, and a RangeIndex matching rows.
+                    self.events_table = events_table
             else:
                 raise ValueError(
                     "`events_table` must be a pandas DataFrame or the"
                     "path to a CSV file. "
                     f"'{type(events_table)} is not acceptable."
                 )
-            reset_event_table_index = False
+            if not relabel_nodes:
+                reset_event_table_index = False
             if self._ENDINGS not in self.events_table.columns:
                 raise ValueError(
                     f"events_table is missing required column"
@@ -243,6 +249,12 @@ class ContTempNetwork:
                 ].map(self.label_to_node_dict)
             else:
                 self.node_to_label_dict = node_to_label_dict
+
+            if relabel_nodes:
+                self.events_table.sort_values(
+                    by=["starting_times", "ending_times"],
+                    inplace=True,
+                )
 
         if reset_event_table_index:
             self.events_table.reset_index(inplace=True, drop=True)
@@ -310,9 +322,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
 
         """
         save_dict = dict()
@@ -337,6 +350,7 @@ class ContTempNetwork:
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
                       "_overlapping_events_merged",
+                      "laplacian_dynamics",
                       "is_directed"]
 
         if attributes_list is None:
@@ -384,9 +398,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
 
         """
         matrices = ["laplacians",
@@ -409,6 +424,7 @@ class ContTempNetwork:
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
                       "_overlapping_events_merged",
+                      "laplacian_dynamics",
                       "is_directed"]
 
         if attributes_list is None:
@@ -1638,8 +1654,14 @@ class ContTempInstNetwork(ContTempNetwork):
         List of starting times of each event
 
     relabel_nodes: boolean
-        Relabel nodes from 0 to num_nodes and save original labels in 
+        Relabel nodes from 0 to num_nodes and save original labels in
         self.node_to_label_dict. Default is `True`
+        If `False`, `events_table` is treated as a fast-path input and is not
+        copied, sorted, relabelled, or reindexed. The caller must provide a
+        fully normalized internal event table: node ids are already contiguous
+        integer ids, events are already sorted by `starting_times` and
+        `ending_times`, and the index is a zero-based RangeIndex matching row
+        positions.
 
     reset_event_table_index: boolean
         Reset the index of the `events_table` DataFrame. Default is `True`.
@@ -1786,174 +1808,3 @@ class ContTempInstNetwork(ContTempNetwork):
             use_sparse_stoch=use_sparse_stoch,
             dense_expm=dense_expm
         )
-
-
-
-def compute_subspace_expm(A,
-                          n_comp=None,
-                          comp_labels=None,
-                          thresh_ratio=None,
-                          normalize_rows=True):
-    """Compute the exponential matrix of `A`.
-
-    The computation is done by applying expm on each connected subgraphs
-    defined by A and recomposing it to return expm(A).
-
-    Parameters
-    ----------
-        A : scipy.sparse.csc_matrix
-
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to 
-        zero. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-
-
-    Returns
-    -------
-        expm(A) : scipy.sparse.csr_matrix
-        matrix exponential of A
-
-    """
-    num_nodes = A.shape[0]
-
-    # otherwise 0 values may count as an edge
-    A.eliminate_zeros()
-    A.sort_indices()
-
-    if (n_comp is None) or (comp_labels is None):
-        n_comp, comp_labels = connected_components(A, directed=False)
-    comp_sizes = np.bincount(comp_labels)
-    cmp_indices = [
-        (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
-    ]
-
-    logger.info(f"subspace_expm with {n_comp} components")
-
-    # constructors for sparse array
-    data = np.zeros((comp_sizes**2).sum(), dtype=np.float64)
-    indices = np.zeros((comp_sizes**2).sum(), dtype=np.int32)
-    indptr = np.zeros(num_nodes+1, dtype=np.int32)
-
-    # if nproc == 1:
-    #     expm_func = lambda M: expm(M)
-    # else:
-    #     expm_func = lambda M: compute_parallel_expm(M, nproc=nproc,
-    #                                                 thresh_ratio=None,
-    #                                                 normalize_rows=False)
-    subnets_expms = []
-    for i, cmp_ind in enumerate(cmp_indices):
-        logger.info(
-            f"Computing component {i} over {n_comp}, with size {cmp_ind.size}"
-        )
-
-        subnets_expms.append(expm(A[cmp_ind, :][:, cmp_ind]).toarray())
-
-    # reconstruct csr sparse matrix
-    logger.info("Reconstructing expm mat")
-    data_ind = 0
-    for row in range(num_nodes):
-        cmp = comp_labels[row]
-        cmp_expm = subnets_expms[cmp]
-        sub_expm_row, = np.where(cmp_indices[cmp] == row)
-
-        data[data_ind:data_ind+comp_sizes[cmp]] = cmp_expm[sub_expm_row, :]
-
-        indices[data_ind:data_ind+comp_sizes[cmp]] = cmp_indices[cmp]
-
-        indptr[row] = data_ind
-
-        data_ind += comp_sizes[cmp]
-
-    indptr[num_nodes] = data_ind
-
-    expmA = csr_matrix(
-        (data, indices, indptr),
-        shape=(num_nodes, num_nodes),
-        dtype=np.float64
-    )
-
-    if thresh_ratio is not None:
-        expmA.data[expmA.data < expmA.data.max() / thresh_ratio] = 0.0
-        expmA.eliminate_zeros()
-    if normalize_rows:
-        inplace_csr_row_normalize(expmA)
-
-    return expmA
-
-
-def sparse_lapl_expm(L,
-                     fact,
-                     dense_expm=True,
-                     nproc=1,
-                     thresh_ratio=None,
-                     normalize_rows=True):
-    """Computes the matrix exponential of a laplacian L.
-
-    The exponential, expm(-fact*L), is computed considering only the non-zeros
-    rows/cols of L
-
-    Parameters
-    ----------
-    L : scipy sparse csc matrix
-        Laplacian matrix with large proportion of zero rows/cols.
-    fact : float
-        factor in front of the laplacian
-    dense_expm : boolean
-        Whether to compute the expm on the small Laplacian as a dense
-        or sparse array. Default is True.
-    nproc : int, optional
-        number of parallel processes for dense_expm=False. The default is 1.
-    thresh_ratio: float, optional.
-        Threshold ratio used to trim negligible values in the resulting matrix.
-        Values smaller than `max(expm(A))/thresh_ratio` are set to
-        zero. For dense_expm=False. Default is None.
-    normalize_rows: bool, optional.
-        Whether rows of the resulting matrix are normalized to sum to 1.
-        For dense_expm=False
-
-    Returns
-    -------
-    expm(-fact*L) : `SparseStochMat` object
-        Transition matrix
-
-    """
-    if L.getnnz() == 0:  # zero matrix
-        # return identity
-        return SparseStochMat.create_diag(L.shape[0])
-
-    L_small, nz_inds, size = remove_nnz_rowcol(L)
-
-    if nproc == 1:
-        expm_func = partial(compute_subspace_expm,
-                            A=-fact*L_small,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    else:
-        expm_func = partial(compute_subspace_expm_parallel,
-                            A=-fact*L_small,
-                            nproc=nproc,
-                            thresh_ratio=thresh_ratio,
-                            normalize_rows=normalize_rows)
-
-    if dense_expm:
-        T_small = csr_matrix(expm(-fact*L_small.toarray()))
-    else:
-
-        # for large networks, try subspace expm
-        L_small.eliminate_zeros()
-        if L_small.shape[0] >= 1000:
-            n_comp, comp_labels = connected_components(L_small, directed=False)
-            if n_comp > 1 :
-                T_small = expm_func(n_comp=n_comp,
-                                    comp_labels=comp_labels)
-            else:
-                T_small = expm(-fact*L_small).tocsr()
-        else:
-            T_small = expm(-fact*L_small).tocsr()
-
-    return SparseStochMat(size, T_small.data, T_small.indices,
-                          T_small.indptr, nz_inds)
