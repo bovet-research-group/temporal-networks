@@ -408,6 +408,24 @@ class TestTempNetwork:
             check_dtype=False,
         )
 
+    def test_dataframe_fast_path_preserves_order_and_index(self):
+        """`relabel_nodes=False` keeps the caller-provided table unchanged."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[20, 10, 30])
+
+        network = ContTempNetwork(
+            events_table=events_table,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert network.events_table is events_table
+        pd.testing.assert_frame_equal(network.events_table, events_table)
+
     def test_inst_events_table_matches_start_plus_one_interval(self):
         """ContTempInstNetwork synthesizes ending_times = start + 1.
 
@@ -720,6 +738,34 @@ class TestContTempInstNetwork:
                                 starts=[0.0, 0.5, 5.0])
         net = ContTempInstNetwork(events_table=df)
         assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+
+    def test_unsorted_dataframe_default_path_sorts_and_resets_index(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[2.0, 0.0, 1.0])
+        df.index = [20, 10, 30]
+
+        net = ContTempInstNetwork(events_table=df)
+
+        assert net.events_table.starting_times.tolist() == [0.0, 1.0, 2.0]
+        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
+        assert net.events_table.index.tolist() == [0, 1, 2]
+
+    def test_dataframe_fast_path_preserves_order_index_and_identity(self):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[0, 1, 2])
+
+        net = ContTempInstNetwork(
+            events_table=df,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert net.events_table is df
+        pd.testing.assert_frame_equal(net.events_table, df)
 
 
 class TestContTempNetworkEndingTimesRequired:
