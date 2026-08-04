@@ -1527,9 +1527,6 @@ class ContTempNetwork:
 
         - an event ending exactly at ``t_start`` is **not** included, and
         - an event starting exactly at ``t_end`` is **not** included.
-        - an event starting exactly at ``t_start`` and ending before ``t_end`` is included.
-        - an event starting before ``t_start`` and ending exactly at ``t_end`` is included.
-
         Parameters
         ----------
         t_start : float, optional
