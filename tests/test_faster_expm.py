@@ -2,10 +2,11 @@ import os
 
 import numpy as np
 import pytest
-from scipy.sparse import csc_matrix, csr_matrix, diags
+from scipy.sparse import block_diag, csc_matrix, csr_matrix, diags
 from scipy.sparse.linalg import expm
 
 from tempnet.faster_expm import (
+    _stack_sparse_cols,
     compute_parallel_expm,
     compute_subspace_expm,
     compute_subspace_expm_parallel,
@@ -76,6 +77,48 @@ def test_compute_parallel_expm_matches_dense_expm():
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
 
 
+def test_compute_parallel_expm_accepts_non_csc_input():
+    A = -_two_component_laplacian().tocsr()
+    expected = expm(A).toarray()
+
+    actual = compute_parallel_expm(
+        A,
+        nproc=NPROC,
+        normalize_rows=False,
+    ).toarray()
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_stack_sparse_cols_reconstructs_square_csc_matrix():
+    cols = [
+        csc_matrix([[1.0], [0.0], [2.0]]),
+        csc_matrix([[0.0], [3.0], [0.0]]),
+        csc_matrix([[4.0], [0.0], [5.0]]),
+    ]
+
+    actual = _stack_sparse_cols(cols)
+
+    np.testing.assert_allclose(
+        actual.toarray(),
+        np.array([
+            [1.0, 0.0, 4.0],
+            [0.0, 3.0, 0.0],
+            [2.0, 0.0, 5.0],
+        ]),
+    )
+
+
+def test_stack_sparse_cols_rejects_non_square_input():
+    cols = [
+        csc_matrix([[1.0], [0.0], [2.0]]),
+        csc_matrix([[0.0], [3.0], [0.0]]),
+    ]
+
+    with pytest.raises(ValueError, match="N columns"):
+        _stack_sparse_cols(cols)
+
+
 def test_compute_parallel_expm_normalizes_rows_after_thresholding():
     """Thresholding trims small entries, so raw row sums drop below 1;
     normalize_rows must restore them to exactly 1.
@@ -100,6 +143,73 @@ def test_compute_parallel_expm_normalizes_rows_after_thresholding():
     ).toarray()
 
     np.testing.assert_allclose(normalized.sum(axis=1), np.ones(A.shape[0]))
+
+
+def test_compute_subspace_expm_normalizes_rows_after_thresholding():
+    A = -_path_graph_laplacian(size=50)
+    thresh_ratio = 100.0
+
+    raw = compute_subspace_expm(
+        A.copy(),
+        thresh_ratio=thresh_ratio,
+        normalize_rows=False,
+    ).toarray()
+    assert not np.allclose(raw.sum(axis=1), np.ones(A.shape[0]))
+
+    normalized = compute_subspace_expm(
+        A.copy(),
+        thresh_ratio=thresh_ratio,
+        normalize_rows=True,
+    ).toarray()
+
+    np.testing.assert_allclose(normalized.sum(axis=1), np.ones(A.shape[0]))
+
+
+def test_compute_subspace_expm_parallel_normalizes_rows_after_thresholding():
+    A = -_path_graph_laplacian(size=50)
+    thresh_ratio = 100.0
+
+    raw = compute_subspace_expm_parallel(
+        A.copy(),
+        nproc=NPROC,
+        thresh_ratio=thresh_ratio,
+        normalize_rows=False,
+    ).toarray()
+    assert not np.allclose(raw.sum(axis=1), np.ones(A.shape[0]))
+
+    normalized = compute_subspace_expm_parallel(
+        A.copy(),
+        nproc=NPROC,
+        thresh_ratio=thresh_ratio,
+        normalize_rows=True,
+    ).toarray()
+
+    np.testing.assert_allclose(normalized.sum(axis=1), np.ones(A.shape[0]))
+
+
+def test_compute_subspace_expm_parallel_uses_large_component_branch(
+    monkeypatch,
+):
+    L = _path_graph_laplacian(size=1001)
+    calls = []
+
+    def fake_compute_parallel_expm(A, *, nproc, thresh_ratio, normalize_rows):
+        calls.append((A.shape, nproc, thresh_ratio, normalize_rows))
+        return csc_matrix(np.eye(A.shape[0]))
+
+    monkeypatch.setattr(
+        "tempnet.faster_expm.compute_parallel_expm",
+        fake_compute_parallel_expm,
+    )
+
+    actual = compute_subspace_expm_parallel(
+        -L,
+        nproc=NPROC,
+        normalize_rows=False,
+    )
+
+    assert calls == [((1001, 1001), NPROC, None, False)]
+    np.testing.assert_allclose(actual.toarray(), np.eye(1001))
 
 
 @pytest.mark.skipif(
@@ -137,6 +247,66 @@ def test_sparse_lapl_expm_matches_dense_laplacian_expm():
     )
 
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_sparse_lapl_expm_sparse_small_matrix_matches_dense():
+    L = _two_component_laplacian()
+    expected = expm(-L).toarray()
+
+    actual = to_dense(sparse_lapl_expm(L.copy(), fact=1.0,
+                                      dense_expm=False))
+
+    np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_sparse_lapl_expm_sparse_large_single_component_uses_sparse_expm(
+    monkeypatch,
+):
+    L = _path_graph_laplacian(size=1000)
+    calls = []
+
+    def fake_expm(A):
+        calls.append(A.shape)
+        return csr_matrix(np.eye(A.shape[0]))
+
+    monkeypatch.setattr("tempnet.faster_expm.expm", fake_expm)
+
+    actual = to_dense(sparse_lapl_expm(L.copy(), fact=1.0,
+                                      dense_expm=False))
+
+    assert calls == [(1000, 1000)]
+    np.testing.assert_allclose(actual, np.eye(1000))
+
+
+def test_sparse_lapl_expm_sparse_large_multi_component_uses_parallel_subspace(
+    monkeypatch,
+):
+    L_component = _path_graph_laplacian(size=500)
+    L = block_diag((L_component, L_component), format="csc")
+    calls = []
+
+    def fake_parallel(A, *, n_comp, comp_labels, nproc, thresh_ratio,
+                      normalize_rows):
+        calls.append((A.shape, n_comp, nproc, thresh_ratio, normalize_rows))
+        return csr_matrix(np.eye(A.shape[0]))
+
+    monkeypatch.setattr(
+        "tempnet.faster_expm.compute_subspace_expm_parallel",
+        fake_parallel,
+    )
+
+    actual = to_dense(
+        sparse_lapl_expm(
+            L.copy(),
+            fact=1.0,
+            dense_expm=False,
+            nproc=NPROC,
+            normalize_rows=False,
+        )
+    )
+
+    assert calls == [((1000, 1000), 2, NPROC, None, False)]
+    np.testing.assert_allclose(actual, np.eye(1000))
 
 
 def test_sparse_lapl_expm_zero_laplacian_returns_identity():
