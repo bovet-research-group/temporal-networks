@@ -1520,14 +1520,15 @@ class ContTempNetwork:
     def _active_mask(self, t_start=None, t_end=None):
         """Boolean mask of events overlapping the window ``(t_start, t_end)``.
 
-        Both window boundaries are exclusive (open interval). An event is
-        considered active when it starts strictly before ``t_end`` and ends
+        An event is considered active when it starts strictly before ``t_end`` and ends
         strictly after ``t_start``.
 
         As a consequence of the strict comparisons:
 
         - an event ending exactly at ``t_start`` is **not** included, and
         - an event starting exactly at ``t_end`` is **not** included.
+        - an event starting exactly at ``t_start`` and ending before ``t_end`` is included.
+        - an event starting before ``t_start`` and ending exactly at ``t_end`` is included.
 
         Parameters
         ----------
@@ -1558,11 +1559,9 @@ class ContTempNetwork:
     def active_nodes(self, t_start=None, t_end=None):
         """Return the nodes that are active within a given time window.
 
-        A node is considered active if it is an endpoint of at least one event
-        that overlaps the open interval ``(t_start, t_end)``. Both boundaries
-        are exclusive: an event overlaps the window when it starts strictly
-        before ``t_end`` and ends strictly after ``t_start`` (see
-        :meth:`_active_mask`).
+        A node is active if it is an endpoint of at least one event 
+        that starts strictly before ``t_end`` and ends strictly after ``t_start``. 
+
 
         Parameters
         ----------
@@ -1585,9 +1584,8 @@ class ContTempNetwork:
     def num_active_nodes(self, t_start=None, t_end=None):
         """Return the number of nodes active within a given time window.
 
-        A node is active if it is an endpoint of at least one event overlapping
-        the open interval ``(t_start, t_end)`` (both boundaries exclusive; see
-        :meth:`active_nodes`).
+        A node is active if it is an endpoint of at least one event 
+        that starts strictly before ``t_end`` and ends strictly after ``t_start``. 
 
         Parameters
         ----------
@@ -1607,11 +1605,9 @@ class ContTempNetwork:
     def num_active_events(self, t_start=None, t_end=None):
         """Return the number of events active within a given time window.
 
-        An event is counted as active if it overlaps the open interval
-        ``(t_start, t_end)``, that is, it starts strictly before ``t_end`` and
-        ends strictly after ``t_start`` (both boundaries exclusive; see
-        :meth:`_active_mask`).
-
+        An event is counted as active if it starts strictly before ``t_end`` and
+        ends strictly after ``t_start``. 
+        
         Note that this counts *events*, so if the same node pair interacts
         multiple times within the window, each interaction is counted
         separately.
