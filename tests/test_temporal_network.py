@@ -108,10 +108,10 @@ class TestSimpleNetwork:
         assert simple_network.num_active_events(t_start=6.5, t_end=None)==1
         assert simple_network.num_active_events(t_start=3.5, t_end=3.75)==0
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             simple_network.num_active_events(t_start=5, t_end=3)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             simple_network.num_active_events(t_start=1, t_end=1)
 
     def test_active_nodes(self, simple_network):
@@ -121,13 +121,46 @@ class TestSimpleNetwork:
         assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
         assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             simple_network.num_active_nodes(t_start=5, t_end=3)
 
-        with pytest.raises(AssertionError):
+        with pytest.raises(ValueError):
             simple_network.num_active_nodes(t_start=1, t_end=1)
 
-        
+    def test_active_events_boundary_overlap_semantics(self, simple_network):
+        """Events are active when they overlap with positive duration."""
+        # Window [2, 4): event ending at 2 is excluded, event starting at 4
+        # is excluded; only [1, 3) overlaps.
+        assert simple_network.num_active_events(t_start=2, t_end=4) == 1
+
+        # Window [4, 5): event starting exactly at t_start is included.
+        assert simple_network.num_active_events(t_start=4, t_end=5) == 1
+
+        # Window [3, 5): event ending at t_start is excluded, event ending
+        # at t_end is included because it overlaps before t_end.
+        assert simple_network.num_active_events(t_start=3, t_end=5) == 1
+
+        # Window [5, 6): event ending at t_start and event starting at t_end
+        # are both excluded.
+        assert simple_network.num_active_events(t_start=5, t_end=6) == 0
+
+    def test_active_nodes_boundary_overlap_semantics(self, simple_network):
+        """Active nodes follow the same overlap convention as events."""
+        assert simple_network.active_nodes(t_start=2,
+                                           t_end=4).tolist() == [1, 2]
+        assert simple_network.num_active_nodes(t_start=2, t_end=4) == 2
+
+        assert simple_network.active_nodes(t_start=4,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=4, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=3,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=3, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=5, t_end=6).tolist() == []
+        assert simple_network.num_active_nodes(t_start=5, t_end=6) == 0
+
     def test_adj_full(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix().toarray()
         expected = np.array([
