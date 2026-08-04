@@ -26,6 +26,8 @@
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
+- Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
+  They compute the number of active edges and nodes within a range of the t_start and t_end. 
 
 ### Fixed
 - Normalized default `events_table` input (`relabel_nodes=True`) consistently
