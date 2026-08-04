@@ -93,10 +93,9 @@ class ContTempNetwork:
         self.node_to_label_dict. Default is `True`
         If `False`, `events_table` is treated as a fast-path input and is not
         copied, sorted, relabelled, or reindexed. The caller must provide a
-        fully normalized internal event table: node ids are already contiguous
-        integer ids, events are already sorted by `starting_times` and
-        `ending_times`, and the index is a zero-based RangeIndex matching row
-        positions.
+        fully normalized internal event table: node ids must be contiguous
+        integer ids starting at 0, events must be sorted by `starting_times`
+        and `ending_times`, and the index must be a zero-based RangeIndex.
 
     reset_event_table_index: boolean
         Reset the index of the `events_table` DataFrame. Default is `True`.
@@ -228,13 +227,14 @@ class ContTempNetwork:
                     # internal representation, including chronological order,
                     # contiguous node ids, and a RangeIndex matching rows.
                     self.events_table = events_table
-                    reset_event_table_index = False
             else:
                 raise ValueError(
                     "`events_table` must be a pandas DataFrame or the"
                     "path to a CSV file. "
                     f"'{type(events_table)} is not acceptable."
                 )
+            if not relabel_nodes:
+                reset_event_table_index = False
             if self._ENDINGS not in self.events_table.columns:
                 raise ValueError(
                     f"events_table is missing required column"
