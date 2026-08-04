@@ -1,6 +1,6 @@
 {
     "bench_expm.PeakMemExpmParallel.peakmem_compute_parallel_expm": {
-        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_parallel_expm(self, size, n_components, nproc):\n        compute_parallel_expm(\n            self.A.copy(),\n            nproc=nproc,\n            normalize_rows=False,\n            verbose=False,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_parallel_expm(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            compute_parallel_expm(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmParallel.peakmem_compute_parallel_expm",
         "param_names": [
             "size",
@@ -28,10 +28,10 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "3cc90b4fd1d263c8e44c73e3677a3c6b3ae4185f33d7f74d957c17c917d57b16"
+        "version": "3e0518450e8d4b86d7c4f2645342785c7e27cf94051f5670367c7c987a559a3f"
     },
     "bench_expm.PeakMemExpmParallel.peakmem_compute_subspace_expm_parallel": {
-        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_subspace_expm_parallel(self, size, n_components,\n                                               nproc):\n        compute_subspace_expm_parallel(\n            self.A.copy(),\n            nproc=nproc,\n            normalize_rows=False,\n            verbose=False,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmParallel:\n    def peakmem_compute_subspace_expm_parallel(self, size, n_components,\n                                               nproc):\n        with threadpool_limits(1):\n            compute_subspace_expm_parallel(\n                self.A.copy(),\n                nproc=nproc,\n                normalize_rows=False,\n                verbose=False,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmParallel.peakmem_compute_subspace_expm_parallel",
         "param_names": [
             "size",
@@ -59,10 +59,10 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "765bdbfd8f70e1685bd9c14a44464c2e6d48a60d7514a598e8188a2fb5157f4f"
+        "version": "a6f4c7f87d5a421b438d376a9a6e2af0e87df3ca91f984b8793211cd2229fe80"
     },
     "bench_expm.PeakMemExpmParallel.peakmem_sparse_lapl_expm_sparse": {
-        "code": "class PeakMemExpmParallel:\n    def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):\n        sparse_lapl_expm(\n            self.L.copy(),\n            fact=1.0,\n            dense_expm=False,\n            nproc=nproc,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmParallel:\n    def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):\n        with threadpool_limits(1):\n            sparse_lapl_expm(\n                self.L.copy(),\n                fact=1.0,\n                dense_expm=False,\n                nproc=nproc,\n            )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmParallel.peakmem_sparse_lapl_expm_sparse",
         "param_names": [
             "size",
@@ -90,10 +90,10 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "df64d15de965a39ac16b3cfc31945df595c7a3a1109023042f69f97ebd46e577"
+        "version": "8cfef9808aa4188b32e2f65c9087e3f396a412abf16ed4b74da2f31a5cf4e0e1"
     },
     "bench_expm.PeakMemExpmSerial.peakmem_compute_subspace_expm": {
-        "code": "class PeakMemExpmSerial:\n    def peakmem_compute_subspace_expm(self, size, n_components):\n        compute_subspace_expm(self.A.copy(), normalize_rows=False)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmSerial:\n    def peakmem_compute_subspace_expm(self, size, n_components):\n        with threadpool_limits(1):\n            compute_subspace_expm(self.A.copy(), normalize_rows=False)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmSerial.peakmem_compute_subspace_expm",
         "param_names": [
             "size",
@@ -114,10 +114,10 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "fc42902fc8a7996ff5dea3c91b655fcc4075411a1d944eb38182b297ee052ba2"
+        "version": "6c2732725fd32b7831b97c0966c4e1c882b819071e2134d4b6154bf7679e5431"
     },
     "bench_expm.PeakMemExpmSerial.peakmem_scipy_expm": {
-        "code": "class PeakMemExpmSerial:\n    def peakmem_scipy_expm(self, size, n_components):\n        expm(self.A)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmSerial:\n    def peakmem_scipy_expm(self, size, n_components):\n        with threadpool_limits(1):\n            expm(self.A)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmSerial.peakmem_scipy_expm",
         "param_names": [
             "size",
@@ -138,10 +138,10 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "a43c8be618f5acdb66b20e945ef397b55a86806e8cd990e6c5b20fb23263be73"
+        "version": "4daaa4901366a65a5414193e5cc205d3a891793cdb0bb3b82d2c951e56faafc5"
     },
     "bench_expm.PeakMemExpmSerial.peakmem_sparse_lapl_expm_dense": {
-        "code": "class PeakMemExpmSerial:\n    def peakmem_sparse_lapl_expm_dense(self, size, n_components):\n        sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
+        "code": "class PeakMemExpmSerial:\n    def peakmem_sparse_lapl_expm_dense(self, size, n_components):\n        with threadpool_limits(1):\n            sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)\n\nclass _SerialBase:\n    def setup(self, size, n_components):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
         "name": "bench_expm.PeakMemExpmSerial.peakmem_sparse_lapl_expm_dense",
         "param_names": [
             "size",
@@ -162,7 +162,7 @@
         "timeout": 600,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "56f75da51490dc1db78322f5282503bbcc4db1f72e49c78f09ee7325f56e9332"
+        "version": "011337b7aefc2e31d29f42c0086d5f58b40b5e58ac62c6d31143b3d5e2750cd3"
     },
     "bench_expm.TimeExpmParallel.time_compute_parallel_expm": {
         "code": "class TimeExpmParallel:\n    def time_compute_parallel_expm(self, size, n_components, nproc):\n        compute_parallel_expm(\n            self.A.copy(),\n            nproc=nproc,\n            normalize_rows=False,\n            verbose=False,\n        )\n\nclass _ParallelBase:\n    def setup(self, size, n_components, nproc):\n        self.L = block_laplacian(size, n_components)\n        self.A = -self.L",
@@ -569,7 +569,7 @@
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
-        "setup_cache_key": "bench_expm:280",
+        "setup_cache_key": "bench_expm:293",
         "timeout": 600,
         "type": "time",
         "unit": "seconds",
@@ -586,7 +586,7 @@
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
-        "setup_cache_key": "bench_expm:280",
+        "setup_cache_key": "bench_expm:293",
         "timeout": 600,
         "type": "time",
         "unit": "seconds",
@@ -603,7 +603,7 @@
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
-        "setup_cache_key": "bench_expm:280",
+        "setup_cache_key": "bench_expm:293",
         "timeout": 600,
         "type": "time",
         "unit": "seconds",
@@ -620,7 +620,7 @@
         "repeat": 0,
         "rounds": 2,
         "sample_time": 0.01,
-        "setup_cache_key": "bench_expm:280",
+        "setup_cache_key": "bench_expm:293",
         "timeout": 600,
         "type": "time",
         "unit": "seconds",
