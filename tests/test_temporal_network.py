@@ -67,6 +67,130 @@ def simple_unsorted_network():
 
 class TestSimpleNetwork: 
 
+    def test_num_nodes(self, simple_network):
+        assert simple_network.num_nodes == 3
+
+    def test_num_events(self, simple_network):
+        assert simple_network.num_events == 4
+
+    def test_start_time(self, simple_network):
+        assert simple_network.start_time == 0
+
+    def test_end_time(self, simple_network):
+        assert simple_network.end_time == 7
+
+    def test_print(self ,simple_network):
+        s=str(simple_network)
+        assert s==  "<class 'tempnet.temporal_network.ContTempNetwork'> with 3 nodes and 4 events" 
+
+    def test_node_array_sorted(self, simple_network):
+        assert list(simple_network.node_array) == [0, 1, 2]
+
+    def test_durations_column_exists(self, simple_network):
+        assert "durations" in simple_network.events_table.columns
+
+    def test_durations_values(self, simple_network):
+        assert list(simple_network.events_table["durations"]) == [2, 2, 1, 1]
+
+    def test_events_sorted_by_start(self, simple_network):
+        starts = simple_network.events_table["starting_times"].tolist()
+        assert starts == sorted(starts)
+
+    def test_required_columns_present(self, simple_network):
+        for col in ["source_nodes", "target_nodes", "starting_times",
+                    "ending_times", "durations"]:
+            assert col in simple_network.events_table.columns
+
+    def test_active_events(self, simple_network):
+        assert simple_network.num_active_events(t_start=None, t_end=None)==4
+        assert simple_network.num_active_events(t_start=1, t_end=2)==2
+        assert simple_network.num_active_events(t_start=None, t_end=5)==3
+        assert simple_network.num_active_events(t_start=6.5, t_end=None)==1
+        assert simple_network.num_active_events(t_start=3.5, t_end=3.75)==0
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_events(t_start=5, t_end=3)
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_events(t_start=1, t_end=1)
+
+    def test_active_nodes(self, simple_network):
+        assert simple_network.num_active_nodes(t_start=None, t_end=None)==3
+        assert simple_network.num_active_nodes(t_start=1, t_end=2)==3
+        assert simple_network.num_active_nodes(t_start=None, t_end=5)==3
+        assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
+        assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_nodes(t_start=5, t_end=3)
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_nodes(t_start=1, t_end=1)
+
+    def test_active_events_boundary_overlap_semantics(self, simple_network):
+        """Events are active when they overlap with positive duration."""
+        # Window [2, 4): event ending at 2 is excluded, event starting at 4
+        # is excluded; only [1, 3) overlaps.
+        assert simple_network.num_active_events(t_start=2, t_end=4) == 1
+
+        # Window [4, 5): event starting exactly at t_start is included.
+        assert simple_network.num_active_events(t_start=4, t_end=5) == 1
+
+        # Window [3, 5): event ending at t_start is excluded, event ending
+        # at t_end is included because it overlaps before t_end.
+        assert simple_network.num_active_events(t_start=3, t_end=5) == 1
+
+        # Window [5, 6): event ending at t_start and event starting at t_end
+        # are both excluded.
+        assert simple_network.num_active_events(t_start=5, t_end=6) == 0
+
+    def test_active_nodes_boundary_overlap_semantics(self, simple_network):
+        """Active nodes follow the same overlap convention as events."""
+        assert simple_network.active_nodes(t_start=2,
+                                           t_end=4).tolist() == [1, 2]
+        assert simple_network.num_active_nodes(t_start=2, t_end=4) == 2
+
+        assert simple_network.active_nodes(t_start=4,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=4, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=3,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=3, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=5, t_end=6).tolist() == []
+        assert simple_network.num_active_nodes(t_start=5, t_end=6) == 0
+
+    def test_adj_full(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix().toarray()
+        expected = np.array([
+            [0, 3, 1],
+            [3, 0, 2],
+            [1, 2, 0],
+        ])
+        assert np.allclose(A, expected)
+
+    def test_adj_window_0_2(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix(
+            start_time=0, end_time=2,
+        ).toarray()
+        expected = np.array([
+            [0, 2, 0],
+            [2, 0, 1],
+            [0, 1, 0],
+        ])
+        assert np.allclose(A, expected)
+
+    def test_adj_window_2p5_3(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix(
+            start_time=2.5, end_time=3,
+        ).toarray()
+        expected = np.array([
+            [0, 0, 0],
+            [0, 0, 0.5],
+            [0, 0.5, 0],
+        ])
+        assert np.allclose(A, expected)
 
     @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
     def test_laplacians_count(self, simple_network, dynamics):
@@ -133,6 +257,8 @@ class TestSimpleNetwork:
             L = simple_network.laplacians[i].toarray()
             assert L.shape == (n, n)
             assert np.allclose(L.sum(axis=1), 0.0)
+
+    
 
 class TestTempNetwork:
     def setup_method(self):
