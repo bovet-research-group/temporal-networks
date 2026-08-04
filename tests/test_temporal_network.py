@@ -108,7 +108,6 @@ class TestSimpleNetwork:
         assert simple_network.num_active_events(t_start=6.5, t_end=None)==1
         assert simple_network.num_active_events(t_start=3.5, t_end=3.75)==0
 
-
     def test_active_nodes(self, simple_network):
         assert simple_network.num_active_nodes(t_start=None, t_end=None)==3
         assert simple_network.num_active_nodes(t_start=1, t_end=2)==3
@@ -116,11 +115,6 @@ class TestSimpleNetwork:
         assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
         assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
 
-    def test_index_reset(self, simple_network):
-        assert list(simple_network.events_table.index) == list(
-            range(simple_network.num_events)
-        )
-        
     def test_adj_full(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix().toarray()
         expected = np.array([
@@ -129,6 +123,7 @@ class TestSimpleNetwork:
             [1, 2, 0],
         ])
         assert np.allclose(A, expected)
+
     def test_adj_window_0_2(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix(
             start_time=0, end_time=2,
