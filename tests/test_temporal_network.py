@@ -34,7 +34,39 @@ def simple_network():
         starting_times=[0, 1, 4, 6],
         ending_times=[2, 3, 5, 7])
 
+
+@pytest.fixture
+def simple_unsorted_network():
+    """Network namespace with simple events in non-chronological order.
+
+    The fixture is used to expose constructor differences between list input
+    and DataFrame input. The list constructor sorts events by
+    ``starting_times``/``ending_times`` and resets the index, while the
+    DataFrame constructor historically preserves caller order and index.
+    """
+    network = SimpleNamespace()
+    network.source_nodes = [1, 4, 2, 7, 5, 3, 9, 6, 8, 10]
+    network.target_nodes = [2, 5, 3, 8, 6, 4, 10, 7, 9, 1]
+    network.starting_times = [0, 2, 0.5, 5, 4, 1, 5, 4, 5, 3]
+    network.ending_times = [3, 7, 1, 6, 5, 2, 6, 6, 7, 4]
+    network.events_table = pd.DataFrame({
+        "source_nodes": network.source_nodes,
+        "target_nodes": network.target_nodes,
+        "starting_times": network.starting_times,
+        "ending_times": network.ending_times,
+    })
+    nodes = set()
+    nodes.update(network.source_nodes)
+    nodes.update(network.target_nodes)
+    network.nodes = sorted(nodes)
+    network.node_label_id_map = {
+        node: _id for _id, node in enumerate(network.nodes)
+    }
+    return network
+
+
 class TestSimpleNetwork: 
+
 
     @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
     def test_laplacians_count(self, simple_network, dynamics):
@@ -332,6 +364,89 @@ class TestTempNetwork:
             temp_network = self._get_instance(network, use_df=True)
             temp_network._compute_time_grid()
 
+    def test_unsorted_list_input_is_sorted_and_index_reset(
+        self,
+        simple_unsorted_network,
+    ):
+        """List input is normalized to chronological order with a RangeIndex.
+
+        This documents the existing list-constructor behavior. The final
+        laplacian computation is a smoke test that the reset labels remain
+        compatible with later ``.loc``-based event lookups.
+        """
+        network = self._get_instance(simple_unsorted_network, use_df=False)
+
+        assert network.events_table.starting_times.tolist() == sorted(
+            simple_unsorted_network.starting_times
+        )
+        assert network.events_table.index.tolist() == list(
+            range(network.num_events)
+        )
+
+        network.compute_laplacian_matrices()
+        assert len(network.laplacians) > 0
+
+    def test_unsorted_dataframe_matches_list_constructor_order(
+        self,
+        simple_unsorted_network,
+    ):
+        """DataFrame input should match list input for the same event records.
+
+        Regression test: list input sorts events chronologically, while
+        DataFrame input has historically preserved caller order. Downstream
+        code assumes chronological event order in several places, so both
+        constructor paths should normalize to the same internal event table.
+        """
+        net_lists = self._get_instance(simple_unsorted_network, use_df=False)
+        net_df = self._get_instance(simple_unsorted_network, use_df=True)
+
+        cols = ["source_nodes", "target_nodes",
+                "starting_times", "ending_times"]
+        pd.testing.assert_frame_equal(
+            net_lists.events_table[cols].reset_index(drop=True),
+            net_df.events_table[cols].reset_index(drop=True),
+            check_dtype=False,
+        )
+
+    def test_dataframe_fast_path_preserves_order_and_index(self):
+        """`relabel_nodes=False` keeps the caller-provided table unchanged."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
+
+        network = ContTempNetwork(
+            events_table=events_table,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert network.events_table is events_table
+        pd.testing.assert_frame_equal(network.events_table, events_table)
+
+    def test_csv_fast_path_preserves_order_and_index(self, tmp_path):
+        """`relabel_nodes=False` does not reset CSV-loaded event tables."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[20, 10, 30])
+        csv_path = tmp_path / "events.csv"
+        events_table.to_csv(csv_path)
+
+        network = ContTempNetwork(
+            events_table=csv_path,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+            index_col=0,
+        )
+
+        assert network.events_table.index.tolist() == [20, 10, 30]
+        assert network.events_table.starting_times.tolist() == [2.0, 0.0, 1.0]
+
     def test_inst_events_table_matches_start_plus_one_interval(self):
         """ContTempInstNetwork synthesizes ending_times = start + 1.
 
@@ -361,6 +476,7 @@ class TestTempNetwork:
             interval.events_table.reset_index(drop=True),
             inst.events_table.reset_index(drop=True),
         )
+
 
 def test_ContTempNetworkErrors():
     with pytest.raises(AssertionError):
@@ -644,6 +760,34 @@ class TestContTempInstNetwork:
         net = ContTempInstNetwork(events_table=df)
         assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
 
+    def test_unsorted_dataframe_default_path_sorts_and_resets_index(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[2.0, 0.0, 1.0])
+        df.index = [20, 10, 30]
+
+        net = ContTempInstNetwork(events_table=df)
+
+        assert net.events_table.starting_times.tolist() == [0.0, 1.0, 2.0]
+        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
+        assert net.events_table.index.tolist() == [0, 1, 2]
+
+    def test_dataframe_fast_path_preserves_order_index_and_identity(self):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
+
+        net = ContTempInstNetwork(
+            events_table=df,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert net.events_table is df
+        pd.testing.assert_frame_equal(net.events_table, df)
+
 
 class TestContTempNetworkEndingTimesRequired:
     """ContTempNetwork must raise ValueError when ending_times is absent.
@@ -700,4 +844,3 @@ class TestContTempNetworkEndingTimesRequired:
             ending_times=[],
         )
         assert net.num_events == 0
-
