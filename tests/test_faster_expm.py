@@ -6,7 +6,6 @@ from scipy.sparse import block_diag, csc_matrix, csr_matrix, diags
 from scipy.sparse.linalg import expm
 
 from tempnet.faster_expm import (
-    _stack_sparse_cols,
     compute_parallel_expm,
     compute_subspace_expm,
     compute_subspace_expm_parallel,
@@ -88,35 +87,6 @@ def test_compute_parallel_expm_accepts_non_csc_input():
     ).toarray()
 
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
-
-
-def test_stack_sparse_cols_reconstructs_square_csc_matrix():
-    cols = [
-        csc_matrix([[1.0], [0.0], [2.0]]),
-        csc_matrix([[0.0], [3.0], [0.0]]),
-        csc_matrix([[4.0], [0.0], [5.0]]),
-    ]
-
-    actual = _stack_sparse_cols(cols)
-
-    np.testing.assert_allclose(
-        actual.toarray(),
-        np.array([
-            [1.0, 0.0, 4.0],
-            [0.0, 3.0, 0.0],
-            [2.0, 0.0, 5.0],
-        ]),
-    )
-
-
-def test_stack_sparse_cols_rejects_non_square_input():
-    cols = [
-        csc_matrix([[1.0], [0.0], [2.0]]),
-        csc_matrix([[0.0], [3.0], [0.0]]),
-    ]
-
-    with pytest.raises(ValueError, match="N columns"):
-        _stack_sparse_cols(cols)
 
 
 def test_compute_parallel_expm_normalizes_rows_after_thresholding():

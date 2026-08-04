@@ -118,7 +118,6 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
     global var_dict
     var_dict = {}
 
-    # seems faster than _stack_sparse_cols
     T = vstack(res).T.tocsr()
 
     if normalize_rows:
@@ -130,28 +129,6 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
     )
 
     return T
-
-
-def _stack_sparse_cols(col_list):
-
-    # create csc sparse matric from sparse column list
-    data_size = sum(C.data.size for C in col_list)
-    N = max(col_list[0].shape)
-
-    data = np.zeros(data_size, dtype=np.float64)
-    indices = np.zeros(data_size, dtype=np.int32)
-    indptr = np.zeros(N+1, dtype=np.int32)
-
-    ptr = 0
-    for col, C in enumerate(col_list):
-        nnz_col = C.data.size
-        data[ptr:ptr+nnz_col] = C.T.tocsc().data
-        indices[ptr:ptr+nnz_col] = C.T.tocsc().indices
-        ptr = ptr + nnz_col
-        indptr[col+1] = ptr
-
-
-    return csc_matrix((data, indices, indptr), shape=(N, N))
 
 
 def _expm_worker(cmp_ind):
