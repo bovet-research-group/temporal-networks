@@ -333,6 +333,15 @@ class TestTempNetwork:
             pd.testing.assert_series_equal(sn_et.ending_times,
                                            ln_et.ending_times)
 
+    def test_save_and_load_preserves_laplacian_dynamics(self):
+        network = self._get_instance(self.simple, use_df=True)
+        network.compute_laplacian_matrices(dynamics="heat")
+
+        network.save(self.simple.tmp_pkl.name)
+        loaded_network = ContTempNetwork.load(self.simple.tmp_pkl.name)
+
+        assert loaded_network.laplacian_dynamics == "heat"
+
     def test_import_data(self):
         """Make sure we can work with data with incomplete node lists
         """

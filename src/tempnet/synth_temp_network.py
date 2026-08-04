@@ -520,7 +520,7 @@ class SynthTempNetwork:
             self.put_event(indiv_id, event_type="activation")
 
 
-    def run(self, save_all_states=False, save_dt_states=False, dt=10.0, verbose=False):
+    def run(self, save_all_states=False, save_dt_states=False, dt=10.0):
         """Run the simulation
         
         Parameters
@@ -531,8 +531,6 @@ class SynthTempNetwork:
             saves the positions in `saved_states` at a constant frequency given by `dt`
         dt : float
             record period for `saved_states' 
-        verbose : bool
-            verbose mode shows the progress
 
         """
         # time interval at which the data is recorded
@@ -563,10 +561,9 @@ class SynthTempNetwork:
 
                 (time, event) = self.queue.get_nowait()
 
-                if verbose:
-                    logger.debug("treating event : ")
-                    logger.debug(f'{(time, event)}')
-                    logger.debug("--")
+                logger.debug("treating event : ")
+                logger.debug(f'{(time, event)}')
+                logger.debug("--")
 
 
                 if not event[-1]: # not is_canceled
@@ -582,10 +579,9 @@ class SynthTempNetwork:
                             # pick new partner for interaction
                             partner = self.get_new_partner(indiv_id)
 
-                            if verbose>10:
-                                logger.debug(f"new interaction between : {indiv_id} and {partner}")
-                                logger.debug(f"starting at {self.t}")
-                                logger.debug("--")
+                            logger.debug(f"new interaction between : {indiv_id} and {partner}")
+                            logger.debug(f"starting at {self.t}")
+                            logger.debug("--")
 
                             if partner is not None:
                                 #update A and _last_times
@@ -633,8 +629,7 @@ class SynthTempNetwork:
                                 self.saved_states[self.t] = self._A.copy()
                                 self._t_next_bin += self.dt
 
-                                if verbose:
-                                    logger.debug(f"t = {self.t}")
+                                logger.debug(f"t = {self.t}")
 
 
             except Empty:
