@@ -413,9 +413,9 @@ class TestTempNetwork:
         events_table = pd.DataFrame({
             "source_nodes": [0, 1, 2],
             "target_nodes": [1, 2, 0],
-            "starting_times": [2.0, 0.0, 1.0],
-            "ending_times": [3.0, 1.0, 2.0],
-        }, index=[20, 10, 30])
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
 
         network = ContTempNetwork(
             events_table=events_table,
@@ -425,6 +425,27 @@ class TestTempNetwork:
 
         assert network.events_table is events_table
         pd.testing.assert_frame_equal(network.events_table, events_table)
+
+    def test_csv_fast_path_preserves_order_and_index(self, tmp_path):
+        """`relabel_nodes=False` does not reset CSV-loaded event tables."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[20, 10, 30])
+        csv_path = tmp_path / "events.csv"
+        events_table.to_csv(csv_path)
+
+        network = ContTempNetwork(
+            events_table=csv_path,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+            index_col=0,
+        )
+
+        assert network.events_table.index.tolist() == [20, 10, 30]
+        assert network.events_table.starting_times.tolist() == [2.0, 0.0, 1.0]
 
     def test_inst_events_table_matches_start_plus_one_interval(self):
         """ContTempInstNetwork synthesizes ending_times = start + 1.
@@ -754,9 +775,9 @@ class TestContTempInstNetwork:
         df = pd.DataFrame({
             "source_nodes": [0, 1, 2],
             "target_nodes": [1, 2, 0],
-            "starting_times": [2.0, 0.0, 1.0],
-            "ending_times": [3.0, 1.0, 2.0],
-        }, index=[0, 1, 2])
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
 
         net = ContTempInstNetwork(
             events_table=df,
