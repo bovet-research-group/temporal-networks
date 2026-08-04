@@ -26,3 +26,8 @@
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
+
+### Fixed
+- Normalized default `events_table` input (`relabel_nodes=True`) consistently
+  with list-based input: DataFrame/CSV event tables are copied, relabelled,
+  sorted by `starting_times` and `ending_times`, and reindexed by default.
