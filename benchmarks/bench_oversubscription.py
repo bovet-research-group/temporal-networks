@@ -141,7 +141,6 @@ class TrackPeakProcessCount:
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             ),
         )
 
@@ -180,7 +179,6 @@ class TrackOversubscriptionFactor:
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             ),
         )
         return round(peak / NCPU, 2)

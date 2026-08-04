@@ -93,10 +93,9 @@ class TimeExpmSerial(_SerialBase):
     """Wall-clock timings of the serial implementations (default BLAS).
 
     Shows whether the per-connected-component decomposition
-    (``compute_subspace_expm``) and the zero-row/col trimming
-    (``sparse_lapl_expm``) beat plain scipy ``expm``: decomposition
-    should win for many small components and degenerate to plain
-    ``expm`` for a single component.
+    (``compute_subspace_expm``) beats plain scipy ``expm``: decomposition
+    should win for many small components and degenerate to plain ``expm``
+    for a single component.
     """
 
     def time_scipy_expm(self, size, n_components):
@@ -104,9 +103,6 @@ class TimeExpmSerial(_SerialBase):
 
     def time_compute_subspace_expm(self, size, n_components):
         compute_subspace_expm(self.A.copy(), normalize_rows=False)
-
-    def time_sparse_lapl_expm_dense(self, size, n_components):
-        sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
 
 
 class TimeExpmParallel(_ParallelBase):
@@ -125,7 +121,6 @@ class TimeExpmParallel(_ParallelBase):
             self.A.copy(),
             nproc=nproc,
             normalize_rows=False,
-            verbose=False,
         )
 
     def time_compute_parallel_expm(self, size, n_components, nproc):
@@ -133,7 +128,6 @@ class TimeExpmParallel(_ParallelBase):
             self.A.copy(),
             nproc=nproc,
             normalize_rows=False,
-            verbose=False,
         )
 
     def time_sparse_lapl_expm_sparse(self, size, n_components, nproc):
@@ -150,7 +144,11 @@ class TimeExpmSerialSingleThreadedBlas(_SerialBase):
 
     Baseline for the BLAS-pinned comparison: together with
     ``TimeExpmSerial`` it quantifies how much of plain ``expm``'s speed
-    comes from BLAS-level multithreading on this machine.
+    comes from BLAS-level multithreading on this machine. The dense
+    ``sparse_lapl_expm`` path is only timed here because the default-BLAS
+    version is dominated by scipy/BLAS scheduling noise and can create
+    false positives in branch comparisons even when the tempnet code is
+    identical.
     """
 
     def time_scipy_expm(self, size, n_components):
@@ -160,6 +158,10 @@ class TimeExpmSerialSingleThreadedBlas(_SerialBase):
     def time_compute_subspace_expm(self, size, n_components):
         with threadpool_limits(1):
             compute_subspace_expm(self.A.copy(), normalize_rows=False)
+
+    def time_sparse_lapl_expm_dense(self, size, n_components):
+        with threadpool_limits(1):
+            sparse_lapl_expm(self.L.copy(), fact=1.0, dense_expm=True)
 
 
 class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
@@ -179,7 +181,6 @@ class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             )
 
     def time_compute_parallel_expm(self, size, n_components, nproc):
@@ -188,7 +189,6 @@ class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             )
 
 
@@ -233,7 +233,6 @@ class PeakMemExpmParallel(_ParallelBase):
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             )
 
     def peakmem_compute_parallel_expm(self, size, n_components, nproc):
@@ -242,7 +241,6 @@ class PeakMemExpmParallel(_ParallelBase):
                 self.A.copy(),
                 nproc=nproc,
                 normalize_rows=False,
-                verbose=False,
             )
 
     def peakmem_sparse_lapl_expm_sparse(self, size, n_components, nproc):

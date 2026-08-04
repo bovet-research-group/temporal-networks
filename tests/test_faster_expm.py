@@ -58,7 +58,6 @@ def test_compute_subspace_expm_parallel_matches_dense_expm():
         A.copy(),
         nproc=NPROC,
         normalize_rows=False,
-        verbose=False,
     ).toarray()
 
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
@@ -72,7 +71,6 @@ def test_compute_parallel_expm_matches_dense_expm():
         A.copy(),
         nproc=NPROC,
         normalize_rows=False,
-        verbose=False,
     ).toarray()
 
     np.testing.assert_allclose(actual, expected, rtol=1e-10, atol=1e-12)
@@ -90,7 +88,6 @@ def test_compute_parallel_expm_normalizes_rows_after_thresholding():
         nproc=NPROC,
         thresh_ratio=thresh_ratio,
         normalize_rows=False,
-        verbose=False,
     ).toarray()
     # sanity: without normalization, thresholding breaks row-stochasticity
     assert not np.allclose(raw.sum(axis=1), np.ones(A.shape[0]))
@@ -100,7 +97,6 @@ def test_compute_parallel_expm_normalizes_rows_after_thresholding():
         nproc=NPROC,
         thresh_ratio=thresh_ratio,
         normalize_rows=True,
-        verbose=False,
     ).toarray()
 
     np.testing.assert_allclose(normalized.sum(axis=1), np.ones(A.shape[0]))
@@ -118,7 +114,6 @@ def test_compute_subspace_expm_parallel_computes_large_component_branch():
         -L,
         nproc=NPROC,
         normalize_rows=False,
-        verbose=False,
     )
 
     assert actual.shape == L.shape

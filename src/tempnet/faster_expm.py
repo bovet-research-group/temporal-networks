@@ -68,8 +68,7 @@ def _worker(args):
 
 
 def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
-                          normalize_rows=True,
-                          verbose=True):
+                          normalize_rows=True):
     """Computes the exponential matrix of A by computing each column separately
     exploiting the fact that the column i of expm(A) is
     expm_multiply(A, delta_i) where delta i is the vector with zeros everywhere
@@ -106,11 +105,10 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
     indptr = RawArray("i",A.indptr)
     data = RawArray("d", A.data)
 
-    if verbose:
-        logger.info(
-            f"PID {os.getpid()} : compute_parallel_expm starting a pool of "
-            f"{nproc} workers"
-        )
+    logger.info(
+        f"PID {os.getpid()} : compute_parallel_expm starting a pool of "
+        f"{nproc} workers"
+    )
     t0 = time.time()
     with Pool(nproc, initializer=_init_worker,
               initargs=(data, indices, indptr, N)) as p:
@@ -126,11 +124,10 @@ def compute_parallel_expm(A, nproc=1, thresh_ratio=None,
     if normalize_rows:
         inplace_csr_row_normalize(T)
 
-    if verbose:
-        logger.info(
-            f"PID {os.getpid()} : compute_parallel_expm took "
-            f"{time.time()-t0:.3f}s, computed expm has {T.getnnz()} non-zeros."
-        )
+    logger.info(
+        f"PID {os.getpid()} : compute_parallel_expm took "
+        f"{time.time()-t0:.3f}s, computed expm has {T.getnnz()} non-zeros."
+    )
 
     return T
 
@@ -165,7 +162,6 @@ def _expm_worker(cmp_ind):
 def compute_subspace_expm_parallel(A,
                                    n_comp=None,
                                    comp_labels=None,
-                                   verbose=False,
                                    nproc=1,
                                    thresh_ratio=None,
                                    normalize_rows=True):
@@ -207,10 +203,9 @@ def compute_subspace_expm_parallel(A,
         (comp_labels == cmp).nonzero()[0] for cmp in range(n_comp)
     ]
 
-    if verbose:
-        logger.info(
-            f"PID{os.getpid()} : subspace_expm with {n_comp} components"
-        )
+    logger.info(
+        f"PID{os.getpid()} : subspace_expm with {n_comp} components"
+    )
 
     large_comps, = np.nonzero(comp_sizes >= 1000)
     small_comps, = np.nonzero(comp_sizes < 1000)
@@ -219,16 +214,14 @@ def compute_subspace_expm_parallel(A,
     # first compute large comps with exmp_multiply
     for cmp in large_comps:
         cmp_ind = cmp_indices[cmp]
-        if verbose:
-            logger.info(
-                f"PID {os.getpid()} : computing component {cmp} over {n_comp},"
-                " with size {cmp_ind.size} using expm_multiply"
-            )
+        logger.info(
+            f"PID {os.getpid()} : computing component {cmp} over {n_comp},"
+            " with size {cmp_ind.size} using expm_multiply"
+        )
         subnets_expms[cmp] = compute_parallel_expm(A[cmp_ind, :][:, cmp_ind],
                                                    nproc=nproc,
                                                    thresh_ratio=None,
                                                    normalize_rows=False,
-                                                   verbose=verbose,
                                                    ).toarray()
 
     Aindices = RawArray("i", A.indices)
@@ -236,11 +229,10 @@ def compute_subspace_expm_parallel(A,
     Adata = RawArray("d", A.data)
 
     # now compute small comps in parallel
-    if verbose:
-            logger.info(
-                f"PID {os.getpid()} : computing {small_comps.size} small "
-                f"components with {nproc} workers"
-            )
+    logger.info(
+        f"PID {os.getpid()} : computing {small_comps.size} small "
+        f"components with {nproc} workers"
+    )
     t0 = time.time()
     with Pool(nproc, initializer=_init_worker,
               initargs=(Adata, Aindices, Aindptr, num_nodes)) as p:
@@ -250,11 +242,10 @@ def compute_subspace_expm_parallel(A,
     global var_dict
     var_dict = {}
 
-    if verbose:
-        logger.info(
-            f"PID {os.getpid()} : small components computation took "
-            f"{time.time()-t0:.3f}s"
-        )
+    logger.info(
+        f"PID {os.getpid()} : small components computation took "
+        f"{time.time()-t0:.3f}s"
+    )
     t0 = time.time()
 
     # organize results
@@ -267,10 +258,9 @@ def compute_subspace_expm_parallel(A,
     indptr = np.zeros(num_nodes+1, dtype=np.int32)
 
     # reconstruct csr sparse matrix
-    if verbose:
-        logger.info(
-            f"PID {os.getpid()}: reconstructing expm mat"
-        )
+    logger.info(
+        f"PID {os.getpid()}: reconstructing expm mat"
+    )
     data_ind = 0
     for row in range(num_nodes):
         cmp = comp_labels[row]
@@ -441,7 +431,7 @@ def sparse_lapl_expm(L,
                             A=-fact*L_small,
                             thresh_ratio=thresh_ratio,
                             normalize_rows=normalize_rows)
-
+ 
     else:
         expm_func = partial(compute_subspace_expm_parallel,
                             A=-fact*L_small,
