@@ -6,7 +6,7 @@
 # Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
 #                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
 #                    Samuel Koovely <samuel.koovely@uzh.ch>, 
-#                    Jonas Liechti <jonas@t4d.ch>
+#                    Jonas I. Liechti <j-i-l@t4d.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
