@@ -87,13 +87,19 @@ class Machine:
         return self._config
 
     def get_nprocs(self):
-        """Return ``[1, 2, 4, ...]`` up to the number of available cpus."""
+        """Return powers of two plus one less than the CPU count."""
+        if self._ncpu <= 1:
+            return [1]
+
         values = []
         value = 1
-        while value <= self._ncpu:
+        while value < self._ncpu:
             values.append(value)
             value *= 2
-        return values
+
+        values.append(self._ncpu - 1)
+        return sorted(set(values))
+
 
 def path_graph_laplacian(size):
     """Heat Laplacian of a path graph with `size` nodes (one component)."""

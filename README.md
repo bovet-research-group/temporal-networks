@@ -88,6 +88,21 @@ uv run asv publish      # generate the HTML report in .asv/html
 uv run asv preview      # serve the report locally
 ```
 
+To compare a feature branch against `main`, run ASV's continuous comparison
+locally from the branch:
+
+```bash
+asv continuous main HEAD
+asv compare main HEAD --factor 1.1
+```
+
+Both commits must be available locally. Use a merge base instead of `main` if
+you want to compare against the exact point where the branch diverged:
+
+```bash
+asv continuous $(git merge-base main HEAD) HEAD
+```
+
 Results accumulate in `.asv/results/`, so successive runs on different
 commits build up a performance history. The raw results are **committed to
 the repository** (only `.asv/env` and `.asv/html` are git-ignored): after a
