@@ -1,11 +1,17 @@
-"""Shared, seeded matrix generators for the tempnet benchmarks.
+"""Shared helpers and seeded generators for the tempnet benchmarks.
 
 All generators are deterministic (fixed seed or fully structural) so that
 benchmark results are comparable across runs and commits.
 """
 
+import json
+import os
+from pathlib import Path
+
 import numpy as np
 from scipy.sparse import csc_matrix, diags
+
+CONFIG_PATH = Path(__file__).with_name("machine_configs.json")
 
 
 def pretty_name(name):
@@ -15,6 +21,79 @@ def pretty_name(name):
         return func
     return decorate
 
+
+class Machine:
+    """Machine-specific benchmark parameter configuration."""
+
+    def __init__(self):
+        self._name = self._get_benchmark_machine()
+        self._ncpu = os.cpu_count() or 1
+        self._config = self._load_config()
+        self._bind_config_getters()
+
+    @staticmethod
+    def _get_benchmark_machine():
+        """Return the single configured ASV machine name, if available."""
+        machine_file = Path.home() / ".asv-machine.json"
+        if not machine_file.exists():
+            return None
+
+        with machine_file.open() as fh:
+            data = json.load(fh)
+
+        machines = [
+            key for key, value in data.items()
+            if key != "version" and isinstance(value, dict)
+        ]
+        if len(machines) == 1:
+            return machines[0]
+        return None
+
+    def _load_config(self):
+        """Load and resolve benchmark sizing config for this machine."""
+        with CONFIG_PATH.open() as fh:
+            configs = json.load(fh)
+
+        if "default" not in configs:
+            raise ValueError("machine_configs.json must define 'default'")
+
+        default_config = configs["default"]
+        machine_config = configs.get(self._name, {})
+        return {**default_config, **machine_config}
+
+    def _bind_config_getters(self):
+        """Create ``get_<key>()`` methods for resolved config keys."""
+        for key in self._config:
+            method_name = f"get_{key}"
+
+            def getter(key=key):
+                return self._config[key]
+
+            setattr(self, method_name, getter)
+
+    @property
+    def name(self):
+        """Configured ASV machine name, or ``None``."""
+        return self._name
+
+    @property
+    def ncpu(self):
+        """Number of logical CPUs available to this process."""
+        return self._ncpu
+
+    @property
+    def config(self):
+        """Fully resolved benchmark sizing configuration."""
+        return self._config
+
+    def get_nprocs(self):
+        """Return ``[1, 2, 4, ...]`` up to the number of available cpus."""
+        values = []
+        value = 1
+        while value <= self._ncpu:
+            values.append(value)
+            value *= 2
+        return values
 
 def path_graph_laplacian(size):
     """Heat Laplacian of a path graph with `size` nodes (one component)."""

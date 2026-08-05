@@ -20,7 +20,6 @@ the plain scipy call:
 """
 
 import glob
-import os
 import threading
 import time
 
@@ -34,9 +33,15 @@ except ImportError:
     # pre-refactor layout (main); keeps `asv continuous` working.
     from tempnet.parallel_expm import compute_subspace_expm_parallel
 
-from .common import block_laplacian, pretty_name
+from .common import (
+    Machine,
+    block_laplacian,
+    pretty_name,
+)
 
-NCPU = os.cpu_count() or 1
+machine = Machine()
+NCPU = machine.ncpu
+NPROCS = machine.get_nprocs()
 
 
 def _runnable_threads_proc(pids):
@@ -127,7 +132,7 @@ class TrackPeakProcessCount:
     """
 
     unit = "processes"
-    params = sorted({1, 2, 4, NCPU})
+    params = NPROCS
     param_names = ["nproc"]
     timeout = 600
 
@@ -159,7 +164,7 @@ class TrackOversubscriptionFactor:
     """
 
     unit = "x cpu_count"
-    params = sorted({1, 2, 4, NCPU})
+    params = NPROCS
     param_names = ["nproc"]
     timeout = 600
 

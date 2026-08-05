@@ -29,8 +29,6 @@ Design notes
 - Benchmarks are meant to be run locally (``asv run``), never in CI.
 """
 
-import os
-
 from scipy.sparse.linalg import expm
 from threadpoolctl import threadpool_limits
 
@@ -53,13 +51,16 @@ except ImportError:
         sparse_lapl_expm,
     )
 
-from .common import block_laplacian, pretty_name
+from .common import (
+    Machine,
+    block_laplacian,
+    pretty_name,
+)
 
-NCPU = os.cpu_count() or 1
-
-SIZES = [500, 2000, 8000]
-N_COMPONENTS = [1, 10, 100]
-NPROCS = sorted({1, 2, 4, NCPU})
+machine = Machine()
+SIZES = machine.get_sizes()
+N_COMPONENTS = machine.get_n_components()
+NPROCS = machine.get_nprocs()
 
 
 class _SerialBase:
