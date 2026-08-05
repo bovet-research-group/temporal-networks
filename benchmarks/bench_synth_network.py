@@ -13,7 +13,11 @@ import numpy as np
 from tempnet import ContTempNetwork
 from tempnet.synth_temp_network import Individual, SynthTempNetwork
 
-from .common import pretty_name
+from .common import Machine, pretty_name
+
+machine = Machine()
+SYNTH_N_INDIVIDUALS = machine.get_n_individuals()
+SYNTH_T_ENDS = machine.get_t_ends()
 
 
 def _make_individuals(n_individuals, n_groups=3):
@@ -34,7 +38,7 @@ def _make_individuals(n_individuals, n_groups=3):
 class TimeSynthTempNetwork:
     """Simulation cost as a function of population size and duration."""
 
-    params = ([12, 60, 300], [100.0, 500.0])
+    params = (SYNTH_N_INDIVIDUALS, SYNTH_T_ENDS)
     param_names = ["n_individuals", "t_end"]
     timeout = 600
 
@@ -57,7 +61,7 @@ class TimeSynthTempNetwork:
 class TimeContTempNetworkFromSynth:
     """Cost of building/analysing a ContTempNetwork from simulated events."""
 
-    params = ([12, 60, 300],)
+    params = (SYNTH_N_INDIVIDUALS,)
     param_names = ["n_individuals"]
     timeout = 600
 
