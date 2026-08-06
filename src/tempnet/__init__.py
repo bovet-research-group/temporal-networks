@@ -66,7 +66,6 @@ from .utils import (  # noqa: F401
 from .synth_temp_network import (  # noqa: F401
     SynthTempNetwork,
     Individual,
-    make_step_block_probs,
 )
 
 def set_log_level(level):
