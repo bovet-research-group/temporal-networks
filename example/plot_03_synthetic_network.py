@@ -66,8 +66,7 @@ import numpy as np
 
 from tempnet import ContTempNetwork
 from tempnet.synth_temp_network import (Individual,
-                                        SynthTempNetwork,
-                                        make_step_block_probs)
+                                        SynthTempNetwork)
 
 rng = np.random.default_rng(42)
 
