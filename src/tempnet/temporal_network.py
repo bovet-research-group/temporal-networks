@@ -56,7 +56,6 @@ from scipy.sparse.linalg import expm
 from .expm_with_tol import mfp_exp
 from .faster_expm import compute_subspace_expm, sparse_lapl_expm
 from .logger import get_logger
-from .subspace_expm import sparse_lapl_expm
 
 from .utils import (
     set_to_zeroes,
