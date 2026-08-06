@@ -23,17 +23,18 @@
 
 
 """
+import gc
 import gzip
 import os
 import pickle
 import time
-from tqdm import tqdm
-from joblib import Parallel, delayed
-import gc
-from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
+
+
+from dataclasses import dataclass
+from joblib import Parallel, delayed
 from scipy.sparse import (
     coo_matrix,
     csr_matrix,
@@ -43,19 +44,25 @@ from scipy.sparse import (
     isspmatrix_csr,
     lil_matrix,
 )
+from stochmat import (
+    inplace_csr_row_normalize,
+    SparseStochMat
+)
+from tqdm import tqdm
+from pathlib import Path
 
 from scipy.sparse.linalg import expm
+
 from .expm_with_tol import mfp_exp
+from .faster_expm import compute_subspace_expm, sparse_lapl_expm
+from .logger import get_logger
 from .subspace_expm import sparse_lapl_expm
 
-from stochmat import inplace_csr_row_normalize, SparseStochMat
-from .utils import set_to_zeroes,to_dense
+from .utils import (
+    set_to_zeroes,
+    to_dense
+)
 
-from .logger import get_logger
-
-
-from matplotlib import pyplot as plt
-import seaborn as sns
 
 # get the logger
 logger = get_logger()
@@ -98,6 +105,7 @@ class ContTempNetwork:
 
     label_to_node_dict: Python dict
         The user can input this dictionary to map the labels in an arbitary order. 
+
     merge_overlapping_events: boolean
         Check for overlapping events (between the same pair of nodes)
         and merges them. Default is `False`.
@@ -298,7 +306,7 @@ class ContTempNetwork:
                                   'adjacencies',
                                   'inter_T',
                                   'T',
-                                  'delta_inter_T']`
+                                  'delta_inter_T',]`
         attributes_list: list of strings
             List of attribute names to save.
             The default list is:
@@ -310,9 +318,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
         """
         save_dict = dict()
 
@@ -337,6 +346,7 @@ class ContTempNetwork:
                       "_k_start_laplacians",
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
+                      "laplacian_dynamics",
                       "_overlapping_events_merged"]
 
         if attributes_list is None:
@@ -373,7 +383,7 @@ class ContTempNetwork:
                                   'adjacencies',
                                   'inter_T',
                                   'T',
-                                  'delta_inter_T']`
+                                  'delta_inter_T',]`
         attributes_list: list of strings
             List of attribute names to load.
             The default list is:
@@ -386,9 +396,10 @@ class ContTempNetwork:
                                     '_compute_times',
                                     '_t_start_laplacians',
                                     '_k_start_laplacians',
-                                    '_t_stop_laplacians',
-                                    '_k_stop_laplacians',
-                                    '_overlapping_events_merged',]`
+                                     '_t_stop_laplacians',
+                                     '_k_stop_laplacians',
+                                     '_overlapping_events_merged',
+                                     'laplacian_dynamics',]`
 
         """
         matrices = ["laplacians",
@@ -412,6 +423,7 @@ class ContTempNetwork:
                       "_k_start_laplacians",
                       "_t_stop_laplacians",
                       "_k_stop_laplacians",
+                      "laplacian_dynamics",
                       "_overlapping_events_merged"]
 
         if attributes_list is None:
@@ -680,6 +692,7 @@ class ContTempNetwork:
                         return_dict["inter_T"][lamda].append(
                             return_dict["inter_T"][lamda][-1] + dT
                         )
+
         del load_dict
         return return_dict
 
@@ -964,11 +977,10 @@ class ContTempNetwork:
         None.
 
         """
-
         if dynamics not in ['rw', 'heat']:
             raise ValueError("dynamics must be 'rw' or 'heat'")
-        
-        logger.info(f"Computing Laplacians using {dynamics} method")
+        self.laplacian_dynamics=dynamics
+        logger.info(f"Computing Laplacians using {self.laplacian_dynamics} dynamics.")
 
 
         if not hasattr(self, "time_grid"):
@@ -1326,6 +1338,7 @@ class ContTempNetwork:
                 f"Finished inter-event transition matrices for {lamda=} "
                 f"in {t_end:.2f}s"
             )
+
     def compute_transition_matrices(self,
                                     lamda=None,
                                     save_intermediate=True,
@@ -1345,8 +1358,6 @@ class ContTempNetwork:
         if lamda in self.T:
             logger.info(f"Transition matrices already computed for lamda={lamda}")
             return
-        
-
 
         requested_direction = "reverse" if reverse_time else "forward"
         if  hasattr(self, "direction") and self.direction != requested_direction:
@@ -1719,8 +1730,141 @@ class ContTempNetwork:
 
         return num_merged
 
+    def _compute_delta_trans_mat(self, lamda, round_zeros=True, tol=1e-8):
+        """Comptes and  matrix differences between each consecutive inter_T.
+
+        The computed difference is put in a attribute `delta_inter_T` the
+        self.delta_inter_T[
+            lamda][k] = self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
+
+        The length of self.delta_inter_T[lamda] is len(self.inter_T[lamda]) - 1
+
+        """
+        if hasattr(self, "inter_T") and lamda in self.inter_T.keys():
+
+            if not hasattr(self, "delta_inter_T"):
+                self.delta_inter_T = dict()
+
+            if lamda not in self.delta_inter_T.keys():
+
+                self.delta_inter_T[lamda] = [
+                    self.inter_T[lamda][k+1] - self.inter_T[lamda][k]
+                    for k in range(len(self.inter_T[lamda])-1)
+                ]
+
+                if round_zeros:
+                    for M in self.delta_inter_T[lamda]:
+                        set_to_zeroes(M, tol=tol)
+
+            else:
+                logger.info("PID %s : delta_inter_T has already been computed with lamda=%s",
+                            os.getpid(), lamda)
+        else:
+            logger.info(f"PID {os.getpid()} : delta_inter_T has not been computed")
+
+    def _active_mask(self, t_start=None, t_end=None):
+        """Boolean mask of events overlapping the window ``(t_start, t_end)``.
+
+        An event is considered active when it starts strictly before ``t_end`` and ends
+        strictly after ``t_start``.
+
+        Parameters
+        ----------
+        t_start : float, optional
+            Start of the window. Defaults to ``self.start_time``.
+        t_end : float, optional
+            End of the window. Defaults to ``self.end_time``.
+
+        Returns
+        -------
+        pandas.Series of bool
+            Mask selecting events that overlap the open window.
+        """
+        if t_start is None:
+            t_start = self.start_time
+        if t_end is None:
+            t_end = self.end_time
+
+        if not t_start < t_end:
+            raise ValueError("t_end should be bigger than t_start")
+        
+        assert t_start >= self.start_time, f"t_start should be >= network start_time = {self.start_time}"
+        assert t_end <= self.end_time, f"t_end should be <= network end_time = {self.end_time}"
+
+        return (self.events_table["starting_times"] < t_end) & \
+            (self.events_table["ending_times"] > t_start)
+
+    def active_nodes(self, t_start=None, t_end=None):
+        """Return the nodes that are active within a given time window.
+
+        A node is active if it is an endpoint of at least one event 
+        that starts strictly before ``t_end`` and ends strictly after ``t_start``. 
 
 
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Sorted array of unique node ids active within the window.
+            Empty if no events overlap.
+        """
+        edges = self.events_table[self._active_mask(t_start, t_end)]
+        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
+        return np.sort(list(nodes))
+
+    def num_active_nodes(self, t_start=None, t_end=None):
+        """Return the number of nodes active within a given time window.
+
+        A node is active if it is an endpoint of at least one event 
+        that starts strictly before ``t_end`` and ends strictly after ``t_start``. 
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active nodes in the window. Zero if no events overlap.
+        """
+        return len(self.active_nodes(t_start, t_end))
+
+    def num_active_events(self, t_start=None, t_end=None):
+        """Return the number of events active within a given time window.
+
+        An event is counted as active if it starts strictly before ``t_end`` and
+        ends strictly after ``t_start``. 
+        
+        Note that this counts *events*, so if the same node pair interacts
+        multiple times within the window, each interaction is counted
+        separately.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the time window. Defaults to the graph's ``start_time``.
+            Must be strictly less than ``t_end``.
+        t_end : float or int, optional
+            End of the time window. Defaults to the graph's ``end_time``.
+
+        Returns
+        -------
+        int
+            Number of active events overlapping the window. Zero if none.
+        """
+        return int(self._active_mask(t_start, t_end).sum())
+    
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
