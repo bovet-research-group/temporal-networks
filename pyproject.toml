@@ -25,8 +25,6 @@ dependencies = [
     "stochmat>=1.0.0",
     "joblib>=1.5.3",
     "tqdm>=4.67.1",
-    "matplotlib>=3.10.0",
-    "seaborn>=0.13.2",
 ]
 
 [dependency-groups]
@@ -49,14 +47,20 @@ docs = [
     "sphinx-copybutton>=0.5.2",
     "matplotlib>=3.9.0",
     "zenodo-get>=3.0.0",
-      "seaborn>=0.13.2",
-  "networkx>=3.3"
+    "seaborn>=0.13.2",
+    "networkx>=3.3"
+]
+benchmarks = [
+    "asv>=0.6.4",
+    "threadpoolctl>=3.5.0",
+    "psutil>=6.0.0",
 ]
 
 
 dev = [
     { include-group = "testing" },
     { include-group = "docs" },
+    { include-group = "benchmarks" },
 ]
 
 
