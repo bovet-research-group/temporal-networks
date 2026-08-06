@@ -329,91 +329,167 @@ class TestSimpleNetwork:
             assert np.allclose(L.sum(axis=1), 0.0)
 
 
-# --------------------------------------------------------------------------- #
-# Constructor validation
-# --------------------------------------------------------------------------- #
-class TestConstructorValidation:
+class TestTempNetwork:
+    def setup_method(self):
+        # ###
+        # folder setup
+        self.temp_dir = tempfile.gettempdir()
+        self.tmp_json = tempfile.NamedTemporaryFile(suffix='.json',
+                                                    delete=False)
+        # ###
+        # Test data
+        # create a minimmal network
+        self.minimal = SimpleNamespace()
+        self.minimal.source_nodes = [1, 2, 3, 4, 5]
+        self.minimal.target_nodes = [2, 3, 4, 5, 1]
+        self.minimal.starting_times = [0.5, 1.0, 2.0, 2.0, 3.0]
+        self.minimal.ending_times = [1.5, 1.5, 2.5, 4.0, 4.0]
+        self.minimal.extra_attrs = {"attr1": [True, False]}
+        self.minimal.events_table = self._to_df(self.minimal)
+        self.minimal.nodes = self._get_nodes(self.minimal)
+        self.minimal.node_label_id_map = self._get_label_id_map(self.minimal)
+        self.minimal.tmp_pkl = tempfile.NamedTemporaryFile(suffix='.pkl',
+                                                           delete=False)
+        self.minimal.tmp_json = tempfile.NamedTemporaryFile(suffix='.json',
+                                                            delete=False)
+        self.minimal_instant = copy(self.minimal)
+        del self.minimal_instant.ending_times
+        self.minimal_instant.events_table = self.minimal.events_table.drop(
+            ContTempNetwork._ENDINGS, axis=1
+        )
 
-    def test_init_with_source_and_target_nodes(self, simple_network):
-        assert isinstance(simple_network, ContTempNetwork)
+        # create a simple network
+        self.simple = SimpleNamespace()
+        # we assume 10 nodes, and each starting a connection in order
+        self.simple.source_nodes = list(range(1, 11))
+        # target nodes are also in order
+        self.simple.target_nodes = list(range(2, 11)) + [1]
+        self.simple.starting_times = [0, 0.5, 1, 2, 3, 4, 4, 5, 5, 5]
+        self.simple.ending_times = [3, 1, 2, 7, 4, 5, 6, 6, 6, 7]
+        self.simple.events_table = self._to_df(self.simple)
+        self.simple.nodes = self._get_nodes(self.simple)
+        self.simple.node_label_id_map = self._get_label_id_map(self.simple)
+        self.simple.tmp_pkl = tempfile.NamedTemporaryFile(suffix='.pkl',
+                                                          delete=False)
+        self.simple.tmp_json = tempfile.NamedTemporaryFile(suffix='.json',
+                                                           delete=False)
+        self.simple_instant = copy(self.simple)
+        del self.simple_instant.ending_times
+        self.simple_instant.events_table = self.simple.events_table.drop(
+            ContTempNetwork._ENDINGS, axis=1
+        )
+
+        # Load real data
+        self.real = SimpleNamespace()
+        self.real.url = 'https://zenodo.org/record/4725155/files/'\
+                        'mice_contact_sequence.csv.gz'
+        self.real.raw_df = pd.read_csv(self.real.url,
+                                       compression='gzip')
+        self.real.cut_after = 3600  # only use first hour
+        self.real.events_table = self.real.raw_df[
+            self.real.raw_df['ending_times'] < 3600
+        ]
+        # self.real.source_nodes = self.real.raw_df['source_nodes'].tolist()
+        # self.real.target_nodes = self.real.raw_df['target_nodes'].tolist()
+        # self.real.starting_times = self.real.raw_df['starting_times'].tolist()
+        # self.real.ending_times = self.real.raw_df['ending_times'].tolist()
+
+        # ###
+        # gather all networks
+        self.networks = [self.minimal, self.minimal_instant,
+                         self.simple, self.simple_instant]
+        self.minimals = [self.minimal, self.minimal_instant]
+
+    @staticmethod
+    def _to_df(network: SimpleNamespace):
+        """Convert a network from a namespace ot a data frame
+        """
+        as_df = pd.DataFrame({
+            "source_nodes": network.source_nodes,
+            "target_nodes": network.target_nodes,
+            "starting_times": network.starting_times,
+        })
+        ending_times = getattr(network, ContTempNetwork._ENDINGS, None)
+        if ending_times is not None:
+            as_df[ContTempNetwork._ENDINGS] = ending_times
+        return as_df
+
+    @staticmethod
+    def _get_instance(network: SimpleNamespace, use_df=False, **params):
+        is_instant = not hasattr(network, ContTempNetwork._ENDINGS)
+        cls = ContTempInstNetwork if is_instant else ContTempNetwork
+        if use_df:
+            return cls(events_table=network.events_table, **params)
+        else:
+            kwargs = dict(
+                source_nodes=network.source_nodes,
+                target_nodes=network.target_nodes,
+                starting_times=network.starting_times,
+                **params,
+            )
+            if not is_instant:
+                kwargs["ending_times"] = network.ending_times
+            return cls(**kwargs)
+
+    @staticmethod
+    def _get_nodes(network: SimpleNamespace):
+        """Get a sorted list of nodes
+        """
+        nodes = set()
+        nodes.update(network.source_nodes)
+        nodes.update(network.target_nodes)
+        return sorted(nodes)
+
+    @staticmethod
+    def _get_label_id_map(network: SimpleNamespace):
+        """Get the mapping from node labels to internal ID
+        """
+        return {node: _id for _id, node in enumerate(network.nodes)}
+
+    def teardown_method(self):
+        temp_dir = tempfile.gettempdir()
+        for file in os.listdir(temp_dir):
+            if 'temp.pkl' in file or 'temp.json' in file:
+                os.remove(os.path.join(temp_dir, file))
+
+    def test_init_with_source_and_target_nodes(self):
+        for network in self.networks:
+            temp_network = self._get_instance(network, use_df=False)
+            assert isinstance(temp_network, ContTempNetwork)
 
     def test_init_without_source_nodes(self):
-        with pytest.raises(AssertionError):
-            ContTempNetwork(target_nodes=[1, 2])
+        for network in self.networks:
+            with pytest.raises(AssertionError):
+                ContTempNetwork(target_nodes=network.target_nodes)
 
     def test_init_without_target_nodes(self):
-        with pytest.raises(AssertionError):
-            ContTempNetwork(source_nodes=[1, 2])
+        for network in self.networks:
+            with pytest.raises(AssertionError):
+                ContTempNetwork(source_nodes=network.source_nodes)
 
-    def test_init_missing_starting_times(self):
+    def test_init_inconsistent_event_numbers_type(self):
+        """Make sure we detect variable numbers of events
+        """
         with pytest.raises(AssertionError):
-            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2])
+            # error in source and target nodes
+            ContTempNetwork(source_nodes=[1, 2, 3], target_nodes=[1, 2],
+                            starting_times=[0, 0], ending_times=[1, 1])
+            # not enough ending times
+            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2],
+                            starting_times=[0, 0], ending_times=[1])
 
-    def test_mismatched_source_target_lengths(self):
+    def test_init_missing_params(self):
+        """Make sure we detect variable numbers of events
+        """
         with pytest.raises(AssertionError):
-            ContTempNetwork(
-                source_nodes=[1, 2, 3], target_nodes=[1, 2],
-                starting_times=[0, 0], ending_times=[1, 1],
-            )
+            # missing starting times
+            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2],)
 
-    def test_mismatched_ending_times_length(self):
-        with pytest.raises(AssertionError):
-            ContTempNetwork(
-                source_nodes=[1, 2], target_nodes=[1, 2],
-                starting_times=[0, 0], ending_times=[1],
-            )
-
-    def test_inconsistent_node_type_raises(self):
-        # int and str cannot be compared -> TypeError while sorting nodes
+    def test_init_with_inconsistent_node_type(self):
         with pytest.raises(TypeError):
-            ContTempNetwork(
-                source_nodes=[0, 1], target_nodes=["a", "b"],
-                starting_times=[0, 0], ending_times=[1, 1],
-            )
-    def test_wrong_file(self):
-        with pytest.raises(ValueError):
-            ContTempNetwork(events_table="not_a_file.csv")
-    
-    def test_empty_dataframe(self,tmp_path):
-        with open(tmp_path/"empty.csv", "w") as f:
-            f.write("\n\n")
-        with pytest.raises(ValueError):
-            ContTempNetwork(events_table="empty.csv")
-
-    def test_missing_required_columns(self,tmp_path):
-        df = pd.DataFrame({
-            "source_nodes": [0, 1],
-            "target_nodes": [1, 0],
-        })
-        df.to_csv(tmp_path/"temp_missing_columns.csv", index=False)
-        with pytest.raises(ValueError):
-            ContTempNetwork(events_table="temp_missing_columns.csv")
-
-    def test_extra_attrs_wrong_length_raises(self):
-        with pytest.raises(AssertionError):
-            ContTempNetwork(
-                source_nodes=["A"], target_nodes=["B"],
-                starting_times=[0], ending_times=[1],
-                extra_attrs={"weight": [1.0, 2.0]},  # too long
-            )
-    def test_extra_attrs_correct_length(self):
-            ContTempNetwork(
-                source_nodes=["A"], target_nodes=["B"],
-                starting_times=[0], ending_times=[1],
-                extra_attrs={"sex_source": [1.0], "sex_target": [0.0]},  
-            )
-        
-
-    def test_invalid_events_table_type_raises(self):
-        with pytest.raises(ValueError):
-            ContTempNetwork(events_table=12345)
-
-    def test_events_table_missing_required_column_raises(self):
-        with pytest.raises(ValueError):
-            ContTempNetwork(events_table=pd.DataFrame({"source_nodes": [0, 1]}))
-
-    def test_compute_time_grid(self, simple_network):
-        simple_network._compute_time_grid()
+            # int and str cannot be compared > type error
+            ContTempNetwork(source_nodes=[0, 1], target_nodes=['a', 'b'],
+                            starting_times=[0, 0], ending_times=[1, 1])
 
     @pytest.fixture
     def saved_network(self):
@@ -535,6 +611,195 @@ class TestConstructorValidation:
             net_df.events_table[cols].reset_index(drop=True),
             check_dtype=False,
         )
+
+    def test_dataframe_fast_path_preserves_order_and_index(self):
+        """`relabel_nodes=False` keeps the caller-provided table unchanged."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
+
+        network = ContTempNetwork(
+            events_table=events_table,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert network.events_table is events_table
+        pd.testing.assert_frame_equal(network.events_table, events_table)
+
+    def test_csv_fast_path_preserves_order_and_index(self, tmp_path):
+        """`relabel_nodes=False` does not reset CSV-loaded event tables."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[20, 10, 30])
+        csv_path = tmp_path / "events.csv"
+        events_table.to_csv(csv_path)
+
+        network = ContTempNetwork(
+            events_table=csv_path,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+            index_col=0,
+        )
+
+        assert network.events_table.index.tolist() == [20, 10, 30]
+        assert network.events_table.starting_times.tolist() == [2.0, 0.0, 1.0]
+
+    def test_inst_events_table_matches_start_plus_one_interval(self):
+        """ContTempInstNetwork synthesizes ending_times = start + 1.
+
+        The resulting events_table must equal that of an interval
+        ContTempNetwork explicitly constructed with the same
+        ending_times.
+
+        Note: laplacian equality is intentionally not asserted here.
+        ContTempInstNetwork.compute_laplacian_matrices implements pulse
+        dynamics (state reset every step, no-op on event end), matching
+        upstream TemporalNetwork.py at commit f99bca3, which is
+        fundamentally distinct from the parent's interval dynamics.
+        """
+        starts = self.minimal.starting_times
+        interval = ContTempNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
+            ending_times=[s + 1 for s in starts],
+        )
+        inst = ContTempInstNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
+        )
+        pd.testing.assert_frame_equal(
+            interval.events_table.reset_index(drop=True),
+            inst.events_table.reset_index(drop=True),
+        )
+
+# --------------------------------------------------------------------------- #
+# Constructor validation
+# --------------------------------------------------------------------------- #
+class TestConstructorValidation:
+
+    def test_init_with_source_and_target_nodes(self, simple_network):
+        assert isinstance(simple_network, ContTempNetwork)
+
+    def test_init_without_source_nodes(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(target_nodes=[1, 2])
+
+    def test_init_without_target_nodes(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(source_nodes=[1, 2])
+
+    def test_init_missing_starting_times(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(source_nodes=[1, 2], target_nodes=[1, 2])
+
+    def test_mismatched_source_target_lengths(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(
+                source_nodes=[1, 2, 3], target_nodes=[1, 2],
+                starting_times=[0, 0], ending_times=[1, 1],
+            )
+
+    def test_mismatched_ending_times_length(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(
+                source_nodes=[1, 2], target_nodes=[1, 2],
+                starting_times=[0, 0], ending_times=[1],
+            )
+
+    def test_inconsistent_node_type_raises(self):
+        # int and str cannot be compared -> TypeError while sorting nodes
+        with pytest.raises(TypeError):
+            ContTempNetwork(
+                source_nodes=[0, 1], target_nodes=["a", "b"],
+                starting_times=[0, 0], ending_times=[1, 1],
+            )
+    def test_wrong_file(self):
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="not_a_file.csv")
+    
+    def test_empty_dataframe(self,tmp_path):
+        with open(tmp_path/"empty.csv", "w") as f:
+            f.write("\n\n")
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="empty.csv")
+
+    def test_missing_required_columns(self,tmp_path):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1],
+            "target_nodes": [1, 0],
+        })
+        df.to_csv(tmp_path/"temp_missing_columns.csv", index=False)
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table="temp_missing_columns.csv")
+
+    def test_extra_attrs_wrong_length_raises(self):
+        with pytest.raises(AssertionError):
+            ContTempNetwork(
+                source_nodes=["A"], target_nodes=["B"],
+                starting_times=[0], ending_times=[1],
+                extra_attrs={"weight": [1.0, 2.0]},  # too long
+            )
+    def test_extra_attrs_correct_length(self):
+            ContTempNetwork(
+                source_nodes=["A"], target_nodes=["B"],
+                starting_times=[0], ending_times=[1],
+                extra_attrs={"sex_source": [1.0], "sex_target": [0.0]},  
+            )
+        
+
+    def test_invalid_events_table_type_raises(self):
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table=12345)
+
+    def test_events_table_missing_required_column_raises(self):
+        with pytest.raises(ValueError):
+            ContTempNetwork(events_table=pd.DataFrame({"source_nodes": [0, 1]}))
+
+    def test_compute_time_grid(self, simple_network):
+        simple_network._compute_time_grid()
+
+
+    @pytest.fixture
+    def get_loaded_network(self):
+        def loaded_network(network):
+            with open(network.tmp_pkl.name, 'rb') as f:
+                return pickle.load(f)
+        return loaded_network
+
+    def test_import_data(self):
+        """Make sure we can work with data with incomplete node lists
+        """
+        network = ContTempNetwork(
+            events_table=self.real.events_table,
+            merge_overlapping_events=False
+        )
+        network.compute_laplacian_matrices()
+
+    def test_merge_overlapping_events(self):
+        # create a network with overlapping events
+        source_nodes = [0, 0]
+        target_nodes = [1, 2]
+        starting_times = [0.5, 1.0]
+        ending_times = [1.0, 1.5]
+        extra_attrs = {"attr1": [True, False]}
+        events_table = pd.DataFrame({
+            "source_nodes": source_nodes,
+            "target_nodes": target_nodes,
+            "starting_times": starting_times,
+            "ending_times": ending_times
+        })
+        network = ContTempNetwork(events_table=events_table,
+                                  merge_overlapping_events=True)
+        assert network._overlapping_events_merged
 
     def test_dataframe_fast_path_preserves_order_and_index(self):
         """`relabel_nodes=False` keeps the caller-provided table unchanged."""
