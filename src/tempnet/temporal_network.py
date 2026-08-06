@@ -1533,6 +1533,8 @@ class ContTempNetwork:
             0th, 25th, 50th, 75th, and 100th percentiles of density, in that
             order.
         """
+        import matplotlib.pyplot as plt
+        import seaborn as sns
 
         # density per slice: nnz normalized by N^2
         density = np.array([L.nnz / (self.num_nodes ** 2) for L in self.laplacians])
