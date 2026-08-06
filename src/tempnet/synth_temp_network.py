@@ -1,7 +1,11 @@
 """#
-# flow stability
+# Temporal networks `tempnet`
 #
-# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@maths.ox.ac.uk>
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>,
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>,
+#                    Samuel Koovely <samuel.koovely@uzh.ch>,
+#                    Jonas Liechti <jonas@t4d.ch>  
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -29,6 +33,76 @@ from .logger import get_logger
 
 # get the logger
 logger = get_logger()
+
+def make_step_block_probs(
+    deltat1: float,
+    deltat2: float,
+    m1: float = 1.0,
+    p1: float = 1.0,
+):
+    """Return a time-dependent block-probability function for 3 groups.
+
+    The returned function cycles through three phases where different
+    community pairs have elevated cross-community interaction probability.
+
+    Parameters
+    ----------
+    deltat1 : float
+        Duration of each *within-community* (identity-block) phase.
+    deltat2 : float
+        Duration of each *cross-community exchange* phase.
+    m1 : float
+        Within-community interaction probability (default 1.0).
+    p1 : float
+        Cross-community interaction probability for the active pair
+        (default 1.0).
+
+    Returns
+    -------
+    block_mod_func : callable
+        A function ``block_mod_func(t)`` that accepts a float *t* and
+        returns a 3×3 numpy array of group-level interaction probabilities.
+    """
+    def block_mod_func(t: float) -> np.ndarray:
+        m2 = (1 - m1) / 2
+        p2 = (1 - p1)
+
+        ex12 = np.array([[p2, p1, 0],
+                         [p1, p2, 0],
+                         [0, 0, 0]])
+        ex23 = np.array([[0, 0, 0],
+                         [0, p2, p1],
+                         [0, p1, p2]])
+        ex13 = np.array([[p2, 0, p1],
+                         [0, 0, 0],
+                         [p1, 0, p2]])
+
+        within = np.array([[m1, m2, m2],
+                           [m2, m1, m2],
+                           [m2, m2, m1]])
+
+        if t >= 0 and t < deltat1:
+            return within
+        elif t >= deltat1 and t < deltat1 + deltat2:
+            return ex12
+        elif t >= deltat1 + deltat2 and t < 2 * deltat1 + deltat2:
+            return within
+        elif t >= 2 * deltat1 + deltat2 and t < 2 * (deltat1 + deltat2):
+            return ex23
+        elif (t >= 2 * (deltat1 + deltat2)
+              and t < 2 * (deltat1 + deltat2) + deltat1):
+            return within
+        elif (t >= 2 * (deltat1 + deltat2) + deltat1
+              and t <= 3 * (deltat1 + deltat2)):
+            return ex13
+        else:
+            logger.debug(
+                "Warning: t must be >=0 and <= 3*(deltat1+deltat2),"
+                f" t is {t}"
+            )
+            return within
+
+    return block_mod_func
 
 
 class Distro:

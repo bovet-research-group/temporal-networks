@@ -1,10 +1,12 @@
+"""
+#
 # Temporal networks `tempnet`
 #
 # Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
-# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>,
-#                    Yasaman Asgari <yasaman.asgari@uzh.ch>,
-#                    Samuel Koovely <samuel.koovely@uzh.ch>,
-#                    Jonas I. Liechti <j-i-l@t4d.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -18,10 +20,12 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
+"""
+
 
 """
 Toy Temporal Network
-====================
+=================================================
 
 This example introduces the core temporal-network workflow in ``tempnet``.
 A **temporal network** is a graph whose edges are active only during specific
@@ -164,7 +168,7 @@ print("End:", tnet.end_time)
 # (:math:`A_{ii} = 1`, :math:`d_i = 1`). This yields one Laplacian per interval
 # :math:`[t_i, t_{i+1})`.
 
-tnet.compute_laplacian_matrices(dynamics='rw')
+tnet.compute_laplacian_matrices(dynamics='heat')
 
 # %%
 # We can directly access the delta Laplacian matrices for inspection.
@@ -224,4 +228,48 @@ for i, matrix in enumerate(tnet.inter_T[lamda]):
         rf"$t_{{\text{{end}}}}$={tnet.times[i + 1]}"
     )
 fig.suptitle(r"Inter transition matrices for $\lambda=1$")
+plt.show()
+
+# %%
+# Forward transition matrix
+# -------------------------
+# The **forward transition matrix** is the product of the inter-transition
+# matrices:
+#
+# .. math::
+#   T(t_1, t_2; \lambda_{\mathrm{RW}}) = \hat{T}(t_1, t_m; \lambda_{\mathrm{RW}}) \left[ \prod_{k=m}^{n-1} \hat{T}(t_k, t_{k+1}; \lambda_{\mathrm{RW}}) \right] \hat{T}(t_n, t_2; \lambda_{\mathrm{RW}})
+#
+# with :math:`m < n`, :math:`t_m \geq t_1` being the time of the first event
+# after, or at, :math:`t_1` and :math:`t_n < t_2` the time of the last event
+# before :math:`t_2`. To compute the transition matrix corresponding to the
+# time-reversed evolution of the network, from :math:`t_2` to :math:`t_1`, we
+# perform the matrix product in the reversed order.
+#
+# The entry :math:`T_{jk}` gives the probability that a walker with rate
+# :math:`\lambda_{\mathrm{RW}}`, starting at node :math:`j` at the beginning of
+# the network, arrives at node :math:`k` by the end. The rate controls the
+# walker's exploration speed:
+#
+# - **Low rate** (:math:`\lambda_{\mathrm{RW}} \ll 1`): the walker barely moves,
+#   so :math:`T` remains close to the identity matrix.
+# - **High rate** (:math:`\lambda_{\mathrm{RW}} \gg 1`): the walker mixes
+#   rapidly, washing out temporal structure.
+
+
+fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
+for i, lamda in enumerate([1e-2, 0.1, 10]):
+    tnet.compute_inter_transition_matrices(lamda=lamda)
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=False)
+    sns.heatmap(
+        tnet.T[lamda].toarray(),
+        ax=ax[i],
+        square=True,
+        annot=True,
+        cbar=False,
+        fmt=".2f",
+        vmin=0,
+        vmax=1,
+    )
+    ax[i].set_title(rf"$\lambda$={lamda}")
+fig.suptitle("Forward transition matrices")
 plt.show()
