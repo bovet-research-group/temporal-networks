@@ -30,6 +30,9 @@ import pickle
 import numpy as np
 import pandas as pd
 import pytest
+
+from types import SimpleNamespace
+
 from tempnet.utils import to_dense
 
 from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
