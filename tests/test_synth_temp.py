@@ -76,4 +76,4 @@ def test_synth_temp_network():
     individuals = [Individual(i, group=0) for i in range(20)]
     sim = SynthTempNetwork(individuals, t_start=0, t_end=50)
 
-    sim.run(save_all_states=True, save_dt_states=True, verbose=True)
+    sim.run(save_all_states=True, save_dt_states=True)

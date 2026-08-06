@@ -40,8 +40,6 @@ MICE_URL = (
 )
 
 
-
-
 # HELPERS 
 def make_df(sources, targets, starts=None, ends=None):
     """Build an events_table DataFrame"""
@@ -105,6 +103,231 @@ def mice_network():
         ending_times=raw_df["ending_times"].round(3).tolist(),
         relabel_nodes=True,
     )
+
+
+@pytest.fixture
+def simple_unsorted_network():
+    """Network namespace with simple events in non-chronological order.
+
+    The fixture is used to expose constructor differences between list input
+    and DataFrame input. The list constructor sorts events by
+    ``starting_times``/``ending_times`` and resets the index, while the
+    DataFrame constructor historically preserves caller order and index.
+    """
+    network = SimpleNamespace()
+    network.source_nodes = [1, 4, 2, 7, 5, 3, 9, 6, 8, 10]
+    network.target_nodes = [2, 5, 3, 8, 6, 4, 10, 7, 9, 1]
+    network.starting_times = [0, 2, 0.5, 5, 4, 1, 5, 4, 5, 3]
+    network.ending_times = [3, 7, 1, 6, 5, 2, 6, 6, 7, 4]
+    network.events_table = pd.DataFrame({
+        "source_nodes": network.source_nodes,
+        "target_nodes": network.target_nodes,
+        "starting_times": network.starting_times,
+        "ending_times": network.ending_times,
+    })
+    nodes = set()
+    nodes.update(network.source_nodes)
+    nodes.update(network.target_nodes)
+    network.nodes = sorted(nodes)
+    network.node_label_id_map = {
+        node: _id for _id, node in enumerate(network.nodes)
+    }
+    return network
+
+
+class TestSimpleNetwork: 
+
+    def test_num_nodes(self, simple_network):
+        assert simple_network.num_nodes == 3
+
+    def test_num_events(self, simple_network):
+        assert simple_network.num_events == 4
+
+    def test_start_time(self, simple_network):
+        assert simple_network.start_time == 0
+
+    def test_end_time(self, simple_network):
+        assert simple_network.end_time == 7
+
+    def test_print(self ,simple_network):
+        s=str(simple_network)
+        assert s==  "<class 'tempnet.temporal_network.ContTempNetwork'> with 3 nodes and 4 events" 
+
+    def test_node_array_sorted(self, simple_network):
+        assert list(simple_network.node_array) == [0, 1, 2]
+
+    def test_durations_column_exists(self, simple_network):
+        assert "durations" in simple_network.events_table.columns
+
+    def test_durations_values(self, simple_network):
+        assert list(simple_network.events_table["durations"]) == [2, 2, 1, 1]
+
+    def test_events_sorted_by_start(self, simple_network):
+        starts = simple_network.events_table["starting_times"].tolist()
+        assert starts == sorted(starts)
+
+    def test_required_columns_present(self, simple_network):
+        for col in ["source_nodes", "target_nodes", "starting_times",
+                    "ending_times", "durations"]:
+            assert col in simple_network.events_table.columns
+
+    def test_active_events(self, simple_network):
+        assert simple_network.num_active_events(t_start=None, t_end=None)==4
+        assert simple_network.num_active_events(t_start=1, t_end=2)==2
+        assert simple_network.num_active_events(t_start=None, t_end=5)==3
+        assert simple_network.num_active_events(t_start=6.5, t_end=None)==1
+        assert simple_network.num_active_events(t_start=3.5, t_end=3.75)==0
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_events(t_start=5, t_end=3)
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_events(t_start=1, t_end=1)
+
+    def test_active_nodes(self, simple_network):
+        assert simple_network.num_active_nodes(t_start=None, t_end=None)==3
+        assert simple_network.num_active_nodes(t_start=1, t_end=2)==3
+        assert simple_network.num_active_nodes(t_start=None, t_end=5)==3
+        assert simple_network.num_active_nodes(t_start=6.5, t_end=None)==2
+        assert simple_network.num_active_nodes(t_start=3.5, t_end=3.75)==0
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_nodes(t_start=5, t_end=3)
+
+        with pytest.raises(ValueError):
+            simple_network.num_active_nodes(t_start=1, t_end=1)
+
+    def test_active_events_boundary_overlap_semantics(self, simple_network):
+        """Events are active when they overlap with positive duration."""
+        # Window [2, 4): event ending at 2 is excluded, event starting at 4
+        # is excluded; only [1, 3) overlaps.
+        assert simple_network.num_active_events(t_start=2, t_end=4) == 1
+
+        # Window [4, 5): event starting exactly at t_start is included.
+        assert simple_network.num_active_events(t_start=4, t_end=5) == 1
+
+        # Window [3, 5): event ending at t_start is excluded, event ending
+        # at t_end is included because it overlaps before t_end.
+        assert simple_network.num_active_events(t_start=3, t_end=5) == 1
+
+        # Window [5, 6): event ending at t_start and event starting at t_end
+        # are both excluded.
+        assert simple_network.num_active_events(t_start=5, t_end=6) == 0
+
+    def test_active_nodes_boundary_overlap_semantics(self, simple_network):
+        """Active nodes follow the same overlap convention as events."""
+        assert simple_network.active_nodes(t_start=2,
+                                           t_end=4).tolist() == [1, 2]
+        assert simple_network.num_active_nodes(t_start=2, t_end=4) == 2
+
+        assert simple_network.active_nodes(t_start=4,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=4, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=3,
+                                           t_end=5).tolist() == [0, 2]
+        assert simple_network.num_active_nodes(t_start=3, t_end=5) == 2
+
+        assert simple_network.active_nodes(t_start=5, t_end=6).tolist() == []
+        assert simple_network.num_active_nodes(t_start=5, t_end=6) == 0
+
+    def test_adj_full(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix().toarray()
+        expected = np.array([
+            [0, 3, 1],
+            [3, 0, 2],
+            [1, 2, 0],
+        ])
+        assert np.allclose(A, expected)
+
+    def test_adj_window_0_2(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix(
+            start_time=0, end_time=2,
+        ).toarray()
+        expected = np.array([
+            [0, 2, 0],
+            [2, 0, 1],
+            [0, 1, 0],
+        ])
+        assert np.allclose(A, expected)
+
+    def test_adj_window_2p5_3(self, simple_network):
+        A = simple_network.compute_static_adjacency_matrix(
+            start_time=2.5, end_time=3,
+        ).toarray()
+        expected = np.array([
+            [0, 0, 0],
+            [0, 0, 0.5],
+            [0, 0.5, 0],
+        ])
+        assert np.allclose(A, expected)
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacians_count(self, simple_network, dynamics):
+        """One Laplacian per inter-event step over the full grid.
+
+        times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps.
+        """
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        assert len(simple_network.laplacians) == 7
+
+    def test_laplacian_step_1_2_randomwalk(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Random-walk Laplacian I - D^-1 A."""
+        simple_network.compute_laplacian_matrices(dynamics="rw")
+        L = simple_network.laplacians[1].toarray()
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-0.5, 1.0, -0.5],
+            [0.0, -1.0, 1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_1_2_heat(self, simple_network):
+        """Step [1,2]: A-B and B-C active. Heat kernel Laplacian."""
+        simple_network.compute_laplacian_matrices(dynamics="heat")
+        L = simple_network.laplacians[1].toarray()
+        expected = np.array([
+            [1.0, -1.0, 0.0],
+            [-1.0, 2.0, -1.0],
+            [0.0, -1.0, 1.0],
+        ])
+        assert np.allclose(L, expected)
+
+
+    def test_laplacian_step_0_1_connected_block(self, simple_network):
+        """Step [0,1]: only A-B active; C isolated. C's diagonal is
+        convention-dependent, so only the A-B block and zero coupling to C
+        are asserted.
+        """
+        simple_network.compute_laplacian_matrices()
+        L = simple_network.laplacians[0].toarray()
+        assert L[0, 0] == 1
+        assert L[0, 1] == -1
+        assert L[1, 0] == -1
+        assert L[1, 1] == 1
+        assert L[0, 2] == 0
+        assert L[1, 2] == 0
+        assert L[2, 0] == 0
+        assert L[2, 1] == 0
+        assert L[2, 2] == 0  # self loop
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics):
+        """Step [3,4]: no active events, so the Laplacian is all zeros."""
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        L = simple_network.laplacians[3].toarray()
+        assert np.all(L == 0)
+
+    @pytest.mark.parametrize("dynamics", [ "rw", "heat"])
+    def test_laplacian_rows_sum_zero_connected_step(self, simple_network, dynamics):
+        simple_network.compute_laplacian_matrices(dynamics=dynamics)
+        n = simple_network.num_nodes
+        for i in range(len(simple_network.laplacians)):
+            L = simple_network.laplacians[i].toarray()
+            assert L.shape == (n, n)
+            assert np.allclose(L.sum(axis=1), 0.0)
+
 
 # --------------------------------------------------------------------------- #
 # Constructor validation
@@ -192,6 +415,510 @@ class TestConstructorValidation:
     def test_compute_time_grid(self, simple_network):
         simple_network._compute_time_grid()
 
+    @pytest.fixture
+    def saved_network(self):
+        def _get_network(network: SimpleNamespace, use_df=False, **params):
+            temp_network = self._get_instance(network, use_df=use_df, **params)
+            with open(network.tmp_pkl.name, 'wb') as f:
+                pickle.dump(temp_network, f)
+                return temp_network
+        return _get_network
+
+    @pytest.fixture
+    def get_loaded_network(self):
+        def loaded_network(network):
+            with open(network.tmp_pkl.name, 'rb') as f:
+                return pickle.load(f)
+        return loaded_network
+
+    def test_save_and_load_pickle(self, saved_network, get_loaded_network):
+        for network in self.networks:
+            temp_network = saved_network(network=network, use_df=True)
+            assert isinstance(temp_network, ContTempNetwork)
+
+            # first save is again
+            temp_network = saved_network(network=network, use_df=False)
+            # load the temp network
+            loaded_network = get_loaded_network(network=network)
+            assert isinstance(loaded_network, ContTempNetwork)
+            sn_et = temp_network.events_table
+            ln_et = loaded_network.events_table
+            pd.testing.assert_series_equal(sn_et.source_nodes,
+                                           ln_et.source_nodes)
+            pd.testing.assert_series_equal(sn_et.target_nodes,
+                                           ln_et.target_nodes)
+            pd.testing.assert_series_equal(sn_et.starting_times,
+                                           ln_et.starting_times)
+            pd.testing.assert_series_equal(sn_et.ending_times,
+                                           ln_et.ending_times)
+
+    def test_save_and_load_preserves_laplacian_dynamics(self):
+        network = self._get_instance(self.simple, use_df=True)
+        network.compute_laplacian_matrices(dynamics="heat")
+
+        network.save(self.simple.tmp_pkl.name)
+        loaded_network = ContTempNetwork.load(self.simple.tmp_pkl.name)
+
+        assert loaded_network.laplacian_dynamics == "heat"
+
+    def test_import_data(self):
+        """Make sure we can work with data with incomplete node lists
+        """
+        network = ContTempNetwork(
+            events_table=self.real.events_table,
+            merge_overlapping_events=False
+        )
+        network.compute_laplacian_matrices()
+
+    def test_merge_overlapping_events(self):
+        # create a network with overlapping events
+        source_nodes = [0, 0]
+        target_nodes = [1, 2]
+        starting_times = [0.5, 1.0]
+        ending_times = [1.0, 1.5]
+        extra_attrs = {"attr1": [True, False]}
+        events_table = pd.DataFrame({
+            "source_nodes": source_nodes,
+            "target_nodes": target_nodes,
+            "starting_times": starting_times,
+            "ending_times": ending_times
+        })
+        network = ContTempNetwork(events_table=events_table,
+                                  merge_overlapping_events=True)
+        assert network._overlapping_events_merged
+
+    def test_time_grid(self):
+        for network in self.networks:
+            temp_network = self._get_instance(network, use_df=True)
+            temp_network._compute_time_grid()
+
+    def test_unsorted_list_input_is_sorted_and_index_reset(
+        self,
+        simple_unsorted_network,
+    ):
+        """List input is normalized to chronological order with a RangeIndex.
+
+        This documents the existing list-constructor behavior. The final
+        laplacian computation is a smoke test that the reset labels remain
+        compatible with later ``.loc``-based event lookups.
+        """
+        network = self._get_instance(simple_unsorted_network, use_df=False)
+
+        assert network.events_table.starting_times.tolist() == sorted(
+            simple_unsorted_network.starting_times
+        )
+        assert network.events_table.index.tolist() == list(
+            range(network.num_events)
+        )
+
+        network.compute_laplacian_matrices()
+        assert len(network.laplacians) > 0
+
+    def test_unsorted_dataframe_matches_list_constructor_order(
+        self,
+        simple_unsorted_network,
+    ):
+        """DataFrame input should match list input for the same event records.
+
+        Regression test: list input sorts events chronologically, while
+        DataFrame input has historically preserved caller order. Downstream
+        code assumes chronological event order in several places, so both
+        constructor paths should normalize to the same internal event table.
+        """
+        net_lists = self._get_instance(simple_unsorted_network, use_df=False)
+        net_df = self._get_instance(simple_unsorted_network, use_df=True)
+
+        cols = ["source_nodes", "target_nodes",
+                "starting_times", "ending_times"]
+        pd.testing.assert_frame_equal(
+            net_lists.events_table[cols].reset_index(drop=True),
+            net_df.events_table[cols].reset_index(drop=True),
+            check_dtype=False,
+        )
+
+    def test_dataframe_fast_path_preserves_order_and_index(self):
+        """`relabel_nodes=False` keeps the caller-provided table unchanged."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
+
+        network = ContTempNetwork(
+            events_table=events_table,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert network.events_table is events_table
+        pd.testing.assert_frame_equal(network.events_table, events_table)
+
+    def test_csv_fast_path_preserves_order_and_index(self, tmp_path):
+        """`relabel_nodes=False` does not reset CSV-loaded event tables."""
+        events_table = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [2.0, 0.0, 1.0],
+            "ending_times": [3.0, 1.0, 2.0],
+        }, index=[20, 10, 30])
+        csv_path = tmp_path / "events.csv"
+        events_table.to_csv(csv_path)
+
+        network = ContTempNetwork(
+            events_table=csv_path,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+            index_col=0,
+        )
+
+        assert network.events_table.index.tolist() == [20, 10, 30]
+        assert network.events_table.starting_times.tolist() == [2.0, 0.0, 1.0]
+
+    def test_inst_events_table_matches_start_plus_one_interval(self):
+        """ContTempInstNetwork synthesizes ending_times = start + 1.
+
+        The resulting events_table must equal that of an interval
+        ContTempNetwork explicitly constructed with the same
+        ending_times.
+
+        Note: laplacian equality is intentionally not asserted here.
+        ContTempInstNetwork.compute_laplacian_matrices implements pulse
+        dynamics (state reset every step, no-op on event end), matching
+        upstream TemporalNetwork.py at commit f99bca3, which is
+        fundamentally distinct from the parent's interval dynamics.
+        """
+        starts = self.minimal.starting_times
+        interval = ContTempNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
+            ending_times=[s + 1 for s in starts],
+        )
+        inst = ContTempInstNetwork(
+            source_nodes=self.minimal.source_nodes,
+            target_nodes=self.minimal.target_nodes,
+            starting_times=starts,
+        )
+        pd.testing.assert_frame_equal(
+            interval.events_table.reset_index(drop=True),
+            inst.events_table.reset_index(drop=True),
+        )
+
+
+def test_ContTempNetworkErrors():
+    with pytest.raises(AssertionError):
+        ContTempNetwork(source_nodes=[0, 1], target_nodes=[1])
+
+    with pytest.raises(Exception):
+        ContTempNetwork(events_table=pd.DataFrame({"source_nodes": [0, 1]}))
+
+
+def test_ContTempInstNetwork():
+    """
+    """
+    from tempnet.temporal_network import ContTempInstNetwork
+    pass
+
+
+def test_compute_subspace_expm():
+    """
+    """
+    from tempnet.temporal_network import compute_subspace_expm
+    pass
+
+
+def test_csc_row_normalize():
+    """
+    """
+    from tempnet.utils import csc_row_normalize
+    pass
+
+
+def test_find_spectral_gap():
+    """
+    """
+    from tempnet.utils import find_spectral_gap
+    pass
+
+
+def test_remove_nnz_rowcol():
+    """
+    """
+    from tempnet.utils import remove_nnz_rowcol
+    pass
+
+
+def test_sparse_lapl_expm():
+    """
+    """
+    from tempnet.temporal_network import sparse_lapl_expm
+    pass
+
+
+def test_set_to_ones():
+    """
+    """
+    from tempnet.utils import set_to_ones
+    pass
+
+
+def test_set_to_zeroes():
+    """
+    """
+    from tempnet.utils import set_to_zeroes
+    pass
+
+
+class TestRelabelNodes:
+    """Tests for node relabeling done by ContTempNetwork.__init__.
+
+    Both branches (lists and events_table) must end up with contiguous
+    0..N-1 node ids in `events_table` and matching label_to_node_dict /
+    node_to_label_dict.
+    """
+
+    def _make_df(self, sources, targets,
+                 starts=None, ends=None):
+        n = len(sources)
+        if starts is None:
+            starts = [float(i) for i in range(n)]
+        if ends is None:
+            ends = [float(i) + 1.0 for i in range(n)]
+        return pd.DataFrame({
+            "source_nodes": sources,
+            "target_nodes": targets,
+            "starting_times": starts,
+            "ending_times": ends,
+        })
+
+    def test_relabel_with_events_table_non_contiguous_int_labels(self):
+        df = self._make_df([10, 20, 30], [20, 30, 10])
+        net = ContTempNetwork(events_table=df.copy())  # default relabel=True
+
+        # events_table source/target columns must now be contiguous 0..N-1
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+
+        # node_to_label_dict round-trips with label_to_node_dict
+        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
+        assert net.label_to_node_dict == {10: 0, 20: 1, 30: 2}
+        for n_id, lbl in net.node_to_label_dict.items():
+            assert net.label_to_node_dict[lbl] == n_id
+
+        # node_array uses the new ids
+        assert net.node_array.tolist() == [0, 1, 2]
+        assert net.num_nodes == 3
+
+    def test_relabel_with_events_table_string_labels(self):
+        df = self._make_df(["a", "c", "b"], ["c", "b", "a"])
+        net = ContTempNetwork(events_table=df.copy())
+
+        # All ids contiguous 0..N-1 (so subsequent matrix ops work)
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+        # mapping is sorted alphabetically: a->0, b->1, c->2
+        assert net.node_to_label_dict == {0: "a", 1: "b", 2: "c"}
+
+        # smoke: laplacian computation should work with relabelled ids
+        net.compute_laplacian_matrices()
+        assert len(net.laplacians) > 0
+
+    def test_relabel_consistency_lists_vs_events_table(self):
+        sources = [10, 20, 30]
+        targets = [20, 30, 10]
+        starts = [0.0, 1.0, 2.0]
+        ends = [1.0, 2.0, 3.0]
+
+        net_lists = ContTempNetwork(
+            source_nodes=sources, target_nodes=targets,
+            starting_times=starts, ending_times=ends,
+        )
+        df = self._make_df(sources, targets, starts, ends)
+        net_df = ContTempNetwork(events_table=df)
+
+        assert net_lists.node_to_label_dict == net_df.node_to_label_dict
+        assert net_lists.label_to_node_dict == net_df.label_to_node_dict
+
+        cols = ["source_nodes", "target_nodes",
+                "starting_times", "ending_times"]
+        pd.testing.assert_frame_equal(
+            net_lists.events_table[cols].reset_index(drop=True),
+            net_df.events_table[cols].reset_index(drop=True),
+            check_dtype=False,
+        )
+
+    def test_relabel_off_with_events_table_preserves_ids(self):
+        df = self._make_df([10, 20], [20, 10])
+        original = df.copy()
+        provided = {0: "x", 1: "y"}  # arbitrary user-supplied dict
+        net = ContTempNetwork(
+            events_table=df,
+            relabel_nodes=False,
+            node_to_label_dict=provided,
+        )
+        # events_table columns are unchanged
+        pd.testing.assert_series_equal(
+            net.events_table.source_nodes, original.source_nodes,
+            check_names=False,
+        )
+        pd.testing.assert_series_equal(
+            net.events_table.target_nodes, original.target_nodes,
+            check_names=False,
+        )
+        # provided node_to_label_dict preserved; no label_to_node_dict built
+        assert net.node_to_label_dict is provided
+        assert not hasattr(net, "label_to_node_dict")
+
+    def test_events_table_from_csv_path_relabels(self, tmp_path):
+        df = self._make_df([10, 20, 30], [20, 30, 10])
+        csv_path = tmp_path / "events.csv"
+        df.to_csv(csv_path, index=False)
+
+        net = ContTempNetwork(events_table=csv_path)
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
+
+    def test_relabel_does_not_mutate_caller_dataframe(self):
+        df = self._make_df([10, 20, 30], [20, 30, 10])
+        df_before = df.copy()
+        ContTempNetwork(events_table=df)  # default relabel=True
+        # caller's df should be unchanged
+        pd.testing.assert_frame_equal(df, df_before)
+
+
+class TestContTempInstNetwork:
+    """Tests for the ContTempInstNetwork constructor.
+
+    Instant networks are described by (source, target, starting_time)
+    triplets only. The constructor must be able to accept events_tables
+    that lack the ending_times column (DataFrame or CSV path) and must
+    synthesize one before delegating to the parent constructor. All
+    durations should be set to 1.0 and instantaneous_events flag set.
+    """
+
+    def _make_inst_df(self, sources, targets, starts=None):
+        n = len(sources)
+        if starts is None:
+            starts = [float(i) for i in range(n)]
+        return pd.DataFrame({
+            "source_nodes": sources,
+            "target_nodes": targets,
+            "starting_times": starts,
+        })
+
+    def test_init_from_dataframe_synthesizes_ending_times(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[0.0, 1.0, 2.0])
+        net = ContTempInstNetwork(events_table=df)
+
+        assert "ending_times" in net.events_table.columns
+        # ending_times derived from sorted unique starts; last one += 1
+        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
+        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+        assert net.instantaneous_events is True
+
+    def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path):
+        df = self._make_inst_df([10, 20, 30], [20, 30, 10],
+                                starts=[0.0, 1.0, 2.0])
+        csv_path = tmp_path / "inst_events.csv"
+        df.to_csv(csv_path, index=False)
+
+        net = ContTempInstNetwork(events_table=csv_path)
+
+        assert "ending_times" in net.events_table.columns
+        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
+        # default relabel_nodes=True remaps 10/20/30 to 0/1/2
+        used = set(net.events_table.source_nodes.tolist()) | \
+            set(net.events_table.target_nodes.tolist())
+        assert used == {0, 1, 2}
+        assert net.node_to_label_dict == {0: 10, 1: 20, 2: 30}
+
+    def test_init_from_positional_args(self):
+        net = ContTempInstNetwork(
+            source_nodes=[0, 1, 2],
+            target_nodes=[1, 2, 0],
+            starting_times=[0.0, 1.0, 2.0],
+        )
+        assert net.instantaneous_events is True
+        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+        # Should be runnable end-to-end
+        net.compute_laplacian_matrices()
+        assert len(net.laplacians) > 0
+
+    def test_init_with_existing_ending_times_column_preserved(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[0.0, 1.0, 2.0])
+        df["ending_times"] = [10.0, 20.0, 30.0]
+        net = ContTempInstNetwork(events_table=df)
+        # Existing ending_times must not be overwritten
+        assert net.events_table.ending_times.tolist() == [10.0, 20.0, 30.0]
+
+    def test_does_not_mutate_caller_dataframe(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[0.0, 1.0, 2.0])
+        df_before = df.copy()
+        ContTempInstNetwork(events_table=df)
+        pd.testing.assert_frame_equal(df, df_before)
+
+    def test_uneven_starts_use_start_plus_one(self):
+        """Synthesized ending_times must be start + 1 for each event,
+        independent of the spacing or uniqueness of starting times.
+        """
+        net = ContTempInstNetwork(
+            source_nodes=[0, 1, 2],
+            target_nodes=[1, 2, 0],
+            starting_times=[0.0, 0.5, 5.0],
+        )
+        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+        assert net.events_table["durations"].tolist() == [1.0, 1.0, 1.0]
+
+    def test_uneven_starts_via_dataframe_use_start_plus_one(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[0.0, 0.5, 5.0])
+        net = ContTempInstNetwork(events_table=df)
+        assert net.events_table.ending_times.tolist() == [1.0, 1.5, 6.0]
+
+    def test_unsorted_dataframe_default_path_sorts_and_resets_index(self):
+        df = self._make_inst_df([0, 1, 2], [1, 2, 0],
+                                starts=[2.0, 0.0, 1.0])
+        df.index = [20, 10, 30]
+
+        net = ContTempInstNetwork(events_table=df)
+
+        assert net.events_table.starting_times.tolist() == [0.0, 1.0, 2.0]
+        assert net.events_table.ending_times.tolist() == [1.0, 2.0, 3.0]
+        assert net.events_table.index.tolist() == [0, 1, 2]
+
+    def test_dataframe_fast_path_preserves_order_index_and_identity(self):
+        df = pd.DataFrame({
+            "source_nodes": [0, 1, 2],
+            "target_nodes": [1, 2, 0],
+            "starting_times": [0.0, 1.0, 2.0],
+            "ending_times": [1.0, 2.0, 3.0],
+        })
+
+        net = ContTempInstNetwork(
+            events_table=df,
+            relabel_nodes=False,
+            node_to_label_dict={0: 0, 1: 1, 2: 2},
+        )
+
+        assert net.events_table is df
+        pd.testing.assert_frame_equal(net.events_table, df)
+
+
+class TestContTempNetworkEndingTimesRequired:
+    """ContTempNetwork must raise ValueError when ending_times is absent.
+
+    The validation pinpoints the missing input ('ending_times' or the
+    DataFrame column) and directs users to ContTempInstNetwork for
+    instantaneous networks.
+    """
 
     def test_positional_none_ending_raises(self):
         with pytest.raises(ValueError) as exc:
