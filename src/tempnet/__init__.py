@@ -51,6 +51,10 @@ from .faster_expm import (  # noqa: F401
     compute_subspace_expm_parallel,
     sparse_lapl_expm)
 
+from .expm_with_tol import(  # noqa: F401
+    mfp_exp,
+)
+
 from .utils import (  # noqa: F401
     csc_row_normalize,
     inplace_csr_row_normalize,
