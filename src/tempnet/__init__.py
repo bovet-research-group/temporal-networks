@@ -5,7 +5,7 @@ tempnet
 
 Logging
 -------
-The package sets up a default logger on import. You can adjust the logging level:
+The package sets up a default logger on import. You can adjust the level:
 
 >>> import tempnet
 >>> tempnet.set_log_level("DEBUG")
@@ -46,7 +46,7 @@ from .temporal_network import (  # noqa: F401
     ContTempNetwork,
     ContTempInstNetwork,
 )
-from .subspace_expm import (  # noqa: F401
+from .faster_expm import (  # noqa: F401
     compute_subspace_expm,
     compute_subspace_expm_parallel,
     sparse_lapl_expm)
@@ -81,7 +81,7 @@ def set_log_level(level):
         'ERROR': logging.ERROR,
         'CRITICAL': logging.CRITICAL,
     }
-    
+
     if level in level_dict:
         logger = get_logger()
         logger.setLevel(level_dict[level])
