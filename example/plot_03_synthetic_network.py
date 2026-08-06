@@ -6,7 +6,7 @@
 # Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
 #                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
 #                    Samuel Koovely <samuel.koovely@uzh.ch>, 
-#                    Jonas Liechti <jonas@t4d.ch>
+#                    Jonas I. Liechti <j-i-l@t4d.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -20,8 +20,6 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
-
-
 """
 
 
@@ -66,7 +64,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from tempnet import ContTempNetwork
-from tempnet.synth_temp_network import Individual, SynthTempNetwork, make_step_block_probs
+from tempnet.synth_temp_network import (Individual,
+                                        SynthTempNetwork,
+                                        make_step_block_probs)
 
 rng = np.random.default_rng(42)
 
@@ -148,7 +148,7 @@ tnet = ContTempNetwork(
     merge_overlapping_events=True
 )
 
-print(f"Nodes : {tnet.nodes}")
+print(f"Nodes : {tnet.node_array}")
 print(f"Events: {len(tnet.events_table)}")
 
 # %%

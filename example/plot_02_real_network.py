@@ -6,7 +6,7 @@
 # Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
 #                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
 #                    Samuel Koovely <samuel.koovely@uzh.ch>, 
-#                    Jonas Liechti <jonas@t4d.ch>
+#                    Jonas I. Liechti <j-i-l@t4d.ch>
 #
 # This program is free software; you can redistribute it and/or modify it under
 # the terms of the GNU Lesser General Public License as published by the Free
@@ -194,7 +194,11 @@ print("End:", tnet.end_time)
 # Number of active nodes in each one-hour window across a full day.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_active = [tnet.num_active_nodes(t[i], t[i + 1]) for i in range(len(t) - 1)]
+n_active = [
+        tnet.num_active_nodes(None, t[1])
+    ]+[
+        tnet.num_active_nodes(t[i], t[i + 1]) for i in range(1,len(t) - 1)
+    ]
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 ax.plot(t[:-1], n_active, marker='.')
 
@@ -210,11 +214,10 @@ plt.show()
 # Number of active edges/events in each one-hour window.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_edge_active = [tnet.num_active_edges(t[i], t[i + 1])
-                 for i in range(len(t) - 1)]
+n_event_active = [tnet.num_active_events(None, t[1])]+[tnet.num_active_events(t[i], t[i + 1]) for i in range(1,len(t) - 1)]
 
 fig, ax = plt.subplots(nrows=1, ncols=1)
-ax.plot(t[:-1], n_edge_active, marker='.')
+ax.plot(t[:-1], n_event_active, marker='.')
 
 ax.set_xticks(t)
 ax.set_xticklabels([i // 3600 for i in t], rotation=90)
