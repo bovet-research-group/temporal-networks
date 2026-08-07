@@ -23,13 +23,31 @@
   (function name: `compute_laplacian_matrices`)
 - Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `faster_expm.py`.
 - Renamed `parallel_expm.py` to `faster_expm.py`.
+- `ContTempNetwork` / `ContTempInstNetwork`: removed the constructor parameters
+  `relabel_nodes`, `reset_event_table_index`, and `node_to_label_dict`. Data
+  normalization is controlled by the new `sanitize_data` parameter (default
+  `True`); the fast path is `sanitize_data=False`, which uses the input as-is
+  and emits a `UserWarning`.
+- Event tables are now always normalized on construction (contiguous 0..N-1
+  node ids, chronological sort by `(starting_times, ending_times)`, zero-based
+  `RangeIndex`) — DataFrame inputs no longer preserve caller row order or
+  index by default.
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
 - Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
   They compute the number of active edges and nodes within a range of the t_start and t_end. 
+- New `tempnet.sanitize` module with public helpers `sanitize_events_table()`
+  (copy by default, or `inplace=True`) and `needs_sanitization()`, both
+  exported from `tempnet`.
+- `pytest --run-network` opt-in flag; Zenodo-dependent tests (marker
+  `network`) are skipped by default.
+- `shell.nix` development environment (Python 3.10 venv + `dev` dependency
+  group installed via pip).
 
 ### Fixed
-- Normalized default `events_table` input (`relabel_nodes=True`) consistently
-  with list-based input: DataFrame/CSV event tables are copied, relabelled,
-  sorted by `starting_times` and `ending_times`, and reindexed by default.
+- Constructor invariants are now enforced for all input paths: unsorted
+  list/DataFrame inputs are sorted with a reset index; duplicate or named
+  DataFrame indices no longer corrupt the time grid / Laplacian computation.
+- The Zenodo mice dataset is downloaded once per test session (session-scoped
+  fixture) instead of once per test.

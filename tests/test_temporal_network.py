@@ -44,10 +44,8 @@ from tempnet.temporal_network import ContTempNetwork, ContTempInstNetwork
 RECORD_ID = "4725155"
 FILE_NAME = "mice_contact_sequence.csv.gz"
 
-# Shorthand for tests that pin *known bugs / inconsistencies* in the
-# implementation. They are xfail (green) for now; once the implementation
-# is fixed, remove the marker so they turn into regular (red -> green)
-# regression tests.
+# Shorthand for tests that pin legacy/API inconsistencies kept green for now.
+# Bug-flagging tests are regular tests and are expected to fail until fixed.
 known_bug = pytest.mark.xfail(strict=True)
 
 
@@ -574,7 +572,6 @@ class TestConstructorValidation(TempNetworkTestBase):
             temp_network = self._get_instance(network, use_df=True)
             temp_network._compute_time_grid()
 
-    @known_bug(reason="list input sorts events but does not reset the index")
     def test_unsorted_list_input_is_sorted_and_index_reset(
         self,
         simple_unsorted_network,
@@ -596,8 +593,6 @@ class TestConstructorValidation(TempNetworkTestBase):
         network.compute_laplacian_matrices()
         assert len(network.laplacians) > 0
 
-    @known_bug(reason="DataFrame input does not sort events chronologically,"
-                      " unlike list input")
     def test_unsorted_dataframe_matches_list_constructor_order(
         self,
         simple_unsorted_network,
@@ -893,14 +888,13 @@ class TestRelabelNodes(TempNetworkTestBase):
         net.compute_transition_matrices(lamda=1.0, force_csr=True)
         assert net.T[1.0][-1].shape == (net.num_nodes, net.num_nodes)
 
-    # --- known inconsistencies: relabel_nodes / node_to_label_dict -------- #
-    # The constructor signature has neither `relabel_nodes` nor
-    # `node_to_label_dict`; these tests pin the intended fast-path API.
+    # --- fast track: sanitize_data=False ---------------------------------- #
+    # With `sanitize_data=False` the input is used as-is (no copy, no sort,
+    # no relabel, no reindex); the caller promises the data is normalized
+    # and a UserWarning reminds them of that contract.
 
-    @known_bug(reason="constructor has no relabel_nodes/node_to_label_dict"
-                      " params; DataFrame is always copied")
-    def test_relabel_nodes_kwarg_dataframe_fast_path(self):
-        """`relabel_nodes=False` keeps the caller-provided table unchanged."""
+    def test_sanitize_false_dataframe_fast_path(self):
+        """`sanitize_data=False` keeps the caller-provided table unchanged."""
         events_table = pd.DataFrame({
             "source_nodes": [0, 1, 2],
             "target_nodes": [1, 2, 0],
@@ -908,19 +902,17 @@ class TestRelabelNodes(TempNetworkTestBase):
             "ending_times": [1.0, 2.0, 3.0],
         })
 
-        network = ContTempNetwork(
-            events_table=events_table,
-            relabel_nodes=False,
-            node_to_label_dict={0: 0, 1: 1, 2: 2},
-        )
+        with pytest.warns(UserWarning, match="needs_sanitization"):
+            network = ContTempNetwork(
+                events_table=events_table,
+                sanitize_data=False,
+            )
 
         assert network.events_table is events_table
         pd.testing.assert_frame_equal(network.events_table, events_table)
 
-    @known_bug(reason="constructor has no relabel_nodes/node_to_label_dict"
-                      " params; kwargs leak into pd.read_csv")
-    def test_relabel_nodes_kwarg_csv_fast_path(self, tmp_path):
-        """`relabel_nodes=False` does not reset CSV-loaded event tables."""
+    def test_sanitize_false_csv_fast_path(self, tmp_path):
+        """`sanitize_data=False` does not reset CSV-loaded event tables."""
         events_table = pd.DataFrame({
             "source_nodes": [0, 1, 2],
             "target_nodes": [1, 2, 0],
@@ -930,28 +922,27 @@ class TestRelabelNodes(TempNetworkTestBase):
         csv_path = tmp_path / "events.csv"
         events_table.to_csv(csv_path)
 
-        network = ContTempNetwork(
-            events_table=csv_path,
-            relabel_nodes=False,
-            node_to_label_dict={0: 0, 1: 1, 2: 2},
-            index_col=0,
-        )
+        with pytest.warns(UserWarning, match="needs_sanitization"):
+            network = ContTempNetwork(
+                events_table=csv_path,
+                sanitize_data=False,
+                index_col=0,
+            )
 
         assert network.events_table.index.tolist() == [20, 10, 30]
         assert network.events_table.starting_times.tolist() == [2.0, 0.0, 1.0]
 
-    @known_bug(reason="constructor has no relabel_nodes/node_to_label_dict"
-                      " params; provided dict is ignored")
-    def test_relabel_nodes_kwarg_preserves_ids(self):
-        df = make_df([10, 20], [20, 10], starts=[0.0, 1.0], ends=[1.0, 2.0])
+    def test_sanitize_false_stores_provided_label_map_without_mapping(self):
+        df = make_df([0, 1], [1, 0], starts=[0.0, 1.0], ends=[1.0, 2.0])
         original = df.copy()
-        provided = {0: "x", 1: "y"}  # arbitrary user-supplied dict
-        net = ContTempNetwork(
-            events_table=df,
-            relabel_nodes=False,
-            node_to_label_dict=provided,
-        )
-        # events_table columns are unchanged
+        provided = {"x": 0, "y": 1}  # kept as metadata, not applied
+        with pytest.warns(UserWarning, match="needs_sanitization"):
+            net = ContTempNetwork(
+                events_table=df,
+                sanitize_data=False,
+                label_to_node_dict=provided,
+            )
+        # events_table columns are unchanged (no mapping applied)
         pd.testing.assert_series_equal(
             net.events_table.source_nodes, original.source_nodes,
             check_names=False,
@@ -960,9 +951,24 @@ class TestRelabelNodes(TempNetworkTestBase):
             net.events_table.target_nodes, original.target_nodes,
             check_names=False,
         )
-        # provided node_to_label_dict preserved; no label_to_node_dict built
-        assert net.node_to_label_dict is provided
-        assert not hasattr(net, "label_to_node_dict")
+        # provided label_to_node_dict preserved, inverse built
+        assert net.label_to_node_dict is provided
+        assert net.node_to_label_dict == {0: "x", 1: "y"}
+
+    def test_sanitize_false_non_unique_label_map_raises(self):
+        df = make_df([0, 1], [1, 0], starts=[0.0, 1.0], ends=[1.0, 2.0])
+        with pytest.warns(UserWarning, match="needs_sanitization"):
+            with pytest.raises(ValueError):
+                ContTempNetwork(
+                    events_table=df,
+                    sanitize_data=False,
+                    label_to_node_dict={"x": 0, "y": 0},
+                )
+
+    def test_sanitize_true_does_not_warn(self, recwarn):
+        df = make_df([10, 20], [20, 10], starts=[1.0, 0.0], ends=[2.0, 1.0])
+        ContTempNetwork(events_table=df)  # default sanitize_data=True
+        assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
 
 
 # --------------------------------------------------------------------------- #
@@ -1196,8 +1202,8 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
     representation for pulse dynamics -- the time grid consists exactly of
     the unique pulse times, and inter-event taus are the true gaps between
     pulses -- but several parts of the machinery still assume strictly
-    positive durations. These tests capture the resulting defects (xfail
-    until fixed):
+    positive durations. These tests capture the resulting defects and are
+    expected to fail until fixed:
 
     R1  Every pulse must produce a Laplacian / inter_T step -- including
         the *last* one. The Laplacian loop only iterates over grid times
@@ -1237,13 +1243,11 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R1: the last pulse must not be dropped --------------------------- #
 
-    @known_bug(reason="R1: laplacian loop drops the last pulse")
     def test_one_laplacian_per_pulse(self, pulse_network):
         """3 pulses -> 3 Laplacian steps (currently only 2 are computed)."""
         pulse_network.compute_laplacian_matrices()
         assert len(pulse_network.laplacians) == 3
 
-    @known_bug(reason="R1: laplacian loop drops the last pulse")
     def test_last_pulse_laplacian_reflects_its_event(self, pulse_network):
         """The step for t=5 must couple A and B (pulse (A,B) at t=5)."""
         pulse_network.compute_laplacian_matrices()
@@ -1258,8 +1262,6 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R2: static adjacency must count pulses, not sum zero durations --- #
 
-    @known_bug(reason="R2: static adjacency sums zero durations instead of"
-                      " counting pulses")
     def test_static_adjacency_counts_events(self, pulse_network):
         """Full-range aggregation: (A,B) twice, (B,C) once.
 
@@ -1277,8 +1279,6 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R3: boundary pulses must count as active -------------------------- #
 
-    @known_bug(reason="R3: overlap mask excludes zero-duration events at"
-                      " t_start")
     def test_default_window_counts_all_pulses(self, pulse_network):
         """The full default window must cover all 3 events and 3 nodes.
 
@@ -1288,8 +1288,6 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         assert pulse_network.num_active_edges() == 3
         assert pulse_network.num_active_nodes() == 3
 
-    @known_bug(reason="R3: overlap mask excludes zero-duration events at"
-                      " t_start")
     def test_pulse_at_window_start_is_active(self, pulse_network):
         """A pulse exactly at t_start must be included in the window.
 
@@ -1301,7 +1299,6 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R4: conflicting ending_times must be rejected, not overwritten ---- #
 
-    @known_bug(reason="R4: conflicting ending_times are silently overwritten")
     def test_conflicting_ending_times_column_raises(self):
         """An events_table with nonzero durations must raise ValueError.
 
@@ -1525,8 +1522,8 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
     ``taus[j] = times[j + 1] - times[j]`` (i.e. always starting from
     ``times[0]``), so as soon as ``k0 > 0`` every transition matrix
     ``T_j = expm(-tau_j * lamda * L_j)`` is built with the tau of the wrong
-    time step. These tests capture that erroneous behaviour (xfail until
-    the tau indexing is fixed):
+    time step. These tests capture that erroneous behaviour and are expected
+    to fail until the tau indexing is fixed:
 
     1. ``test_windowed_inter_T_uses_window_taus`` pins the general contract:
        the inter_T sequence of a windowed computation must equal the
@@ -1553,7 +1550,6 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
             ends=[2, 11, 26],
         )
 
-    @known_bug(reason="taus indexed from times[0] instead of the window start")
     def test_windowed_inter_T_uses_window_taus(self, uneven_events):
         full = ContTempNetwork(events_table=uneven_events)
         full.compute_laplacian_matrices()
@@ -1574,7 +1570,6 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
                 err_msg=f"window step {j} != full step {k0 + j}",
             )
 
-    @known_bug(reason="taus indexed from times[0] instead of the window start")
     def test_windowed_tau_matches_expm_directly(self, uneven_events):
         from scipy.linalg import expm as dense_expm
 
@@ -1618,9 +1613,9 @@ class TestInterTNotMutated(TempNetworkTestBase):
       ``compute_transition_matrices`` was previously called on the same
       instance (non-idempotence).
 
-    These tests are xfail until ``clean()`` operates on copies, or cleaning
-    is applied only to the accumulated product and never to the stored
-    inter-event factors.
+    These tests are expected to fail until ``clean()`` operates on copies, or
+    cleaning is applied only to the accumulated product and never to the
+    stored inter-event factors.
     """
 
     LAMDA = 1.0
@@ -1646,7 +1641,6 @@ class TestInterTNotMutated(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=self.LAMDA)
         return net
 
-    @known_bug(reason="clean() mutates stored inter_T matrices in place")
     def test_inter_T_unchanged_by_compute_transition_matrices(
         self, net_with_inter_T,
     ):
@@ -1667,7 +1661,6 @@ class TestInterTNotMutated(TempNetworkTestBase):
                 ),
             )
 
-    @known_bug(reason="clean() mutates stored inter_T matrices in place")
     def test_transition_matrices_idempotent_wrt_previous_runs(
         self, net_with_inter_T,
     ):
@@ -1722,11 +1715,9 @@ class TestSolverErrorPaths(TempNetworkTestBase):
       ``non_norm in (0, 1)``; any other value raises ``NameError`` on the
       undefined ``ai`` instead of rejecting the argument.
 
-    Xfail until both functions validate their inputs explicitly.
+    Expected to fail until both functions validate their inputs explicitly.
     """
 
-    @known_bug(reason="_compute_single_T raises UnboundLocalError instead of"
-                      " ValueError")
     def test_compute_single_T_unknown_method_raises_value_error(self):
         net = ContTempNetwork(
             source_nodes=[0], target_nodes=[1],
@@ -1738,8 +1729,6 @@ class TestSolverErrorPaths(TempNetworkTestBase):
                 net.laplacians[0], 1.0, 1.0, net.num_nodes, "no_such_method",
             )
 
-    @known_bug(reason="mfp_exp raises NameError instead of ValueError for"
-                      " invalid non_norm")
     def test_mfp_exp_invalid_non_norm_raises_value_error(self):
         from scipy.sparse import csr_matrix
 
@@ -1759,23 +1748,21 @@ class TestEventsTableIndexNormalization(TempNetworkTestBase):
     The event index is the join key of the whole pipeline:
     ``_compute_time_grid`` stores it as the ``id`` level of the time grid,
     and the Laplacian loop resolves events with
-    ``events_table.loc[id, ...]``. The constructor used to guarantee a
-    clean index (``reset_event_table_index`` on main); the integration
-    branch dropped that without replacement, so the invariant is assumed
-    but never enforced. These tests show three ways it now breaks:
+    ``events_table.loc[id, ...]``. The invariant is enforced by
+    ``tempnet.sanitize.sanitize_events_table``, which the constructor
+    applies by default (``sanitize_data=True``). These tests pin three
+    input shapes that used to break it:
 
-    * lists input with unsorted starting times: ``sort_values`` reorders
-      rows but keeps the old index, so the index no longer matches the
-      event (= time) order;
+    * lists input with unsorted starting times: sorting must be followed
+      by an index reset so the index matches the event (= time) order;
     * a DataFrame with duplicate index labels (e.g. from ``pd.concat``):
-      ``loc[id]`` resolves to several rows and the (times, id) grid can
-      no longer distinguish the events, corrupting the Laplacian loop;
+      ``loc[id]`` would resolve to several rows and the (times, id) grid
+      could no longer distinguish the events;
     * a DataFrame with a *named* index: ``reset_index()`` inside
-      ``_compute_time_grid`` then produces a column named after the index
+      ``_compute_time_grid`` would produce a column named after the index
       instead of ``"index"``, raising ``KeyError`` far from the cause.
     """
 
-    @known_bug(reason="constructor no longer resets the events_table index")
     def test_unsorted_lists_input_gets_reset_index(self):
         net = ContTempNetwork(
             source_nodes=[0, 1], target_nodes=[1, 2],
@@ -1785,7 +1772,6 @@ class TestEventsTableIndexNormalization(TempNetworkTestBase):
         # rows are sorted by starting time; the index must follow suit
         assert list(net.events_table.index) == [0, 1]
 
-    @known_bug(reason="constructor no longer resets the events_table index")
     def test_duplicate_index_dataframe_is_handled(self):
         df = pd.concat([
             make_df([0], [1], starts=[0.0], ends=[1.0]),
@@ -1798,7 +1784,6 @@ class TestEventsTableIndexNormalization(TempNetworkTestBase):
         net.compute_laplacian_matrices()
         assert len(net.laplacians) == 3
 
-    @known_bug(reason="constructor no longer resets the events_table index")
     def test_named_index_dataframe_is_handled(self):
         df = make_df([0, 1], [1, 2], starts=[0.0, 2.0], ends=[1.0, 3.0])
         df.index.name = "event_id"

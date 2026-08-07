@@ -46,6 +46,10 @@ from .temporal_network import (  # noqa: F401
     ContTempNetwork,
     ContTempInstNetwork,
 )
+from .sanitize import (  # noqa: F401
+    needs_sanitization,
+    sanitize_events_table,
+)
 from .faster_expm import (  # noqa: F401
     compute_subspace_expm,
     compute_subspace_expm_parallel,

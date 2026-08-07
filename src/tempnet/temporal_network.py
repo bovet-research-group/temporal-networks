@@ -28,6 +28,7 @@ import gzip
 import os
 import pickle
 import time
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -56,6 +57,11 @@ from scipy.sparse.linalg import expm
 from .expm_with_tol import mfp_exp
 from .faster_expm import compute_subspace_expm, sparse_lapl_expm
 from .logger import get_logger
+from .sanitize import (
+    _is_contiguous,
+    _validate_label_map,
+    sanitize_events_table,
+)
 
 from .utils import (
     set_to_zeroes,
@@ -105,6 +111,19 @@ class ContTempNetwork:
     label_to_node_dict: Python dict
         The user can input this dictionary to map the labels in an arbitary order. 
 
+    sanitize_data: boolean
+        If `True` (default), the input is normalized to the internal
+        representation: node labels are relabelled to contiguous
+        ``0..N-1`` integer ids, events are sorted chronologically by
+        ``(starting_times, ending_times)``, and the index is reset to a
+        zero-based ``RangeIndex``. DataFrame inputs are copied, so the
+        caller's data is never modified.
+        If `False`, the input is used as-is (fast track): nothing is
+        copied, sorted, relabelled, or reindexed, and the caller must
+        guarantee that all of the above invariants already hold. A
+        ``UserWarning`` is emitted as a reminder; if unsure, check with
+        :func:`tempnet.sanitize.needs_sanitization`.
+
     merge_overlapping_events: boolean
         Check for overlapping events (between the same pair of nodes)
         and merges them. Default is `False`.
@@ -132,6 +151,7 @@ class ContTempNetwork:
                  ending_times=[],
                  extra_attrs=None,
                  label_to_node_dict=None,
+                 sanitize_data=True,
                  merge_overlapping_events=False,
                  events_table=None,
                  **kwargs):
@@ -164,9 +184,8 @@ class ContTempNetwork:
 
             self.events_table = pd.DataFrame(data=data,
                                              columns=columns)
-
-            self.events_table.sort_values(by=["starting_times", "ending_times"],
-                                          inplace=True)
+            # freshly built from lists: safe to sanitize in place
+            _sanitize_inplace = True
 
         else:
 
@@ -175,6 +194,8 @@ class ContTempNetwork:
                     # Convert Path to string if it's a Path object
                     self.events_table = pd.read_csv(str(events_table), **kwargs)
                     logger.debug("Loading events from csv file.")
+                    # freshly read from file: safe to sanitize in place
+                    _sanitize_inplace = True
 
                 except FileNotFoundError:
                     raise ValueError(
@@ -188,10 +209,11 @@ class ContTempNetwork:
                     raise ValueError(
                         f"The file at {events_table} could not be parsed."
                     )
-                
+
             elif isinstance(events_table, pd.DataFrame):
-                # copy to avoid mutating caller's DataFrame when relabeling
-                self.events_table = events_table.copy()
+                self.events_table = events_table
+                # caller's DataFrame: sanitize on a copy
+                _sanitize_inplace = False
 
             else:
                 raise ValueError(
@@ -211,44 +233,43 @@ class ContTempNetwork:
                         f"Expected: {self._ESSENTIAL}, "
                             f"Got: {list(self.events_table.columns)}"
                         )
-        self.num_nodes = pd.unique(
-            self.events_table[["source_nodes", "target_nodes"]].values.ravel("K")
-        ).size  
-        if label_to_node_dict: 
-            logger.info(label_to_node_dict)  
-            values = list(label_to_node_dict.values())
-            if len(set(values)) != len(values):
-                raise ValueError(
-                    "label_to_node_dict must have unique values for each label."
-                )
-            self.label_to_node_dict = label_to_node_dict
-            self.node_to_label_dict = {v: k for k, v in label_to_node_dict.items()}
-               
-            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
-            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
 
-            if not self._is_contiguous(self.events_table[self._SOURCES],
-                                    self.events_table[self._TARGETS]):
-                raise ValueError(
-                    "Nodes not labeled 0..num_nodes-1 after relabeling."
-                )
-
-        elif not self._is_contiguous(self.events_table[self._SOURCES],
-                                    self.events_table[self._TARGETS]):
-            labels = sorted(set(self.events_table[self._SOURCES]) |
-                            set(self.events_table[self._TARGETS]))
-            self.label_to_node_dict = {name: i for i, name in enumerate(labels)}
-            self.node_to_label_dict = {i: name for name, i in self.label_to_node_dict.items()}
-            self.events_table[self._SOURCES] = self.events_table[self._SOURCES].map(self.label_to_node_dict)
-            self.events_table[self._TARGETS] = self.events_table[self._TARGETS].map(self.label_to_node_dict)
+        if sanitize_data:
+            sanitized = sanitize_events_table(
+                self.events_table,
+                label_to_node_dict=label_to_node_dict,
+                inplace=_sanitize_inplace,
+            )
+            self.events_table = sanitized.events_table
+            self.label_to_node_dict = sanitized.label_to_node_dict
+            self.node_to_label_dict = sanitized.node_to_label_dict
         else:
+            warnings.warn(
+                "sanitize_data=False: the events table is used as-is and"
+                " assumed to be normalized (contiguous 0..N-1 integer node"
+                " ids, events sorted chronologically, zero-based"
+                " RangeIndex). If unsure, check with"
+                " tempnet.sanitize.needs_sanitization(events_table).",
+                UserWarning,
+                stacklevel=2,
+            )
+            if label_to_node_dict:
+                _validate_label_map(label_to_node_dict)
+                self.label_to_node_dict = label_to_node_dict
+                self.node_to_label_dict = {
+                    v: k for k, v in label_to_node_dict.items()
+                }
+            else:
+                num_nodes = pd.unique(
+                    self.events_table[[self._SOURCES,
+                                       self._TARGETS]].values.ravel("K")
+                ).size
+                self.label_to_node_dict = {i: i for i in range(num_nodes)}
+                self.node_to_label_dict = {i: i for i in range(num_nodes)}
 
-            self.label_to_node_dict = {i: i for i in range(self.num_nodes)}
-            self.node_to_label_dict = {i: i for i in range(self.num_nodes)}
+        self.num_nodes = len(self.label_to_node_dict)
 
         self.node_array = np.sort(list(self.label_to_node_dict.values()))
-
-
 
         self.num_events = self.events_table.shape[0]
 
@@ -269,15 +290,27 @@ class ContTempNetwork:
                 num_merged = self._merge_overlapping_events()
             self._overlapping_events_merged = True
 
+    @classmethod
+    def _from_normalized_table(cls, events_table, *, label_to_node_dict=None,
+                               **kwargs):
+        """Fast-track instantiation from an already-normalized events table.
+
+        Internal counterpart of ``sanitize_data=False`` that does not
+        emit the user-facing warning. Used by :meth:`load` and other
+        internal re-instantiations where the invariants are guaranteed
+        by construction.
+        """
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            return cls(events_table=events_table,
+                       sanitize_data=False,
+                       label_to_node_dict=label_to_node_dict,
+                       **kwargs)
+
         
     def _is_contiguous(self, src, tgt):
         " This functions checks whether the nodes are indexed from 0 to n-1"
-        vals = np.unique(np.concatenate([src.to_numpy(), tgt.to_numpy()]))
-        num_nodes=len(vals)
-        return (vals.dtype.kind in "iu"
-                and vals.min() == 0
-                and vals.max() == num_nodes - 1
-                and len(vals) == num_nodes)
+        return _is_contiguous(src, tgt)
 
     def __repr__(self):
         return str(self.__class__) + \
@@ -433,7 +466,8 @@ class ContTempNetwork:
 
         events_table = graph_dict.pop("events_table")
 
-        net = cls(events_table=events_table)
+        # saved tables are already normalized; skip re-sanitation
+        net = cls._from_normalized_table(events_table)
 
         for k, val in graph_dict.items():
             if k in matrices_list:
@@ -1897,6 +1931,7 @@ class ContTempInstNetwork(ContTempNetwork):
                  target_nodes=None,
                  starting_times=None,
                  label_to_node_dict=None,
+                 sanitize_data=True,
                  events_table=None,
                  ):
 
@@ -1929,6 +1964,7 @@ class ContTempInstNetwork(ContTempNetwork):
                          starting_times=starting_times,
                          ending_times=starting_times,
                          label_to_node_dict=label_to_node_dict,
+                         sanitize_data=sanitize_data,
                          merge_overlapping_events=False,
                          )
         

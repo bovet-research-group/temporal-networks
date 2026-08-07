@@ -44,6 +44,7 @@ Alternatively, with [uv](https://docs.astral.sh/uv/):
 uv sync
 ```
 
+
 ### Running the tests
 
 ```bash
@@ -58,7 +59,8 @@ Tests marked `network` download data from Zenodo and are skipped by default.
 Run them explicitly when you have internet access:
 
 ```bash
-pytest -m network
+pytest --run-network              # everything, incl. network tests
+pytest --run-network -m network   # only the network tests
 ```
 
 ### Building the documentation locally
