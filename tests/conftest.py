@@ -1,3 +1,30 @@
+"""
+#
+# Temporal networks `tempnet`
+#
+# Copyright (C) 2021 Alexandre Bovet <alexandre.bovet@uzh.ch>
+# Copyright (C) 2026 Alexandre Bovet <alexandre.bovet@uzh.ch>, 
+#                    Yasaman Asgari <yasaman.asgari@uzh.ch>, 
+#                    Samuel Koovely <samuel.koovely@uzh.ch>, 
+#                    Jonas Liechti <jonas@t4d.ch>
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU Lesser General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+#
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+# details.
+#
+# You should have received a copy of the GNU Lesser General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+
+"""
+
+
 import pytest
 
 from types import SimpleNamespace
@@ -5,6 +32,27 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix, csc_matrix
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--run-network",
+        action="store_true",
+        default=False,
+        help="run tests that require external network access",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--run-network"):
+        return
+
+    skip_network = pytest.mark.skip(
+        reason="requires external network access; pass --run-network to run"
+    )
+    for item in items:
+        if "network" in item.keywords:
+            item.add_marker(skip_network)
 
 
 @pytest.fixture(scope='function')

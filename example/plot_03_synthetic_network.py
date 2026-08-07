@@ -1,3 +1,4 @@
+"""
 #
 # Temporal networks `tempnet`
 #
@@ -19,6 +20,7 @@
 #
 # You should have received a copy of the GNU Lesser General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
+"""
 
 
 """
@@ -58,11 +60,13 @@ loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
 # from an exponential distribution with mean ``inter_tau``; inter-activation
 # waiting times use mean ``activ_tau``.
 
+import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 
 from tempnet import ContTempNetwork
-from tempnet.synth_temp_network import Individual, SynthTempNetwork
+from tempnet.synth_temp_network import (Individual,
+                                        SynthTempNetwork)
 
 rng = np.random.default_rng(42)
 
@@ -84,13 +88,6 @@ individuals = [
     for g in range(N_GROUPS)
     for i in range(N_PER_GROUP)
 ]
-
-# %%
-# Block-probability modulation
-# ----------------------------
-# ``make_step_block_probs`` returns a time-dependent function that cycles
-# through phases where different community pairs are highlighted.
-
 
 def make_step_block_probs(
     deltat1: float,
@@ -154,13 +151,19 @@ def make_step_block_probs(
               and t <= 3 * (deltat1 + deltat2)):
             return ex13
         else:
-            print(
+            warnings.warn(
                 "Warning: t must be >=0 and <= 3*(deltat1+deltat2),"
                 f" t is {t}"
             )
             return within
 
     return block_mod_func
+
+# %%
+# Block-probability modulation
+# ----------------------------
+# ``make_step_block_probs`` returns a time-dependent function that cycles
+# through phases where different community pairs are highlighted.
 
 m1 = 0.8   # within-community interaction probability
 p1 = 0.8   # cross-community interaction probability (for the active pair)
