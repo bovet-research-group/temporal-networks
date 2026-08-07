@@ -1259,7 +1259,9 @@ class ContTempNetwork:
             matrices as values.
 
             The transition matrix at step k is the probability transition matrix
-            between times[k] and times[k+1].
+            between times[k0 + k] and times[k0 + k + 1], where
+            k0 = self._k_start_laplacians (0 unless the laplacians were computed
+            on a time window).
 
             Parameters
             ----------
@@ -1331,16 +1333,19 @@ class ContTempNetwork:
             t0 = time.time()
 
             n_steps = len(self.laplacians)
-            if len(self.times) < n_steps + 1:
+            # self.laplacians[k] covers [times[k0 + k], times[k0 + k + 1]].
+            # k0 > 0 when laplacians were computed over a time window.
+            k0 = getattr(self, "_k_start_laplacians", 0)
+            if len(self.times) < k0 + n_steps + 1:
                 raise ValueError(
-                    f"need len(self.times) >= {n_steps + 1}, got {len(self.times)}"
+                    f"need len(self.times) >= {k0 + n_steps + 1},"
+                    f" got {len(self.times)}"
                 )
             if fix_tau_k:
                 taus = [1.0] * n_steps
             else:
                 taus = [
-                    self.times[k + 1]
-                    - self.times[k]
+                    self.times[k0 + k + 1] - self.times[k0 + k]
                     for k in range(n_steps)
                 ]
             if n_jobs == 1:

@@ -49,5 +49,10 @@
 - Constructor invariants are now enforced for all input paths: unsorted
   list/DataFrame inputs are sorted with a reset index; duplicate or named
   DataFrame indices no longer corrupt the time grid / Laplacian computation.
+- Windowed `compute_inter_transition_matrices` (after
+  `compute_laplacian_matrices(t_start=..., t_stop=...)`) now pairs each
+  Laplacian with the inter-event time of its own step; previously taus were
+  counted from `times[0]`, producing wrong transition matrices for any window
+  with `_k_start_laplacians > 0`.
 - The Zenodo mice dataset is downloaded once per test session (session-scoped
   fixture) instead of once per test.

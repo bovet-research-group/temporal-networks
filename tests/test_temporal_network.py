@@ -1516,14 +1516,7 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
 
     ``compute_inter_transition_matrices`` must therefore pair each Laplacian
     with the inter-event time of *its own* step,
-    ``tau_j = times[k0 + j + 1] - times[k0 + j]``.
-
-    The current implementation instead computes
-    ``taus[j] = times[j + 1] - times[j]`` (i.e. always starting from
-    ``times[0]``), so as soon as ``k0 > 0`` every transition matrix
-    ``T_j = expm(-tau_j * lamda * L_j)`` is built with the tau of the wrong
-    time step. These tests capture that erroneous behaviour and are expected
-    to fail until the tau indexing is fixed:
+    ``tau_j = times[k0 + j + 1] - times[k0 + j]``:
 
     1. ``test_windowed_inter_T_uses_window_taus`` pins the general contract:
        the inter_T sequence of a windowed computation must equal the
@@ -1534,7 +1527,7 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
        ``expm(-tau0 * lamda * L_0)`` with ``tau0`` taken at the window start.
 
     The event times are chosen so that the inter-event gaps are non-uniform
-    (grid ``[0, 2, 10, 11, 25, 26]``); with uniform gaps the misaligned taus
+    (grid ``[0, 2, 10, 11, 25, 26]``); with uniform gaps misaligned taus
     would accidentally produce correct results.
     """
 
