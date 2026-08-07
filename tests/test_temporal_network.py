@@ -1695,21 +1695,7 @@ class TestInterTNotMutated(TempNetworkTestBase):
 # Solver error paths must fail with meaningful exceptions
 # --------------------------------------------------------------------------- #
 class TestSolverErrorPaths(TempNetworkTestBase):
-    """Invalid solver arguments must raise ``ValueError``, not crash.
-
-    Two defects in the current implementation:
-
-    * ``_compute_single_T`` validates ``method`` only inside
-      ``compute_inter_transition_matrices``; called directly (as
-      ``print_report`` and the test suite do) with an unknown method it
-      falls through all branches and raises ``UnboundLocalError`` on the
-      unbound ``T``.
-    * ``mfp_exp`` sets its normality factor ``ai`` only for
-      ``non_norm in (0, 1)``; any other value raises ``NameError`` on the
-      undefined ``ai`` instead of rejecting the argument.
-
-    Expected to fail until both functions validate their inputs explicitly.
-    """
+    """Invalid solver arguments must raise ``ValueError``."""
 
     def test_compute_single_T_unknown_method_raises_value_error(self):
         net = ContTempNetwork(

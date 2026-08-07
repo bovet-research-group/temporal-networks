@@ -54,5 +54,9 @@
   Laplacian with the inter-event time of its own step; previously taus were
   counted from `times[0]`, producing wrong transition matrices for any window
   with `_k_start_laplacians > 0`.
+- Invalid methods passed directly to `_compute_single_T` now raise
+  `ValueError` instead of failing with `UnboundLocalError`.
+- Invalid `mfp_exp(non_norm=...)` values now raise `ValueError` instead of
+  failing with `UnboundLocalError`.
 - The Zenodo mice dataset is downloaded once per test session (session-scoped
   fixture) instead of once per test.

@@ -25,8 +25,6 @@
 
 """Sparse matrix exponential with tolerance-based filtering."""
 
-from typing import Literal
-
 import numpy as np
 from scipy.sparse import csc_matrix, csr_matrix, eye, find
 from scipy.sparse.linalg import norm as sparse_norm
@@ -38,7 +36,7 @@ ScalarNumber = int | float | np.integer | np.floating
 def mfp_exp(
     H: SparseMatrix,
     err: ScalarNumber,
-    non_norm: Literal[0, 1],
+    non_norm: int,
 ) -> csr_matrix:
     """Evaluate a filtered sparse matrix exponential.
 
@@ -83,6 +81,8 @@ def mfp_exp(
         ai = 1 / (N + 1)
     elif non_norm == 1:
         ai = 1 / H_norm
+    else:
+        raise ValueError(f"non_norm must be 0 or 1, got {non_norm!r}")
 
     b0 = ai * r0 / M / np.exp(2 * h1)
 

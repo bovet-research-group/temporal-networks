@@ -73,6 +73,14 @@ from .utils import (
 logger = get_logger()
 
 
+_VALID_EXPM_METHODS = frozenset({
+    "dense_expm",
+    "sparse_expm",
+    "parallel_expm",
+    "mfp_exp",
+})
+
+
 @dataclass
 class _LaplacianState:
     """Mutable buffers shared by ``compute_laplacian_matrices`` and its
@@ -1227,6 +1235,11 @@ class ContTempNetwork:
     
     def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, **kwargs):
             """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
+            if method not in _VALID_EXPM_METHODS:
+                raise ValueError(
+                    f"method must be one of {sorted(_VALID_EXPM_METHODS)}, "
+                    f"got {method!r}"
+                )
             if L.getnnz() == 0:
                 # expm of the zero matrix is the identity
                 return eye(num_nodes, format="csr")
@@ -1308,9 +1321,11 @@ class ContTempNetwork:
                 Results are stored in ``self.inter_T[lamda]``.
             """
 
-            VALID = {"dense_expm", "sparse_expm", 'mfp_exp', 'parallel_expm'}
-            if method not in VALID:
-                raise ValueError(f"method must be one of {VALID}, got {method!r}")
+            if method not in _VALID_EXPM_METHODS:
+                raise ValueError(
+                    f"method must be one of {sorted(_VALID_EXPM_METHODS)}, "
+                    f"got {method!r}"
+                )
 
             if not hasattr(self, "laplacians"):
                 raise RuntimeError('First compute the laplacians')
