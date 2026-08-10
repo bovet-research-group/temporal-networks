@@ -1517,65 +1517,6 @@ class ContTempNetwork:
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
         logger.info(f"Finished computing the transition matrices for lambda={lamda}")
 
-    def active_nodes(self, t_start=None, t_end=None):
-
-        """Return the nodes that are active within a given time window.
-
-        A node is considered active if it is an endpoint of at least one event
-        that overlaps the interval ``[t_start, t_end]``. An event overlaps the
-        window when it starts before ``t_end`` and ends after ``t_start``.
-
-        Parameters
-        ----------
-        t_start : float or int (default is None)
-            Start of the time window. Must be strictly less than ``t_end``.
-        t_end : float or int (default is None)
-            End of the time window.
-
-        Returns
-        -------
-        numpy.ndarray
-            Array of unique node ids active within the window. Empty if no events overlap.
-        """
-
-        if not t_start: 
-            t_start=self.start_time
-        if not t_end: 
-            t_end=self.end_time
-
-        assert t_start < t_end, \
-            "t_end should be bigger than t_start"
-
-        t_start=max(self.start_time, t_start)
-        t_end=min(self.end_time, t_end)    
-        mask = (self.events_table["starting_times"] < t_end) & (self.events_table["ending_times"] > t_start)
-        edges = self.events_table[mask]
-        nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
-        return np.sort(np.array(list(nodes)))
-
-    def num_active_nodes(self, t_start=None, t_end=None):
-        """Return the number of nodes active within a given time window.
-
-        A node is active if it is an endpoint of at least one event overlapping
-        ``[t_start, t_end]``. 
-
-        Parameters
-        ----------
-        t_start : float or int (default: None)
-            Start of the time window. Must be strictly less than ``t_end``.
-        t_end : float or int (default: None)
-            End of the time window.
-
-        Returns
-        -------
-        int
-            Number of active nodes in the window. Zero if no events
-            overlap.
-        """        
-        nodes=self.active_nodes(t_start, t_end)
-        return len(nodes)
-
-
     def num_active_edges(self, t_start=None, t_end=None):
         """Return the number of edges active within a given time window.
 
@@ -1599,20 +1540,7 @@ class ContTempNetwork:
         int
             Number of active events overlapping the window. Zero if none.
         """
-        if not t_start: 
-            t_start=self.start_time
-        if not t_end: 
-            t_end=self.end_time
-
-        assert t_start < t_end, \
-            "t_end should be bigger than t_start"
-
-        t_start = max(self.start_time, t_start)
-        t_end = min(self.end_time, t_end)
-
-        mask = (self.events_table["starting_times"] < t_end) & \
-               (self.events_table["ending_times"] > t_start)
-        return int(mask.sum())
+        return int(self._active_mask(t_start, t_end).sum())
 
     
     def plot_density_of_laplacians(self):
@@ -2079,7 +2007,7 @@ class ContTempInstNetwork(ContTempNetwork):
         end_time: float | int | None = None,
         *,
         weighted: bool = False,
-        weight: Literal["count"] | None = None,
+        weight: Literal["duration", "count"] | None = None,
     ) -> coo_matrix:
         """Aggregate instantaneous events into an event-count adjacency matrix.
 
@@ -2101,6 +2029,10 @@ class ContTempInstNetwork(ContTempNetwork):
         scipy.sparse.coo_matrix
             Symmetric adjacency matrix whose entries count pulse events.
         """
+        if weight == "duration":
+            raise ValueError(
+                "ContTempInstNetwork supports only weight='count'"
+            )
         if weighted and weight is None:
             weight = "count"
         return super().compute_static_adjacency_matrix(

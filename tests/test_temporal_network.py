@@ -1374,6 +1374,16 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         nodes = pulse_network.active_nodes(t_start=1, t_end=2)
         assert sorted(nodes) == [1, 2]  # B and C
 
+    def test_pulse_at_window_end_is_not_active(self, pulse_network):
+        """A pulse at the exclusive window end is not selected."""
+        assert pulse_network.active_nodes(t_start=0, t_end=1).tolist() == [0, 1]
+        assert pulse_network.num_active_nodes(t_start=0, t_end=1) == 2
+
+    def test_empty_pulse_window_has_no_active_nodes(self, pulse_network):
+        """A pulse-free half-open window returns no active nodes."""
+        assert pulse_network.active_nodes(t_start=2, t_end=5).tolist() == []
+        assert pulse_network.num_active_nodes(t_start=2, t_end=5) == 0
+
     # --- R4: conflicting ending_times must be rejected, not overwritten ---- #
 
     def test_conflicting_ending_times_column_raises(self):
