@@ -29,6 +29,7 @@ import os
 import pickle
 import time
 import warnings
+from typing import Literal
 
 import numpy as np
 import pandas as pd
@@ -881,7 +882,13 @@ class ContTempNetwork:
         return return_dict
 
 
-    def compute_static_adjacency_matrix(self, start_time=None, end_time=None):
+    def compute_static_adjacency_matrix(
+        self,
+        start_time: float | int | None = None,
+        end_time: float | int | None = None,
+        *,
+        weight: Literal["duration", "count"] = "duration",
+    ) -> coo_matrix:
         """Returns the adjacency matrix of the static network built from the
         aggregagted edge activity between `start_time` and `end_time`.
 
@@ -894,6 +901,11 @@ class ContTempNetwork:
             Ending time for the aggregation. The default is None, i.e. the
             end time of the entire temporal network.
 
+        weight : {"duration", "count"}, default="duration"
+            Event contribution to the adjacency matrix. ``"duration"`` uses
+            the event duration clipped to the requested window. ``"count"``
+            gives every selected event unit weight.
+
         Returns
         -------
         CSR sparse matrix
@@ -902,22 +914,34 @@ class ContTempNetwork:
             and before `end_time`.
 
         """
+        if weight not in {"duration", "count"}:
+            raise ValueError("weight must be 'duration' or 'count'")
+
+        resolved_start_time: float | int
+        resolved_end_time: float | int
         if start_time is None:
-            start_time = self.start_time
+            resolved_start_time = self.start_time
+        else:
+            resolved_start_time = start_time
         if end_time is None:
-            end_time = self.end_time
+            resolved_end_time = self.end_time
+        else:
+            resolved_end_time = end_time
 
-        mask = np.logical_and(self.events_table.starting_times < end_time,
-                            self.events_table.ending_times > start_time)
-
-        sub = self.events_table.loc[mask]
+        sub = self.events_table.loc[
+            self._active_mask(start_time, end_time)
+        ]
 
 
         data, rows, cols = [], [], []
         for ev in sub.itertuples():
-            data.append(
-                min(ev.ending_times, end_time) - max(ev.starting_times, start_time)
-            )
+            if weight == "duration":
+                data.append(
+                    min(ev.ending_times, resolved_end_time)
+                    - max(ev.starting_times, resolved_start_time)
+                )
+            else:
+                data.append(1.0)
             rows.append(ev.source_nodes)
             cols.append(ev.target_nodes)
 
@@ -2032,6 +2056,75 @@ class ContTempInstNetwork(ContTempNetwork):
             t_start=t_start,
             t_stop=t_stop,
             save_adjacencies=save_adjacencies,
+        )
+
+    def compute_static_adjacency_matrix(
+        self,
+        start_time: float | int | None = None,
+        end_time: float | int | None = None,
+        *,
+        weight: Literal["duration", "count"] = "count",
+    ) -> coo_matrix:
+        """Aggregate instantaneous events into an event-count adjacency matrix.
+
+        Each pulse contributes one unit to the corresponding undirected edge by
+        default. ``weight="duration"`` instead returns zero weights because
+        pulses have zero duration. For an explicit window, pulses are selected
+        using the half-open interval ``[start_time, end_time)``. With
+        ``end_time=None``, pulses at the network ending time are included.
+
+        Parameters
+        ----------
+        start_time : float or int, optional
+            Start of the aggregation window. Defaults to the first pulse time.
+        end_time : float or int, optional
+            End of the aggregation window. Defaults to the last pulse time and
+            includes pulses at that time.
+
+        Returns
+        -------
+        scipy.sparse.coo_matrix
+            Symmetric adjacency matrix whose entries count pulse events.
+        """
+        return super().compute_static_adjacency_matrix(
+            start_time=start_time,
+            end_time=end_time,
+            weight=weight,
+        )
+
+    def _active_mask(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> pd.Series:
+        """Return the pulse events selected by a time window.
+
+        Explicit windows use the half-open interval ``[t_start, t_end)``.
+        Omitting ``t_end`` selects all pulses at or after ``t_start``, including
+        a pulse at the final network time.
+
+        Parameters
+        ----------
+        t_start : float or int, optional
+            Start of the selection window. Defaults to ``self.start_time``.
+        t_end : float or int, optional
+            Exclusive end of the selection window. If omitted, all later pulses
+            are selected.
+
+        Returns
+        -------
+        pandas.Series
+            Boolean mask indexed like ``self.events_table``.
+        """
+        if t_start is None:
+            t_start = self.start_time
+        if t_end is None:
+            return self.events_table[self._STARTS] >= t_start
+        if not t_start < t_end:
+            raise ValueError("t_end should be bigger than t_start")
+        return (
+            (self.events_table[self._STARTS] >= t_start)
+            & (self.events_table[self._STARTS] < t_end)
         )
 
     # --- pulse-dynamics hook overrides --------------------------------

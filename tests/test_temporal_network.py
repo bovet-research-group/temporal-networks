@@ -1277,6 +1277,58 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         ])
         np.testing.assert_allclose(A, expected)
 
+    def test_static_adjacency_accepts_duration_and_count_weights(
+        self,
+        pulse_network,
+    ):
+        """Pulse aggregation supports only duration and event-count weights."""
+        count_adjacency = pulse_network.compute_static_adjacency_matrix(
+            weight="count",
+        ).toarray()
+        duration_adjacency = pulse_network.compute_static_adjacency_matrix(
+            weight="duration",
+        ).toarray()
+
+        assert count_adjacency[0, 1] == 2
+        np.testing.assert_allclose(duration_adjacency, np.zeros((3, 3)))
+
+        with pytest.raises(ValueError, match="weight"):
+            pulse_network.compute_static_adjacency_matrix(weight="strength")
+
+    def test_static_adjacency_uses_half_open_pulse_windows(self, pulse_network):
+        """Explicit pulse windows include their start and exclude their end.
+
+        For pulses at times 0, 1, and 5, the window ``[1, 5)`` contains only
+        the ``(B, C)`` pulse at time 1. The pulse at time 5 belongs to a
+        subsequent window.
+        """
+        adjacency = pulse_network.compute_static_adjacency_matrix(
+            start_time=1,
+            end_time=5,
+        ).toarray()
+        expected = np.array([
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0],
+        ])
+        np.testing.assert_allclose(adjacency, expected)
+
+    def test_static_adjacency_includes_pulse_at_window_start(
+        self,
+        pulse_network,
+    ):
+        """A pulse at ``t_start`` contributes to its half-open window."""
+        adjacency = pulse_network.compute_static_adjacency_matrix(
+            start_time=5,
+            end_time=6,
+        ).toarray()
+        expected = np.array([
+            [0.0, 1.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+        ])
+        np.testing.assert_allclose(adjacency, expected)
+
     # --- R3: boundary pulses must count as active -------------------------- #
 
     def test_default_window_counts_all_pulses(self, pulse_network):
