@@ -90,7 +90,7 @@ class _LaplacianState:
     dynamics-specific hooks (``_laplacian_prewarm``,
     ``_laplacian_on_event_end``, ``_laplacian_step_end``).
     """
-    A: object        # adjacency buffer (lil_matrix or dok_matrix)
+    A: lil_matrix | dok_matrix  # adjacency buffer
     S: object        # self-loop diagonal (csc)
     Dm1: object      # inverse-degree diagonal (csc)
     degrees: np.ndarray
@@ -1011,12 +1011,14 @@ class ContTempNetwork:
 
         return t, k
 
-    def compute_laplacian_matrices(self,
-                                   *,
-                                   t_start=None,
-                                   t_stop=None,
-                                   save_adjacencies=False, 
-                                   dynamics='rw'):
+    def compute_laplacian_matrices(
+        self,
+        *,
+        t_start: float | int | None = None,
+        t_stop: float | int | None = None,
+        save_adjacencies: bool = False,
+        dynamics: Literal["rw", "heat"] = "rw",
+    ) -> None:
         """Computes the laplacian matrices and saves them in `self.laplacians`
 
             Computes from the first event time (in `self.times`) before or
@@ -1197,7 +1199,7 @@ class ContTempNetwork:
     # (events are instantaneous; state is reset every step).
     # ------------------------------------------------------------------
 
-    def _make_adjacency_buffer(self, n):
+    def _make_adjacency_buffer(self, n: int) -> lil_matrix:
         """Allocate the mutable adjacency buffer used by the laplacian loop.
 
         Default is ``lil_matrix`` (interval dynamics). Pulse dynamics
@@ -1206,7 +1208,7 @@ class ContTempNetwork:
         """
         return lil_matrix((n, n), dtype=np.float64)
 
-    def _laplacian_grid_stop(self, t_stop):
+    def _laplacian_grid_stop(self, t_stop: float | int) -> float | int:
         """Return the upper bound used when selecting grid events."""
         return t_stop
 
@@ -1277,8 +1279,6 @@ class ContTempNetwork:
         """
         pass
 
-
-    
     def _compute_single_T(self, L, tau_k, lamda, num_nodes, method, **kwargs):
             """Compute a single transition matrix T_k = expm(-tau_k * lamda * L)."""
             if method not in _VALID_EXPM_METHODS:
@@ -1305,9 +1305,15 @@ class ContTempNetwork:
 
 
 
-    def compute_inter_transition_matrices(self, *, lamda=None, fix_tau_k=False,
-                                            method="dense_expm", n_jobs=1,
-                                            **kwargs):
+    def compute_inter_transition_matrices(
+        self,
+        *,
+        lamda: float | int | None = None,
+        fix_tau_k: bool = False,
+        method: str = "dense_expm",
+        n_jobs: int = 1,
+        **kwargs,
+    ) -> None:
             """
             Compute inter-event transition matrices for a lambda.
 
@@ -1522,7 +1528,11 @@ class ContTempNetwork:
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
         logger.info(f"Finished computing the transition matrices for lambda={lamda}")
 
-    def num_active_edges(self, t_start=None, t_end=None):
+    def num_active_edges(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> int:
         """Return the number of edges active within a given time window.
 
         An edge (event) is counted as active if it overlaps the interval
@@ -1795,7 +1805,11 @@ class ContTempNetwork:
         else:
             logger.info(f"PID {os.getpid()} : delta_inter_T has not been computed")
 
-    def _active_mask(self, t_start=None, t_end=None):
+    def _active_mask(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> pd.Series:
         """Boolean mask of events overlapping the window ``(t_start, t_end)``.
 
         An event is considered active when it starts strictly before ``t_end`` and ends
@@ -1827,7 +1841,11 @@ class ContTempNetwork:
         return (self.events_table["starting_times"] < t_end) & \
             (self.events_table["ending_times"] > t_start)
 
-    def active_nodes(self, t_start=None, t_end=None):
+    def active_nodes(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> np.ndarray:
         """Return the nodes that are active within a given time window.
 
         A node is active if it is an endpoint of at least one event 
@@ -1852,7 +1870,11 @@ class ContTempNetwork:
         nodes = set(edges["source_nodes"]).union(set(edges["target_nodes"]))
         return np.sort(list(nodes))
 
-    def num_active_nodes(self, t_start=None, t_end=None):
+    def num_active_nodes(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> int:
         """Return the number of nodes active within a given time window.
 
         A node is active if it is an endpoint of at least one event 
@@ -1873,7 +1895,11 @@ class ContTempNetwork:
         """
         return len(self.active_nodes(t_start, t_end))
 
-    def num_active_events(self, t_start=None, t_end=None):
+    def num_active_events(
+        self,
+        t_start: float | int | None = None,
+        t_end: float | int | None = None,
+    ) -> int:
         """Return the number of events active within a given time window.
 
         An event is counted as active if it starts strictly before ``t_end`` and
@@ -2062,7 +2088,7 @@ class ContTempInstNetwork(ContTempNetwork):
             & (self.events_table[self._STARTS] < t_end)
         )
 
-    def _laplacian_grid_stop(self, t_stop):
+    def _laplacian_grid_stop(self, t_stop: float | int) -> float | int:
         """Include the final pulse without changing public time metadata."""
         if t_stop == self.end_time:
             return np.nextafter(t_stop, np.inf)
@@ -2077,7 +2103,7 @@ class ContTempInstNetwork(ContTempNetwork):
 
     # --- pulse-dynamics hook overrides --------------------------------
 
-    def _make_adjacency_buffer(self, n):
+    def _make_adjacency_buffer(self, n: int) -> dok_matrix:
         # dok_matrix supports .clear() which is needed in
         # _laplacian_step_end below.
         return dok_matrix((n, n), dtype=np.float64)
@@ -2097,4 +2123,3 @@ class ContTempInstNetwork(ContTempNetwork):
         state.S.data.fill(1.0)
         state.Dm1.data.fill(1.0)
         state.degrees.fill(0.0)
-
