@@ -887,7 +887,8 @@ class ContTempNetwork:
         start_time: float | int | None = None,
         end_time: float | int | None = None,
         *,
-        weight: Literal["duration", "count"] = "duration",
+        weighted: bool = False,
+        weight: Literal["duration", "count"] | None = None,
     ) -> coo_matrix:
         """Returns the adjacency matrix of the static network built from the
         aggregagted edge activity between `start_time` and `end_time`.
@@ -901,10 +902,14 @@ class ContTempNetwork:
             Ending time for the aggregation. The default is None, i.e. the
             end time of the entire temporal network.
 
-        weight : {"duration", "count"}, default="duration"
-            Event contribution to the adjacency matrix. ``"duration"`` uses
-            the event duration clipped to the requested window. ``"count"``
-            gives every selected event unit weight.
+        weighted : bool, default=False
+            If ``False``, return a binary adjacency matrix indicating whether
+            an edge has at least one selected event. If ``True``, aggregate
+            selected events according to ``weight``.
+        weight : {"duration", "count"} or None, default=None
+            Weighted aggregation rule. ``None`` selects ``"duration"``.
+            ``"duration"`` uses event duration clipped to the requested
+            window; ``"count"`` gives every selected event unit weight.
 
         Returns
         -------
@@ -914,8 +919,13 @@ class ContTempNetwork:
             and before `end_time`.
 
         """
-        if weight not in {"duration", "count"}:
-            raise ValueError("weight must be 'duration' or 'count'")
+        if not weighted and weight is not None:
+            raise ValueError("weight can only be set when weighted=True")
+        if weighted:
+            if weight is None:
+                weight = "duration"
+            if weight not in {"duration", "count"}:
+                raise ValueError("weight must be 'duration' or 'count'")
 
         resolved_start_time: float | int
         resolved_end_time: float | int
@@ -940,13 +950,18 @@ class ContTempNetwork:
                     min(ev.ending_times, resolved_end_time)
                     - max(ev.starting_times, resolved_start_time)
                 )
+            elif weight == "count":
+                data.append(1.0)
             else:
                 data.append(1.0)
             rows.append(ev.source_nodes)
             cols.append(ev.target_nodes)
 
         A = coo_matrix((data, (rows, cols)), shape=(self.num_nodes, self.num_nodes))
-        return A + A.T
+        adjacency = A + A.T
+        if not weighted:
+            adjacency.data.fill(1.0)
+        return adjacency
 
 
     def _compute_time_grid(self):
@@ -2063,14 +2078,14 @@ class ContTempInstNetwork(ContTempNetwork):
         start_time: float | int | None = None,
         end_time: float | int | None = None,
         *,
-        weight: Literal["duration", "count"] = "count",
+        weighted: bool = False,
+        weight: Literal["count"] | None = None,
     ) -> coo_matrix:
         """Aggregate instantaneous events into an event-count adjacency matrix.
 
-        Each pulse contributes one unit to the corresponding undirected edge by
-        default. ``weight="duration"`` instead returns zero weights because
-        pulses have zero duration. For an explicit window, pulses are selected
-        using the half-open interval ``[start_time, end_time)``. With
+        By default, an edge is present when at least one selected pulse occurs.
+        With ``weighted=True``, entries count selected pulses. Explicit windows
+        use the half-open interval ``[start_time, end_time)``. With
         ``end_time=None``, pulses at the network ending time are included.
 
         Parameters
@@ -2086,9 +2101,12 @@ class ContTempInstNetwork(ContTempNetwork):
         scipy.sparse.coo_matrix
             Symmetric adjacency matrix whose entries count pulse events.
         """
+        if weighted and weight is None:
+            weight = "count"
         return super().compute_static_adjacency_matrix(
             start_time=start_time,
             end_time=end_time,
+            weighted=weighted,
             weight=weight,
         )
 

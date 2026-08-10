@@ -371,7 +371,9 @@ class TestBasicProperties(TempNetworkTestBase):
         assert simple_network.num_active_nodes(t_start=5, t_end=6) == 0
 
     def test_adj_full(self, simple_network):
-        A = simple_network.compute_static_adjacency_matrix().toarray()
+        A = simple_network.compute_static_adjacency_matrix(
+            weighted=True,
+        ).toarray()
         expected = np.array([
             [0, 3, 1],
             [3, 0, 2],
@@ -379,9 +381,31 @@ class TestBasicProperties(TempNetworkTestBase):
         ])
         assert np.allclose(A, expected)
 
+    def test_adj_is_binary_by_default(self, simple_network):
+        """The default static adjacency indicates edge presence only."""
+        adjacency = simple_network.compute_static_adjacency_matrix().toarray()
+
+        expected = np.array([
+            [0, 1, 1],
+            [1, 0, 1],
+            [1, 1, 0],
+        ])
+        assert np.allclose(adjacency, expected)
+
+    def test_weighted_adj_supports_duration_and_count(self, simple_network):
+        """Duration networks support duration and event-count aggregation."""
+        count_adjacency = simple_network.compute_static_adjacency_matrix(
+            weighted=True,
+            weight="count",
+        ).toarray()
+
+        assert count_adjacency[0, 1] == 2
+        with pytest.raises(ValueError, match="weight can only"):
+            simple_network.compute_static_adjacency_matrix(weight="count")
+
     def test_adj_window_0_2(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix(
-            start_time=0, end_time=2,
+            start_time=0, end_time=2, weighted=True,
         ).toarray()
         expected = np.array([
             [0, 2, 0],
@@ -392,7 +416,7 @@ class TestBasicProperties(TempNetworkTestBase):
 
     def test_adj_window_2p5_3(self, simple_network):
         A = simple_network.compute_static_adjacency_matrix(
-            start_time=2.5, end_time=3,
+            start_time=2.5, end_time=3, weighted=True,
         ).toarray()
         expected = np.array([
             [0, 0, 0],
@@ -1260,7 +1284,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         ])
         np.testing.assert_allclose(L_last, expected)
 
-    # --- R2: static adjacency must count pulses, not sum zero durations --- #
+    # --- R2: static adjacency counts pulses when weighted ----------------- #
 
     def test_static_adjacency_counts_events(self, pulse_network):
         """Full-range aggregation: (A,B) twice, (B,C) once.
@@ -1269,7 +1293,9 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         yields an all-zero matrix; the meaningful aggregation for pulses
         is the event count per node pair.
         """
-        A = pulse_network.compute_static_adjacency_matrix().toarray()
+        A = pulse_network.compute_static_adjacency_matrix(
+            weighted=True,
+        ).toarray()
         expected = np.array([
             [0.0, 2.0, 0.0],
             [2.0, 0.0, 1.0],
@@ -1277,23 +1303,20 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         ])
         np.testing.assert_allclose(A, expected)
 
-    def test_static_adjacency_accepts_duration_and_count_weights(
+    def test_static_adjacency_is_binary_by_default(
         self,
         pulse_network,
     ):
-        """Pulse aggregation supports only duration and event-count weights."""
-        count_adjacency = pulse_network.compute_static_adjacency_matrix(
-            weight="count",
-        ).toarray()
-        duration_adjacency = pulse_network.compute_static_adjacency_matrix(
-            weight="duration",
-        ).toarray()
+        """Pulse default adjacency records presence rather than event counts."""
+        adjacency = pulse_network.compute_static_adjacency_matrix().toarray()
 
-        assert count_adjacency[0, 1] == 2
-        np.testing.assert_allclose(duration_adjacency, np.zeros((3, 3)))
+        assert adjacency[0, 1] == 1
 
         with pytest.raises(ValueError, match="weight"):
-            pulse_network.compute_static_adjacency_matrix(weight="strength")
+            pulse_network.compute_static_adjacency_matrix(
+                weighted=True,
+                weight="duration",
+            )
 
     def test_static_adjacency_uses_half_open_pulse_windows(self, pulse_network):
         """Explicit pulse windows include their start and exclude their end.
@@ -1305,6 +1328,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         adjacency = pulse_network.compute_static_adjacency_matrix(
             start_time=1,
             end_time=5,
+            weighted=True,
         ).toarray()
         expected = np.array([
             [0.0, 0.0, 0.0],
@@ -1321,6 +1345,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         adjacency = pulse_network.compute_static_adjacency_matrix(
             start_time=5,
             end_time=6,
+            weighted=True,
         ).toarray()
         expected = np.array([
             [0.0, 1.0, 0.0],
