@@ -1284,6 +1284,16 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         ])
         np.testing.assert_allclose(L_last, expected)
 
+    def test_terminal_bound_does_not_change_public_time_grid(self, pulse_network):
+        """The final pulse uses a private bound, not a synthetic timestamp."""
+        pulse_network.compute_laplacian_matrices()
+
+        assert pulse_network.times[-1] == pulse_network.end_time
+        assert (
+            pulse_network.time_grid.index.get_level_values("times").max()
+            == pulse_network.end_time
+        )
+
     # --- R2: static adjacency counts pulses when weighted ----------------- #
 
     def test_static_adjacency_counts_events(self, pulse_network):
@@ -1384,22 +1394,21 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         assert pulse_network.active_nodes(t_start=2, t_end=5).tolist() == []
         assert pulse_network.num_active_nodes(t_start=2, t_end=5) == 0
 
-    # --- R4: conflicting ending_times must be rejected, not overwritten ---- #
+    # --- R4: supplied ending_times are ignored for pulse networks ----------- #
 
-    def test_conflicting_ending_times_column_raises(self):
-        """An events_table with nonzero durations must raise ValueError.
-
-        Silently overwriting the user's ending_times hides the mistake of
-        feeding an interval network into ContTempInstNetwork.
-        """
+    def test_conflicting_ending_times_column_is_ignored(self):
+        """Supplied ending times are ignored and replaced by pulse endings."""
         df = make_df(
             sources=[0, 1, 2],
             targets=[1, 2, 0],
             starts=[0.0, 1.0, 2.0],
             ends=[10.0, 20.0, 30.0],  # conflicts with zero-duration pulses
         )
-        with pytest.raises(ValueError):
-            ContTempInstNetwork(events_table=df)
+        with pytest.warns(UserWarning, match="ending_times are ignored"):
+            network = ContTempInstNetwork(events_table=df)
+
+        assert network.events_table["starting_times"].tolist() == [0.0, 1.0, 2.0]
+        assert network.end_time == 2.0
 
     def test_consistent_ending_times_column_accepted(self):
         """ending_times equal to starting_times is consistent and allowed."""

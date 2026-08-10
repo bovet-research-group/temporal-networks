@@ -1112,12 +1112,13 @@ class ContTempNetwork:
         self._laplacian_prewarm(state)
 
         # time grid for this time range
+        time_grid_stop = self._laplacian_grid_stop(self._t_stop_laplacians)
         time_grid_range = self.time_grid.loc[(
             self.time_grid.index.get_level_values(
                 "times") >= self._t_start_laplacians
         ) & (
             self.time_grid.index.get_level_values(
-                "times") < self._t_stop_laplacians
+                "times") < time_grid_stop
         )]
         
         self.time_grid_range_laplacians=time_grid_range
@@ -1204,6 +1205,10 @@ class ContTempNetwork:
         in ``_laplacian_step_end``.
         """
         return lil_matrix((n, n), dtype=np.float64)
+
+    def _laplacian_grid_stop(self, t_stop):
+        """Return the upper bound used when selecting grid events."""
+        return t_stop
 
     def _laplacian_prewarm(self, state):
         """Seed ``state`` with events that are already active at the time
@@ -1392,7 +1397,7 @@ class ContTempNetwork:
             # self.laplacians[k] covers [times[k0 + k], times[k0 + k + 1]].
             # k0 > 0 when laplacians were computed over a time window.
             k0 = getattr(self, "_k_start_laplacians", 0)
-            if len(self.times) < k0 + n_steps + 1:
+            if not fix_tau_k and len(self.times) < k0 + n_steps + 1:
                 raise ValueError(
                     f"need len(self.times) >= {k0 + n_steps + 1},"
                     f" got {len(self.times)}"
@@ -1923,6 +1928,7 @@ class ContTempInstNetwork(ContTempNetwork):
                  source_nodes=None,
                  target_nodes=None,
                  starting_times=None,
+                 ending_times=None,
                  label_to_node_dict=None,
                  sanitize_data=True,
                  events_table=None,
@@ -1952,6 +1958,22 @@ class ContTempInstNetwork(ContTempNetwork):
                 raise ValueError(
                     "events_table must be a pandas DataFrame or a path to a csv file")
 
+            if "ending_times" in events_table.columns:
+                warnings.warn(
+                    "ending_times are ignored for ContTempInstNetwork; "
+                    "pulse endings equal starting_times.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+        elif ending_times is not None:
+            warnings.warn(
+                "ending_times are ignored for ContTempInstNetwork; "
+                "pulse endings equal starting_times.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         super().__init__(source_nodes=source_nodes,
                          target_nodes=target_nodes,
                          starting_times=starting_times,
@@ -1967,8 +1989,9 @@ class ContTempInstNetwork(ContTempNetwork):
     def compute_laplacian_matrices(self,
                                    *,
                                    t_start=None,
-                                   t_stop=None,
-                                   save_adjacencies=False):
+                 t_stop=None,
+                 save_adjacencies=False,
+                 dynamics="rw"):
         """Compute all laplacian matrices and saves them in self.laplacians.
 
         Computes from the first time index before or equal to t_start until
@@ -1999,6 +2022,7 @@ class ContTempInstNetwork(ContTempNetwork):
             t_start=t_start,
             t_stop=t_stop,
             save_adjacencies=save_adjacencies,
+            dynamics=dynamics,
         )
 
     def compute_static_adjacency_matrix(
@@ -2076,6 +2100,12 @@ class ContTempInstNetwork(ContTempNetwork):
             (self.events_table[self._STARTS] >= t_start)
             & (self.events_table[self._STARTS] < t_end)
         )
+
+    def _laplacian_grid_stop(self, t_stop):
+        """Include the final pulse without changing public time metadata."""
+        if t_stop == self.end_time:
+            return np.nextafter(t_stop, np.inf)
+        return t_stop
 
     # --- pulse-dynamics hook overrides --------------------------------
 
