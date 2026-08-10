@@ -1986,45 +1986,6 @@ class ContTempInstNetwork(ContTempNetwork):
         # remove duration column as it doesnt make sense for instantaneous events
         self.events_table.drop(columns=[self._DURATIONS], inplace=True, errors="ignore")
 
-    def compute_laplacian_matrices(self,
-                                   *,
-                                   t_start=None,
-                 t_stop=None,
-                 save_adjacencies=False,
-                 dynamics="rw"):
-        """Compute all laplacian matrices and saves them in self.laplacians.
-
-        Computes from the first time index before or equal to t_start until
-        the time index before t_stop.
-
-        laplacians are computed from self.times[self._k_start_laplacians]
-        until self.times[self._k_stop_laplacians-1]
-
-        The laplacian at step k, is the random walk laplacian
-        between times[k] and times[k+1]
-
-        NOTE: This subclass implements *pulse dynamics* (state ``A``,
-        ``S``, ``Dm1``, ``degrees`` are reset to zero at every time step,
-        and event ends are no-ops). This is intentionally distinct from
-        ``ContTempNetwork.compute_laplacian_matrices`` which implements
-        *interval dynamics* (persistent state across time steps, with
-        event ends clearing the corresponding adjacency entry). The
-        behavior here mirrors upstream ``TemporalNetwork.py`` at commit
-        f99bca3, so the two classes are not expected to produce equal
-        laplacians even when ending_times are aligned to start + 1.
-
-        The pulse semantics are encoded entirely via the
-        ``_make_adjacency_buffer``, ``_laplacian_prewarm``,
-        ``_laplacian_on_event_end`` and ``_laplacian_step_end`` hooks
-        below; the loop body itself lives in the parent class.
-        """
-        return super().compute_laplacian_matrices(
-            t_start=t_start,
-            t_stop=t_stop,
-            save_adjacencies=save_adjacencies,
-            dynamics=dynamics,
-        )
-
     def compute_static_adjacency_matrix(
         self,
         start_time: float | int | None = None,
@@ -2107,6 +2068,13 @@ class ContTempInstNetwork(ContTempNetwork):
             return np.nextafter(t_stop, np.inf)
         return t_stop
 
+    def _transition_times(self) -> np.ndarray:
+        """Return internal timestamps for pulse transition durations."""
+        times = np.asarray(self.times, dtype=float)
+        if times[-1] == self.end_time:
+            return np.append(times, np.nextafter(self.end_time, np.inf))
+        return times
+
     # --- pulse-dynamics hook overrides --------------------------------
 
     def _make_adjacency_buffer(self, n):
@@ -2130,25 +2098,3 @@ class ContTempInstNetwork(ContTempNetwork):
         state.Dm1.data.fill(1.0)
         state.degrees.fill(0.0)
 
-
-    def compute_inter_transition_matrices(self, *, lamda=None,
-                                            method="dense_expm", n_jobs=1,
-                                            **kwargs):
-
-        """Compute interevent transition matrices.
-
-        T_k(lamda) = expm(-lamda*L_k).
-
-        The transition matrix T_k is saved in `self.inter_T[lamda][k]`,
-        where self.inter_T is a dictionary with lamda as keys and
-        lists of transition matrices as values.
-
-        will compute from self.times[self._k_start_laplacians]
-        until self.times[self._k_stop_laplacians-1]
-
-        the transition matrix at step k, is the probability transition matrix
-        between times[k] and times[k+1].
-        """
-        super().compute_inter_transition_matrices( lamda=lamda, fix_tau_k=True,
-                                            method=method, n_jobs=n_jobs,
-                                            **kwargs)
