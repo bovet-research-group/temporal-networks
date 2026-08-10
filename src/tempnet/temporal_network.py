@@ -38,7 +38,6 @@ from dataclasses import dataclass
 from joblib import Parallel, delayed
 from scipy.sparse import (
     coo_matrix,
-    csc_matrix,
     csr_matrix,
     diags,
     dok_matrix,
@@ -65,11 +64,11 @@ from .sanitize import (
 )
 
 from .utils import (
+    _prepare_inter_transition_matrix,
+    _threshold_and_row_normalize,
     set_to_zeroes,
     to_dense
 )
-
-InterTransitionMatrix = csr_matrix | csc_matrix | SparseStochMat
 
 
 # get the logger
@@ -1425,69 +1424,6 @@ class ContTempNetwork:
         inter = self.inter_T[lamda]
         n = len(inter)
 
-        def clean(matrix: InterTransitionMatrix) -> None:
-            """Zero-out small entries and row-normalize a matrix in place.
-
-            Parameters
-            ----------
-            matrix : scipy.sparse.csr_matrix, scipy.sparse.csc_matrix, \
-                    or stochmat.SparseStochMat
-                Working transition matrix. The matrix is modified in place.
-
-            Returns
-            -------
-            None
-                The input matrix is modified in place.
-            """
-            if tol is not None:
-                set_to_zeroes(matrix, tol)
-            inplace_csr_row_normalize(matrix)
-
-        def prepare_inter_matrix(
-            inter_matrix: InterTransitionMatrix,
-        ) -> InterTransitionMatrix:
-            """Return a cleaned working copy of an inter-event matrix.
-
-            ``self.inter_T[lamda]`` stores the primary inter-event transition
-            matrices. Computing accumulated transition matrices is a derived
-            operation and must not mutate those stored matrices. This helper
-            therefore copies or converts an inter-event factor before applying
-            tolerance-based sparsification and row normalization.
-
-            Parameters
-            ----------
-            inter_matrix : scipy.sparse.csr_matrix, scipy.sparse.csc_matrix, \
-                    or stochmat.SparseStochMat
-                Inter-event transition matrix read from ``self.inter_T``.
-
-            Returns
-            -------
-            scipy.sparse.csr_matrix, scipy.sparse.csc_matrix, \
-                    or stochmat.SparseStochMat
-                Cleaned working copy. If ``force_csr=True``, the returned
-                matrix is CSR.
-
-            Raises
-            ------
-            ValueError
-                If ``inter_matrix`` is a ``SparseStochMat`` and ``force_csr``
-                is ``False``.
-            """
-            if isinstance(inter_matrix, SparseStochMat):
-                if not force_csr:
-                    raise ValueError(
-                        "inter_T[lamda] is a SparseStochMat, but force_csr "
-                        "is False. Set force_csr=True."
-                    )
-                matrix = inter_matrix.tocsr()
-            elif force_csr:
-                matrix = inter_matrix.tocsr(copy=True)
-            else:
-                matrix = inter_matrix.copy()
-
-            clean(matrix)
-            return matrix
-
         # Set up iteration direction.
         if reverse_time:
             k_init, k_range = n - 1, reversed(range(n - 1))
@@ -1499,7 +1435,11 @@ class ContTempNetwork:
         logger.info(f"Computing transition matrices for lambda={lamda} in {self.direction} time")
 
         # Seed with a cleaned copy of the initial inter-event matrix.
-        T0 = prepare_inter_matrix(inter[k_init])
+        T0 = _prepare_inter_transition_matrix(
+            inter[k_init],
+            force_csr=force_csr,
+            tol=tol,
+        )
 
         t0 = time.time()
 
@@ -1509,17 +1449,31 @@ class ContTempNetwork:
                 if not k % 1000:
                     logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
 
-                matrix = prepare_inter_matrix(inter[k])
+                matrix = _prepare_inter_transition_matrix(
+                    inter[k],
+                    force_csr=force_csr,
+                    tol=tol,
+                )
                 self.T[lamda].append(self.T[lamda][-1] @ matrix)
-                clean(self.T[lamda][-1])
+                self.T[lamda][-1] = _threshold_and_row_normalize(
+                    self.T[lamda][-1],
+                    tol,
+                )
         else:
             self.T[lamda] = T0
             for k in k_range:
                 if not k % 1000:
                     logger.info(f"{k} over {n} - {time.time() - t0:.2f}s")
-                matrix = prepare_inter_matrix(inter[k])
+                matrix = _prepare_inter_transition_matrix(
+                    inter[k],
+                    force_csr=force_csr,
+                    tol=tol,
+                )
                 self.T[lamda] = self.T[lamda] @ matrix
-                clean(self.T[lamda])
+                self.T[lamda] = _threshold_and_row_normalize(
+                    self.T[lamda],
+                    tol,
+                )
 
         self._compute_times[f"trans_matrix_{lamda}_rev{reverse_time}"] = time.time() - t0
         logger.info(f"Finished computing the transition matrices for lambda={lamda}")
