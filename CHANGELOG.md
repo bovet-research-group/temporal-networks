@@ -28,13 +28,29 @@
   normalization is controlled by the new `sanitize_data` parameter (default
   `True`); the fast path is `sanitize_data=False`, which uses the input as-is
   and emits a `UserWarning`.
-- Event tables are now always normalized on construction (contiguous 0..N-1
-  node ids, chronological sort by `(starting_times, ending_times)`, zero-based
-  `RangeIndex`) — DataFrame inputs no longer preserve caller row order or
-  index by default.
+- `ContTempInstNetwork` now represents pulses with
+  `ending_times == starting_times`; supplied `ending_times` are ignored with a
+  `UserWarning`.
+- With `sanitize_data=True`, event tables are normalized on construction
+  (contiguous 0..N-1 node ids, chronological sort by
+  `(starting_times, ending_times)`, and zero-based `RangeIndex`). The
+  `sanitize_data=False` fast path preserves the input as-is.
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
+- `compute_static_adjacency_matrix()` supports binary edge-presence output by
+  default and optional weighted duration or event-count aggregation via
+  `weighted=True`.
+- Instantaneous networks support weighted event counts, while interval
+  networks support weighted durations and event counts.
+- Pulse activity windows use the half-open interval `[t_start, t_end)`; a
+  default `end_time=None` includes pulses at the final network time.
+- `ContTempInstNetwork` laplacian computation uses an internal terminal
+  boundary so the final pulse is processed without changing public time
+  metadata.
+- Added transition-matrix preparation helpers in `tempnet.utils`:
+  `_prepare_inter_transition_matrix()` and
+  `_threshold_and_row_normalize()`.
 - Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
   They compute the number of active edges and nodes within a range of the t_start and t_end. 
 - New `tempnet.sanitize` module with public helpers `sanitize_events_table()`
@@ -46,6 +62,16 @@
   group installed via pip).
 
 ### Fixed
+- Instantaneous-network static adjacency no longer interprets zero-duration
+  pulses as duration-one events; weighted pulse adjacency counts selected
+  events explicitly.
+- The final instantaneous pulse is no longer omitted from laplacian
+  computation.
+- `num_active_edges()` now uses the network-specific active-event selector.
+- `compute_transition_matrices()` no longer mutates the stored `inter_T`
+  matrices while preparing or normalizing them.
+- Removed duplicate `active_nodes()` and `num_active_nodes()` definitions so
+  both methods use the shared active-event selection logic.
 - Constructor invariants are now enforced for all input paths: unsorted
   list/DataFrame inputs are sorted with a reset index; duplicate or named
   DataFrame indices no longer corrupt the time grid / Laplacian computation.
