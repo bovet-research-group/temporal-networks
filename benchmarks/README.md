@@ -103,6 +103,17 @@ CPU count, peak worker process count, and peak runnable threads divided by CPU
 count. Values above 1.0 for the oversubscription factor mean runnable threads
 exceed available CPUs.
 
+### `bench_constructor.py`
+
+Compares `ContTempNetwork` initialization with the default
+`sanitize_data=True` path against the `sanitize_data=False` fast track. Both
+timing and peak-memory benchmarks use equivalent event tables across the
+configured event counts (`n_events`). The normal path receives unsorted
+events, non-contiguous labels, and a non-RangeIndex; the fast-track path
+receives the already normalized equivalent, which is verified with
+`needs_sanitization()` in setup. ASV reports timing and peak-memory results
+separately using its standard output.
+
 ## Comparing branches
 
 Use `asv continuous` for feature-branch comparisons:
