@@ -58,8 +58,6 @@
   exported from `tempnet`.
 - `pytest --run-network` opt-in flag; Zenodo-dependent tests (marker
   `network`) are skipped by default.
-- `shell.nix` development environment (Python 3.10 venv + `dev` dependency
-  group installed via pip).
 
 ### Fixed
 - Instantaneous-network static adjacency no longer interprets zero-duration

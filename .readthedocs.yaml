@@ -1,8 +1,5 @@
 # ReadTheDocs configuration.
 #
-# This file is present but the ReadTheDocs integration is NOT yet enabled.
-# To activate, connect the repository at https://readthedocs.org and point
-# it to this configuration file.
 
 version: 2
 
