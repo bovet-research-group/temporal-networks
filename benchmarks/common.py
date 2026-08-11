@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+# SPDX-License-Identifier: LGPL-3.0-or-later
 """Shared helpers and seeded generators for the tempnet benchmarks.
 
 All generators are deterministic (fixed seed or fully structural) so that

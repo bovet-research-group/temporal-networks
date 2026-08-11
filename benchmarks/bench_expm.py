@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+# SPDX-License-Identifier: LGPL-3.0-or-later
 """Timing and peak-memory benchmarks for the ``tempnet.faster_expm`` module.
 
 Benchmarked implementations, all computing (a variant of) ``expm(-L)``:

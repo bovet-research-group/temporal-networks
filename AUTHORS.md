@@ -1,12 +1,16 @@
-# Project Authors & Contributors
+<!--
+SPDX-License-Identifier: LGPL-3.0-or-later
+-->
 
-## Creator & Lead
+# Project Authors
+
+## Main Author
 * Alexandre Bovet <alexandre.bovet@uzh.ch> 
 
-## Contributors
-* Yasaman Asgari <yasaman.asgari@uzh.ch> - Refactoring to create a standalone package from flowstab, created tests and examples.
-* Samuel Koovely <samuel.koovely@uzh.ch> - Added the conditional entropy computation.
-* Jonas I. Liechti <j-i-l@t4d.ch> - Supervised and helped with the refactoring.
+## Co Authors
+* Yasaman Asgari <yasaman.asgari@uzh.ch>
+* Samuel Koovely <samuel.koovely@uzh.ch>
+* Jonas I. Liechti <j-i-l@t4d.ch>
 
 ## Copyright
 Copyright 2021-2025, Alexandre Bovet.
