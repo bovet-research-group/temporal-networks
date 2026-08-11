@@ -202,6 +202,16 @@ class TimeExpmParallelSingleThreadedBlas(_ParallelBase):
                 normalize_rows=False,
             )
 
+    @pretty_name("sparse_lapl_expm sparse branch (BLAS=1)")
+    def time_sparse_lapl_expm_sparse(self, size, n_components, nproc):
+        with threadpool_limits(1):
+            sparse_lapl_expm(
+                self.L.copy(),
+                fact=1.0,
+                dense_expm=False,
+                nproc=nproc,
+            )
+
 
 class PeakMemExpmSerial(_SerialBase):
     """Peak memory of the serial implementations (main process only).

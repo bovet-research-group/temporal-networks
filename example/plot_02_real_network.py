@@ -194,7 +194,11 @@ print("End:", tnet.end_time)
 # Number of active nodes in each one-hour window across a full day.
 
 t = np.arange(0, 24 * 3600 + 1, 3600)
-n_active = [tnet.num_active_nodes(None, t[1])]+[tnet.num_active_nodes(t[i], t[i + 1]) for i in range(1,len(t) - 1)]
+n_active = [
+        tnet.num_active_nodes(None, t[1])
+    ]+[
+        tnet.num_active_nodes(t[i], t[i + 1]) for i in range(1,len(t) - 1)
+    ]
 fig, ax = plt.subplots(nrows=1, ncols=1, dpi=200)
 ax.plot(t[:-1], n_active, marker='.')
 
@@ -251,3 +255,71 @@ plt.show()
 # first computing the Laplacians for the 1st hour
 # to keep the example fast enough.
 tnet.compute_laplacian_matrices(t_start=None, t_stop=1800)
+
+# %%
+# Inspecting the density of the Laplacians
+# ----------------------------------------
+# Different intervals produce Laplacians of very different sparsity. The
+# helper below plots the distribution of densities and returns a set of
+# representative indices (the min, lower-quartile, median, upper-quartile, and
+# max-density snapshots) that we reuse for benchmarking.
+
+indices = tnet.plot_density_of_laplacians()
+
+# %%
+# Benchmarking the matrix-exponential methods
+# -------------------------------------------
+# Computing a transition matrix requires a matrix exponential, and
+# ``tempnet`` offers more than one strategy for this. :meth:`print_report`
+# times each method across a range of diffusion scales and the representative
+# Laplacians selected above, then recommends the fastest option for this
+# dataset. 
+
+scales = np.logspace(-6, 6, 10)
+tnet.print_report(
+    indices, scales,
+    method_kwargs={
+        'mfp_exp': {'err': 1e-6},
+        'parallel_expm': {'nproc': 4, 'normalize_rows': True},
+    },
+)
+# %%
+# Computing the transition matrices
+# ---------------------------------------
+# Finally we build thetransition matrices for 2 time
+# scales that the flow-stability clustering consumes. 
+# It may take few minutes to run this.
+
+scales = [1e-6, 1]
+for i, s in enumerate(scales):
+    tnet.compute_inter_transition_matrices(
+    lamda=s,
+    method="parallel_expm",
+    n_jobs=1,nproc= 4, normalize_rows= True)
+    tnet.compute_transition_matrices(lamda=s, save_intermediate=False, reverse_time=False, force_csr=True, tol=1e-8)
+
+# %%
+# Visualise the forward transition matrices for each time scale.
+
+norm = LogNorm(vmin=1e-6, vmax=1)
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(9, 4), dpi=500)
+for i, lamda in enumerate(scales):
+    sns.heatmap(tnet.T[lamda].toarray(), ax=ax[i], square=True, cbar=False,
+                norm=norm)
+    ax[i].set_title(rf'$\lambda$={lamda}')
+    ax[i].set_xticks([])
+    ax[i].set_yticks([])
+
+fig.colorbar(ax[0].collections[0], ax=ax, label='Transition probability',
+             fraction=0.046, pad=0.04)
+plt.show()
+
+## Save
+# As computing the transition matrices for different lambdas can be
+# computationally expensive, one can save and load the network to access it later.
+tmp_path = Path(r'')  # <-- put your actual directory here, e.g. Path(r'C:\Users\you\data')
+tnet.save(tmp_path / "mice_network.pkl")
+
+# Load
+# and we can load it later with
+tnet = tn.ContTempNetwork.load(tmp_path / "mice_network.pkl")

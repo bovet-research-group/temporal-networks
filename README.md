@@ -44,17 +44,23 @@ Alternatively, with [uv](https://docs.astral.sh/uv/):
 uv sync
 ```
 
+
 ### Running the tests
 
 ```bash
 pytest
+```
+Or with `uv`:
+```bash
+uv run pytest
 ```
 
 Tests marked `network` download data from Zenodo and are skipped by default.
 Run them explicitly when you have internet access:
 
 ```bash
-pytest -m network
+pytest --run-network              # everything, incl. network tests
+pytest --run-network -m network   # only the network tests
 ```
 
 ### Building the documentation locally
@@ -64,6 +70,11 @@ sphinx-build -b html docs docs/_build/html
 ```
 
 Then open `docs/_build/html/index.html` in a browser.
+
+> **Note:** the `plot_02` gallery example downloads the mouse contact dataset
+> from Zenodo during the build — this requires an internet connection and
+> `zenodo-get` (included in the `docs` dependency group).
+
 
 ### Running the benchmarks
 
@@ -86,6 +97,21 @@ Alternatively, with `uv`:
 uv run asv run          # benchmark the latest commit on main
 uv run asv publish      # generate the HTML report in .asv/html
 uv run asv preview      # serve the report locally
+```
+
+To compare a feature branch against `main`, run ASV's continuous comparison
+locally from the branch:
+
+```bash
+asv continuous main HEAD
+asv compare main HEAD --factor 1.1
+```
+
+Both commits must be available locally. Use a merge base instead of `main` if
+you want to compare against the exact point where the branch diverged:
+
+```bash
+asv continuous $(git merge-base main HEAD) HEAD
 ```
 
 Results accumulate in `.asv/results/`, so successive runs on different
