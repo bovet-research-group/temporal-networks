@@ -1,4 +1,6 @@
-# Project Authors & Contributors
+<!--
+SPDX-License-Identifier: LGPL-3.0-or-later
+-->
 
 ## Creator & Lead
 * Alexandre Bovet <alexandre.bovet@uzh.ch> 
