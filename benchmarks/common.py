@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+# SPDX-License-Identifier: LGPL-3.0-or-later
 """Shared helpers and seeded generators for the tempnet benchmarks.
 
 All generators are deterministic (fixed seed or fully structural) so that
@@ -87,15 +89,6 @@ class Machine:
         return self._config
 
     def get_nprocs(self):
-<<<<<<< HEAD
-        """Return ``[1, 2, 4, ...]`` up to the number of available cpus."""
-        values = []
-        value = 1
-        while value <= self._ncpu:
-            values.append(value)
-            value *= 2
-        return values
-=======
         """Return powers of two plus one less than the CPU count."""
         if self._ncpu <= 1:
             return [1]
@@ -109,7 +102,6 @@ class Machine:
         values.append(self._ncpu - 1)
         return sorted(set(values))
 
->>>>>>> main
 
 def path_graph_laplacian(size):
     """Heat Laplacian of a path graph with `size` nodes (one component)."""
