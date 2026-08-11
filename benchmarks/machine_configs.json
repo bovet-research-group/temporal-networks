@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+// SPDX-License-Identifier: LGPL-3.0-or-later
+
 {
   "default": {
     "sizes": [100, 200, 400, 800, 1600, 3200, 6400],
