@@ -1,8 +1,5 @@
 # ReadTheDocs configuration.
 #
-# This file is present but the ReadTheDocs integration is NOT yet enabled.
-# To activate, connect the repository at https://readthedocs.org and point
-# it to this configuration file.
 
 version: 2
 
@@ -12,7 +9,7 @@ build:
     python: "3.10"
   jobs:
     post_install:
-      - pip install --group docs
+      - pip install --group docs .
 
 sphinx:
   configuration: docs/conf.py

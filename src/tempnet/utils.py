@@ -27,6 +27,8 @@
 
 """Sparse-matrix utility functions for temporal-network computations."""
 
+import warnings
+
 import numpy as np
 from numpy.typing import ArrayLike
 from stochmat import inplace_csr_row_normalize, SparseStochMat
@@ -41,6 +43,8 @@ from scipy.sparse import (
     sparray,
     spmatrix,
 )
+
+SparseTransitionMatrix = SparseStochMat | csr_matrix | csc_matrix
 
 
 def set_to_ones(Tcsr: csr_matrix, tol: float = 1e-8) -> None:
@@ -189,6 +193,94 @@ def set_to_zeroes(
                 T.eliminate_zeros()
         else:
             raise TypeError("T must be csc,csr or SparseStochMat")
+
+
+def _threshold_and_row_normalize(
+    matrix: SparseTransitionMatrix,
+    tol: float | None,
+) -> SparseTransitionMatrix:
+    """Apply thresholding and row normalization to a sparse matrix.
+
+    Parameters
+    ----------
+    matrix : SparseStochMat, scipy.sparse.csr_matrix, or scipy.sparse.csc_matrix
+        Sparse matrix to process. ``SparseStochMat`` and CSR inputs are
+        modified in place. CSC inputs are returned as row-normalized CSC
+        copies.
+    tol : float or None
+        Relative threshold passed to :func:`set_to_zeroes`. If ``None``, only
+        row normalization is applied.
+
+    Returns
+    -------
+    SparseStochMat, scipy.sparse.csr_matrix, or scipy.sparse.csc_matrix
+        Thresholded and row-normalized matrix.
+    """
+    if tol is not None:
+        set_to_zeroes(matrix, tol)
+
+    if isinstance(matrix, csc_matrix):
+        warnings.warn(
+            "CSC transition matrices cannot be row-normalized in place with "
+            "stochmat.inplace_csr_row_normalize; returning a row-normalized "
+            "CSC copy. Use force_csr=True to avoid this conversion.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return csc_row_normalize(matrix)
+
+    inplace_csr_row_normalize(matrix)
+    return matrix
+
+
+def _prepare_inter_transition_matrix(
+    inter_matrix: SparseTransitionMatrix,
+    *,
+    force_csr: bool,
+    tol: float | None,
+) -> SparseTransitionMatrix:
+    """Return a cleaned working copy of an inter-event matrix.
+
+    ``inter_matrix`` is read from ``inter_T``. Since ``inter_T`` is primary
+    data, accumulated transition-matrix computations must not mutate it. This
+    helper copies the inter-event factor before applying tolerance-based
+    sparsification and normalization.
+
+    Parameters
+    ----------
+    inter_matrix : SparseStochMat, scipy.sparse.csr_matrix, or scipy.sparse.csc_matrix
+        Inter-event transition matrix read from ``inter_T``.
+    force_csr : bool
+        If ``True``, return a CSR matrix. This is required for
+        ``SparseStochMat`` inputs because multiplication of CSR by
+        ``SparseStochMat`` is not implemented.
+    tol : float or None
+        Relative tolerance used for sparsification before row normalization.
+
+    Returns
+    -------
+    SparseStochMat, scipy.sparse.csr_matrix, or scipy.sparse.csc_matrix
+        Cleaned working copy. If ``force_csr=True``, the returned matrix is CSR.
+
+    Raises
+    ------
+    ValueError
+        If ``inter_matrix`` is a ``SparseStochMat`` and ``force_csr`` is
+        ``False``.
+    """
+    if isinstance(inter_matrix, SparseStochMat):
+        if not force_csr:
+            raise ValueError(
+                "inter_T[lamda] is a SparseStochMat, but force_csr is False. "
+                "Set force_csr=True."
+            )
+        matrix = inter_matrix.tocsr()
+    elif force_csr:
+        matrix = inter_matrix.tocsr(copy=True)
+    else:
+        matrix = inter_matrix.copy()
+
+    return _threshold_and_row_normalize(matrix, tol)
 
 
 def to_dense(M: ArrayLike | spmatrix | sparray | SparseStochMat) -> np.ndarray:

@@ -23,13 +23,64 @@
   (function name: `compute_laplacian_matrices`)
 - Moved `sparse_lapl_expm` and `compute_subspace_expm` from `temporal_network.py` to `faster_expm.py`.
 - Renamed `parallel_expm.py` to `faster_expm.py`.
+- `ContTempNetwork` / `ContTempInstNetwork`: removed the constructor parameters
+  `relabel_nodes`, `reset_event_table_index`, and `node_to_label_dict`. Data
+  normalization is controlled by the new `sanitize_data` parameter (default
+  `True`); the fast path is `sanitize_data=False`, which uses the input as-is
+  and emits a `UserWarning`.
+- `ContTempInstNetwork` now represents pulses with
+  `ending_times == starting_times`; supplied `ending_times` are ignored with a
+  `UserWarning`.
+- With `sanitize_data=True`, event tables are normalized on construction
+  (contiguous 0..N-1 node ids, chronological sort by
+  `(starting_times, ending_times)`, and zero-based `RangeIndex`). The
+  `sanitize_data=False` fast path preserves the input as-is.
 
 ### Added
 - ASV benchmark suite (`benchmarks/`)
+- `compute_static_adjacency_matrix()` supports binary edge-presence output by
+  default and optional weighted duration or event-count aggregation via
+  `weighted=True`.
+- Instantaneous networks support weighted event counts, while interval
+  networks support weighted durations and event counts.
+- Pulse activity windows use the half-open interval `[t_start, t_end)`; a
+  default `end_time=None` includes pulses at the final network time.
+- `ContTempInstNetwork` laplacian computation uses an internal terminal
+  boundary so the final pulse is processed without changing public time
+  metadata.
+- Added transition-matrix preparation helpers in `tempnet.utils`:
+  `_prepare_inter_transition_matrix()` and
+  `_threshold_and_row_normalize()`.
 - Added `num_active_events`, `num_active_nodes` as methods of `ContTempNetwork` class in the `temporal_network.py`. 
   They compute the number of active edges and nodes within a range of the t_start and t_end. 
+- New `tempnet.sanitize` module with public helpers `sanitize_events_table()`
+  (copy by default, or `inplace=True`) and `needs_sanitization()`, both
+  exported from `tempnet`.
+- `pytest --run-network` opt-in flag; Zenodo-dependent tests (marker
+  `network`) are skipped by default.
 
 ### Fixed
-- Normalized default `events_table` input (`relabel_nodes=True`) consistently
-  with list-based input: DataFrame/CSV event tables are copied, relabelled,
-  sorted by `starting_times` and `ending_times`, and reindexed by default.
+- Instantaneous-network static adjacency no longer interprets zero-duration
+  pulses as duration-one events; weighted pulse adjacency counts selected
+  events explicitly.
+- The final instantaneous pulse is no longer omitted from laplacian
+  computation.
+- `num_active_edges()` now uses the network-specific active-event selector.
+- `compute_transition_matrices()` no longer mutates the stored `inter_T`
+  matrices while preparing or normalizing them.
+- Removed duplicate `active_nodes()` and `num_active_nodes()` definitions so
+  both methods use the shared active-event selection logic.
+- Constructor invariants are now enforced for all input paths: unsorted
+  list/DataFrame inputs are sorted with a reset index; duplicate or named
+  DataFrame indices no longer corrupt the time grid / Laplacian computation.
+- Windowed `compute_inter_transition_matrices` (after
+  `compute_laplacian_matrices(t_start=..., t_stop=...)`) now pairs each
+  Laplacian with the inter-event time of its own step; previously taus were
+  counted from `times[0]`, producing wrong transition matrices for any window
+  with `_k_start_laplacians > 0`.
+- Invalid methods passed directly to `_compute_single_T` now raise
+  `ValueError` instead of failing with `UnboundLocalError`.
+- Invalid `mfp_exp(non_norm=...)` values now raise `ValueError` instead of
+  failing with `UnboundLocalError`.
+- The Zenodo mice dataset is downloaded once per test session (session-scoped
+  fixture) instead of once per test.

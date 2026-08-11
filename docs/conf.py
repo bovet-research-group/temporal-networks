@@ -3,8 +3,9 @@ from importlib.metadata import version as get_version
 # -- Project information -------------------------------------------------------
 
 project = 'tempnet'
-copyright = '2025, Alexandre Bovet, Yasaman Asgari, Jonas I. Liechti'
-author = 'Alexandre Bovet, Yasaman Asgari, Jonas I. Liechti'
+copyright = ['2021, Alexandre Bovet,'
+             '2026, Alexandre Bovet, Yasaman Asgari, Samuel Koovely, Jonas I. Liechti']
+author = 'Alexandre Bovet, Yasaman Asgari, Samuel Koovely, Jonas I. Liechti'
 
 release = get_version('tempnet')
 

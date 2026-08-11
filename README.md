@@ -44,17 +44,23 @@ Alternatively, with [uv](https://docs.astral.sh/uv/):
 uv sync
 ```
 
+
 ### Running the tests
 
 ```bash
 pytest
+```
+Or with `uv`:
+```bash
+uv run pytest
 ```
 
 Tests marked `network` download data from Zenodo and are skipped by default.
 Run them explicitly when you have internet access:
 
 ```bash
-pytest -m network
+pytest --run-network              # everything, incl. network tests
+pytest --run-network -m network   # only the network tests
 ```
 
 ### Building the documentation locally
@@ -64,6 +70,11 @@ sphinx-build -b html docs docs/_build/html
 ```
 
 Then open `docs/_build/html/index.html` in a browser.
+
+> **Note:** the `plot_02` gallery example downloads the mouse contact dataset
+> from Zenodo during the build — this requires an internet connection and
+> `zenodo-get` (included in the `docs` dependency group).
+
 
 ### Running the benchmarks
 

@@ -72,6 +72,7 @@ instance/
 
 # Sphinx documentation
 docs/_build/
+docs/auto_examples/
 
 # ASV benchmarks (environments and generated HTML are ignored;
 # raw results are committed to build up a benchmark history)
