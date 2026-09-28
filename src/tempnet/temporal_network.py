@@ -1946,7 +1946,70 @@ class ContTempNetwork:
             Number of active events overlapping the window. Zero if none.
         """
         return int(self._active_mask(t_start, t_end).sum())
-    
+
+
+    @staticmethod
+    def _conditional_entropy_of_transition_matrix(T, p0):
+        r"""Conditional entropy of one Markov step under a given state distribution.
+
+        Computes
+
+        .. math::
+
+            H(Y \mid X) = -\sum_i p_0(i) \sum_j T_{ij} \log T_{ij},
+
+        the entropy (in nats) of the destination state ``Y`` given the source
+        state ``X``, where ``X`` is distributed according to ``p0`` and each row
+        ``T[i, :]`` is the conditional distribution ``P(Y = j \mid X = i)``.
+
+        Parameters
+        ----------
+        T : scipy.sparse matrix, shape (n, n)
+            Row-stochastic transition matrix. Any sparse format is accepted and
+            converted to CSR internally. 
+
+        p0 : array_like, shape (n,)
+            Weights for each source state. Must
+            have length ``T.shape[0]``, and a probability vector summing to 1.
+        Returns
+        -------
+        float
+            The conditional entropy in nats (natural log); divide by ``log(2)`` for bits
+
+        """
+        if not isspmatrix_csr(T):
+            T = T.tocsr()
+        n_rows=T.shape[0]
+        p0 = np.asarray(p0, dtype=np.float64)
+
+        if p0.shape != (n_rows,):
+            raise ValueError(
+                f"p0 must have shape ({n_rows},) to match T, got {p0.shape}."
+            )
+        if np.any(p0 < 0):
+            raise ValueError("p0 must be non-negative.")
+
+
+        data = T.data
+        indptr = T.indptr
+
+        if data.size == 0:
+            return 0.0
+
+        xlogx = np.zeros_like(data, dtype=np.float64)
+        mask = data > 0
+        xlogx[mask] = data[mask] * np.log(data[mask])
+
+        row_lengths = np.diff(indptr)
+        row_sums = np.zeros(T.shape[0], dtype=np.float64)
+        nonempty = row_lengths > 0
+        if np.any(nonempty):
+            starts = indptr[:-1][nonempty]
+            row_sums[nonempty] = np.add.reduceat(xlogx, starts)
+
+        return float(-np.dot(p0, row_sums))
+
+
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
