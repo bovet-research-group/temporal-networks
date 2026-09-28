@@ -243,7 +243,7 @@ plt.show()
 # Plot 2: Event-duration distribution
 # ------------------------------------
 
-durations = et['durations'].values
+durations =tnet.events_table['durations'].values
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.hist(durations, bins=30, edgecolor='white')
@@ -257,7 +257,7 @@ plt.show()
 # Now we can compute the Laplacian matrices and transition matrices for the
 # synthetic network
 # ------------------------------------
-tnet.compute_laplacian_matrices(dynamics='heat')
+tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=True)
 scales = [0.0001, 0.001, 0.01, 0.1,1, 10, 100]
 for lamda in scales:
     tnet.compute_inter_transition_matrices(lamda=lamda, method='dense_expm')
@@ -298,9 +298,15 @@ for lamda in scales:
 fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 4))
 times=tnet.times
 for lamda in scales:
-    tnet.compute_conditional_entropy_curve(lamda=lamda, alpha_sampling=0.25)
+    tnet.compute_conditional_entropy_curve(lamda=lamda, alpha_sampling=0.05)
     ax.plot(times[tnet.S[lamda][:, 0].astype(int)], tnet.S[lamda][:, 1], label=rf"$\lambda$={lamda}")
+
+tnet.compute_entropy_upper_bound_curve(alpha_sampling=0.25)
+ax.plot(times[tnet.S_upper_bound[:, 0].astype(int)], tnet.S_upper_bound[:, 1], label="Upper bound", linestyle='--', color='black')
+
 ax.set_xlabel("Time")
 ax.set_ylabel("Conditional Entropy (nats)")
-ax.legend()
+ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
 plt.show()
+
+# %%

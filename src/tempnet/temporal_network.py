@@ -36,6 +36,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from scipy.sparse.linalg import expm
+from scipy.sparse.csgraph import connected_components
 
 from .expm_with_tol import mfp_exp
 from .faster_expm import compute_subspace_expm, sparse_lapl_expm
@@ -2063,6 +2064,10 @@ class ContTempNetwork:
         if not hasattr(self, "S"):
             self.S = {}
 
+        if lamda in self.S:
+            logger.info(f"Entropy curve already computed for lamda={lamda}, returning it")
+            return self.S[lamda]
+        
         if alpha_sampling is None:
             alpha_sampling = 1.0
         if alpha_sampling <= 0 or alpha_sampling > 1:
@@ -2103,6 +2108,72 @@ class ContTempNetwork:
             sampled_indices,
             entropy_values,
         ))
+    def compute_entropy_upper_bound_curve(self, alpha_sampling=None):
+        r"""Component-size upper bound for the entropy curve.
+
+        For each sampled interval, the bound is computed from the connected
+        components of the graph whose structure is given by the corresponding
+        Laplacian:
+
+        .. math::
+
+            \sum_c \frac{|c|}{N} \log |c|,
+
+        i.e. the conditional entropy attained when the walk is uniform within
+        each reachable component. This is an upper bound on the true
+        conditional entropy given the component structure.
+
+        Parameters
+        ----------
+        alpha_sampling : float, optional
+            Fraction of samples to evaluate, in ``(0, 1]``. Defaults to ``1.0``.
+
+        Returns
+        -------
+        numpy.ndarray, shape (num_samples, 2)
+            Sample indices in the first column, upper-bound values (in nats) in
+            the second.
+        """
+        if alpha_sampling is None:
+            alpha_sampling = 1.0
+        if alpha_sampling <= 0 or alpha_sampling > 1:
+            raise ValueError("alpha_sampling must be in (0, 1].")
+
+        if hasattr(self, 'S_upper_bound'):
+            logger.info("Entropy upper bound curve already computed, returning it")
+            return self.S_upper_bound
+
+        num_points = len(self.laplacians)
+        num_samples = max(1, int(np.ceil(alpha_sampling * num_points)))
+        sampled_indices = np.unique(
+            np.linspace(0, num_points - 1, num_samples, dtype=int)
+        )
+
+        logger.info("Computing entropy upper bound")
+        t0 = time.time()
+        values = np.empty(len(sampled_indices), dtype=np.float64)
+
+
+        acc = None
+        prev_k = -1
+        for pos, k in enumerate(sampled_indices):
+            if pos % 1000 == 0:
+                logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+
+            for j in range(prev_k + 1, k + 1):
+                A = self.adjacencies[j]
+                acc = A.copy() if acc is None else acc + A
+            prev_k = k
+
+            A_bin = (acc != 0)                 # union pattern up to time k
+            n_comp, labels = connected_components(A_bin, directed=False, return_labels=True)
+            sizes = np.bincount(labels).astype(np.float64)
+            values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
+        
+        logger.info(f"Finished computing entropy upper bound in {time.time() - t0:.2f}s")
+
+        self.S_upper_bound = np.column_stack((sampled_indices, values))
+        return self.S_upper_bound
 
 
 class ContTempInstNetwork(ContTempNetwork):
