@@ -84,3 +84,7 @@
   failing with `UnboundLocalError`.
 - The Zenodo mice dataset is downloaded once per test session (session-scoped
   fixture) instead of once per test.
+- The function `print_report` which was mainly used as a diagnostic 
+   way to choose the exponential method, has now renamed to 
+  `benchmark_matrix_exponential_methods`, its documentation has been updated
+   and also all the prints are now changed to log.info. 
