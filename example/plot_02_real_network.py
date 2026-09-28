@@ -33,10 +33,11 @@ import networkx as nx
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.colors import LogNorm
-
+import logging
 from zenodo_get import download
 
 import tempnet as tn
+tn.logger.setup_logger(logging.INFO)
 
 # %%
 # Download and load the dataset
