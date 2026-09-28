@@ -1590,7 +1590,7 @@ class ContTempNetwork:
         plt.show()
         return indices
 
-    def print_report(self, indices, scales, method_kwargs=None, **kwargs):
+    def benchmark_matrix_exponential_methods(self, indices, scales, method_kwargs=None, **kwargs):
         """Benchmark and compare matrix-exponential computation methods.
 
         Parameters
