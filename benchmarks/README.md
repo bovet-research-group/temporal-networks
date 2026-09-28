@@ -1,3 +1,7 @@
+<!--
+SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+SPDX-License-Identifier: LGPL-3.0-or-later
+-->
 # Benchmarks
 
 This directory contains the ASV (airspeed velocity) benchmark suite for

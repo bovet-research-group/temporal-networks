@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Jonas I. Liechti <j-i-l@t4d.ch>
+# SPDX-License-Identifier: LGPL-3.0-or-later
 """Oversubscription diagnostics for the ``tempnet.faster_expm`` module.
 
 ``track_*`` benchmarks report raw numbers (not timings). They answer three
