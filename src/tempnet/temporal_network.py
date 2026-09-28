@@ -2010,6 +2010,101 @@ class ContTempNetwork:
         return float(-np.dot(p0, row_sums))
 
 
+    def compute_global_conditional_entropy(self, lamda, p0=None, alpha_sampling=None):
+        r"""Global conditional entropy of cumulative transitions across time steps.
+
+        For a given scale ``lamda``, evaluates the conditional entropy
+        ``H(Y | X)`` of each stored (cumulative) transition matrix and returns
+        it as a function of time-step index. The per-matrix entropy is computed
+        by :meth:`_conditional_entropy_of_transition_matrix`. To limit cost, a
+        subset of the time steps can be evaluated via ``alpha_sampling``.
+
+        Parameters
+        ----------
+        lamda : hashable
+            Scale key selecting the sequence of transition matrices in
+            ``self.T[lamda]``. The matrices must have been computed with
+            ``save_intermediate=True`` so that more than one time step is stored.
+        p0 : array_like, shape (num_nodes,), optional
+            Source-state distribution used to weight each row entropy. Defaults
+            to the uniform distribution ``1 / num_nodes`` over all nodes.
+        alpha_sampling : float, optional
+            Fraction of time steps to evaluate, in ``(0, 1]``. The sampled
+            indices are spread evenly over the available range with
+            :func:`numpy.linspace`. Defaults to ``1.0`` (every time step).
+
+        Returns
+        -------
+        numpy.ndarray, shape (num_samples, 2)
+            Column 0 holds the sampled time-step indices (as floats), column 1
+            the corresponding conditional entropies in nats.
+        """
+        if lamda is None:
+            raise ValueError("lamda (scale) must be specified for entropy computation.")
+
+        if self.laplacian_dynamics != 'heat':
+            raise ValueError(
+                f"Entropy computation is only implemented for heat diffusion dynamics, "
+                f"got {self.laplacian_dynamics}"
+            )
+
+        if self.T[lamda] is None:
+            raise ValueError(
+                f"Transition matrices for lamda={lamda} have not been computed. "
+                f"Call compute_transition_matrices first."
+            )
+
+        if len(self.T[lamda]) == 1:
+            raise ValueError(
+                f"Compute the transition matrices for lamda={lamda} with "
+                f"save_intermediate=True to compute entropy over multiple time steps."
+            )
+
+        if not hasattr(self, "S"):
+            self.S = {}
+
+        if alpha_sampling is None:
+            alpha_sampling = 1.0
+        if alpha_sampling <= 0 or alpha_sampling > 1:
+            raise ValueError("alpha_sampling must be in (0, 1].")
+
+
+        transition_matrices = self.T[lamda]
+        num_points = len(transition_matrices)
+
+        num_samples = max(1, int(np.ceil(alpha_sampling * num_points)))
+        sampled_indices = np.unique(np.linspace(0, num_points - 1, num_samples, dtype=int))
+
+        if p0 is None:
+            # starting uniform distribution over all nodes
+            p0 = np.full(self.num_nodes, 1 / self.num_nodes, dtype=np.float64)
+
+        logger.info(
+            f"Computing global conditional entropy for lamda={lamda} with "
+            f"direction={self.direction} with alpha_sampling={alpha_sampling} "
+            f"({len(sampled_indices)} sampled indices out of {num_points})"
+        )
+
+        t0 = time.time()
+        entropy_values = np.empty(len(sampled_indices), dtype=np.float64)
+        for pos, k in enumerate(sampled_indices):
+            if pos % 1000 == 0:
+                logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+
+            entropy_values[pos] = self._conditional_entropy_of_transition_matrix(
+                transition_matrices[k],
+                p0,
+            )
+
+        logger.info(f"Finished computing entropy in {time.time() - t0:.2f}s")
+
+        # store the sampled indices and corresponding entropy values in a 2D array and save it in self.S[lamda]
+        self.S[lamda] = np.column_stack((
+            sampled_indices.astype(np.float64),
+            entropy_values,
+        ))
+
+
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
