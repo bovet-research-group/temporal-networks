@@ -2100,7 +2100,7 @@ class ContTempNetwork:
 
         # store the sampled indices and corresponding entropy values in a 2D array and save it in self.S[lamda]
         self.S[lamda] = np.column_stack((
-            sampled_indices.astype(np.float64),
+            sampled_indices,
             entropy_values,
         ))
 

@@ -252,3 +252,55 @@ ax.set_ylabel('Count')
 ax.set_title('Distribution of contact durations')
 plt.tight_layout()
 plt.show()
+
+# %%
+# Now we can compute the Laplacian matrices and transition matrices for the
+# synthetic network
+# ------------------------------------
+tnet.compute_laplacian_matrices(dynamics='heat')
+scales = [0.0001, 0.001, 0.01, 0.1,1, 10, 100]
+for lamda in scales:
+    tnet.compute_inter_transition_matrices(lamda=lamda, method='dense_expm')
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
+
+
+# %%
+# Conditional entropy curve
+# -------------------------
+# We now compute the entropy signal:
+#
+# .. math::
+#   S(t) = - \sum_i p_i(0) \sum_j T_{ij}(0, t) \log T_{ij}(0, t)
+#
+# where we use the uniform initial distribution over nodes. From a network
+# science perspective, the entropy curve tracks how the temporal activation of
+# edges opens diffusion pathways through the network. When new edges appear,
+# heat can spread faster and reach a larger portion of the network, which is
+# reflected by increases in entropy production. Flat portions indicate time
+# intervals where the currently available temporal paths do not substantially
+# expand the set of nodes reached by the diffusion.
+#
+# The dashed curve is a component-size upper bound, not a second diffusion
+# process. For each time ``t``, it aggregates the static graph from the start
+# of the network up to ``t`` and finds its connected components. If a cumulative
+# component has size ``|C|``, heat starting inside it cannot spread to more than
+# ``|C|`` nodes, so its entropy contribution is bounded by ``log(|C|)``. The
+# plotted bound averages this over components:
+#
+# .. math::
+#   \sum_C \frac{|C|}{N} \log |C|
+#
+# Isolated nodes contribute zero, and the largest possible value is
+# ``log(N)``, reached only when all nodes are in one cumulative component. The
+# entropy curve can remain below this upper bound because temporal ordering can
+# make paths asymmetric: even when the cumulative graph is connected, not all
+# nodes are equally reachable through time-respecting diffusion paths.
+fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(8, 4))
+times=tnet.times
+for lamda in scales:
+    tnet.compute_conditional_entropy_curve(lamda=lamda, alpha_sampling=0.25)
+    ax.plot(times[tnet.S[lamda][:, 0].astype(int)], tnet.S[lamda][:, 1], label=rf"$\lambda$={lamda}")
+ax.set_xlabel("Time")
+ax.set_ylabel("Conditional Entropy (nats)")
+ax.legend()
+plt.show()
