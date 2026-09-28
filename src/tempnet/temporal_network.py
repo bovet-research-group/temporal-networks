@@ -2010,7 +2010,7 @@ class ContTempNetwork:
         return float(-np.dot(p0, row_sums))
 
 
-    def compute_global_conditional_entropy(self, lamda, p0=None, alpha_sampling=None):
+    def compute_conditional_entropy_curve(self, lamda, p0=None, alpha_sampling=None):
         r"""Global conditional entropy of cumulative transitions across time steps.
 
         For a given scale ``lamda``, evaluates the conditional entropy
