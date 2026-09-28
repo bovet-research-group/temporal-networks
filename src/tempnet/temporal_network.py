@@ -1611,14 +1611,21 @@ class ContTempNetwork:
     def print_report(self, indices, scales, method_kwargs=None, **kwargs):
         """Benchmark and compare matrix-exponential computation methods.
 
-        Args:
-            indices: Iterable of 5 integer indices into ``self.laplacians`` /
-                ``self.times``, mapped to the labels
-                ['min', 'q25', 'median', 'q75', 'max'].
-            scales: Iterable of diffusion scale factors (``lamda``) to sweep.
-            method_kwargs: Optional dict mapping a method name to a dict of
-                extra keyword args for that method, e.g.
-                ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
+        Parameters
+        ----------
+        indices : iterable of int
+            Five integer indices into ``self.laplacians`` / ``self.times``,
+            mapped in order to the labels
+            ``['min', 'q25', 'median', 'q75', 'max']``.
+        scales : iterable of float
+            Diffusion scale factors (``lamda``) to sweep.
+        method_kwargs : dict, optional
+            Mapping of a method name to a dict of extra keyword arguments for
+            that method, e.g.
+            ``{'mfp_exp': {'err': 1e-6}, 'parallel_expm': {'nproc': 4}}``.
+        **kwargs
+            Additional keyword arguments passed to every method's
+            ``_compute_single_T`` call.
         """
         method_kwargs = method_kwargs or {}
         labels = ['min', 'q25', 'median', 'q75', 'max']
@@ -1674,7 +1681,7 @@ class ContTempNetwork:
 
         # Report
         for method in methods:
-            print(f"\n=== {method} ===")
+            logger.info("=== %s ===", method)
             method_total = 0.0
             for label in laplacians:
                 times = results[(method, label)]
@@ -1684,25 +1691,28 @@ class ContTempNetwork:
                 if method == 'mfp_exp':
                     errs = mfp_mae[label]
                     line += (f"  MAE(avg={np.mean(errs):.3e}, "
-                            f"min_scale={errs[min_scale_idx]:.3e}, "
-                            f"max_scale={errs[max_scale_idx]:.3e})")
-                print(line)
-            print(f"  total: {method_total:.4f}s")
+                             f"min_scale={errs[min_scale_idx]:.3e}, "
+                             f"max_scale={errs[max_scale_idx]:.3e})")
+                logger.info(line)
+            logger.info("  total: %.4fs", method_total)
             if method == 'mfp_exp':
-                print(f"  overall MAE vs {reference}:  "
-                    f"avg={mae_avg:.3e}  "
-                    f"min_scale(={scales[min_scale_idx]:g})={mae_min_scale:.3e}  "
-                    f"max_scale(={scales[max_scale_idx]:g})={mae_max_scale:.3e}")
+                logger.info(
+                    "  overall MAE vs %s:  avg=%.3e  "
+                    "min_scale(=%g)=%.3e  max_scale(=%g)=%.3e",
+                    reference, mae_avg,
+                    scales[min_scale_idx], mae_min_scale,
+                    scales[max_scale_idx], mae_max_scale,
+                )
 
         totals = {
             m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
             for m in methods
         }
         best = min(totals, key=totals.get)
-        print(f"\nRecommended method: {best} "
-            f"({totals[best]:.4f}s total, fastest of the three)")
-
-
+        logger.info(
+            "Recommended method: %s (%.4fs total, fastest of %d)",
+            best, totals[best], len(methods),
+        )
     def _merge_overlapping_events(self):
         """
         Merge temporally overlapping undir. event between each pair of nodes.
