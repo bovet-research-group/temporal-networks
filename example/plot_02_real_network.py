@@ -256,7 +256,7 @@ indices = tnet.plot_density_of_laplacians()
 # dataset. 
 
 scales = np.logspace(-6, 6, 10)
-tnet.print_report(
+tnet.benchmark_matrix_exponential_methods(
     indices, scales,
     method_kwargs={
         'mfp_exp': {'err': 1e-6},
