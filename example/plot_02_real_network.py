@@ -33,11 +33,8 @@ import networkx as nx
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.colors import LogNorm
-import logging
 from zenodo_get import download
-
 import tempnet as tn
-tn.logger.setup_logger(logging.INFO)
 
 # %%
 # Download and load the dataset
@@ -251,19 +248,20 @@ indices = tnet.plot_density_of_laplacians()
 # Benchmarking the matrix-exponential methods
 # -------------------------------------------
 # Computing a transition matrix requires a matrix exponential, and
-# ``tempnet`` offers more than one strategy for this. :meth:`print_report`
+# ``tempnet`` offers more than one strategy for this. :meth:`benchmark_matrix_exponential_methods`
 # times each method across a range of diffusion scales and the representative
 # Laplacians selected above, then recommends the fastest option for this
 # dataset. 
 
 scales = np.logspace(-6, 6, 10)
-tnet.benchmark_matrix_exponential_methods(
+report =tnet.benchmark_matrix_exponential_methods(
     indices, scales,
     method_kwargs={
         'mfp_exp': {'err': 1e-6},
         'parallel_expm': {'nproc': 4, 'normalize_rows': True},
     },
 )
+print(report)
 # %%
 # Computing the transition matrices
 # ---------------------------------------

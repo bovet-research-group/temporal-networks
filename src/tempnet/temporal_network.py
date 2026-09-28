@@ -1661,40 +1661,71 @@ class ContTempNetwork:
         mae_min_scale = np.mean([mfp_mae[lbl][min_scale_idx] for lbl in laplacians])
         mae_max_scale = np.mean([mfp_mae[lbl][max_scale_idx] for lbl in laplacians])
 
-        # Report
+        # Build report
+        report = []
+
         for method in methods:
-            logger.info("=== %s ===", method)
+            report.append(f"=== {method} ===")
             method_total = 0.0
+
             for label in laplacians:
                 times = results[(method, label)]
                 method_total += sum(times)
-                line = (f"  L_{label:<7} avg={np.mean(times):.4f}s  "
-                        f"min_scale={min(times):.4f}s  max_scale={max(times):.4f}s")
-                if method == 'mfp_exp':
-                    errs = mfp_mae[label]
-                    line += (f"  MAE(avg={np.mean(errs):.3e}, "
-                             f"min_scale={errs[min_scale_idx]:.3e}, "
-                             f"max_scale={errs[max_scale_idx]:.3e})")
-                logger.info(line)
-            logger.info("  total: %.4fs", method_total)
-            if method == 'mfp_exp':
-                logger.info(
-                    "  overall MAE vs %s:  avg=%.3e  "
-                    "min_scale(=%g)=%.3e  max_scale(=%g)=%.3e",
-                    reference, mae_avg,
-                    scales[min_scale_idx], mae_min_scale,
-                    scales[max_scale_idx], mae_max_scale,
+
+                line = (
+                    f"  L_{label:<7} "
+                    f"avg={np.mean(times):.4f}s  "
+                    f"min_scale={min(times):.4f}s  "
+                    f"max_scale={max(times):.4f}s"
                 )
 
+                if method == 'mfp_exp':
+                    errs = mfp_mae[label]
+
+                    line += (
+                        f"  MAE("
+                        f"avg={np.mean(errs):.3e}, "
+                        f"min_scale={errs[min_scale_idx]:.3e}, "
+                        f"max_scale={errs[max_scale_idx]:.3e}"
+                        f")"
+                    )
+
+                report.append(line)
+
+            report.append(f"  total: {method_total:.4f}s")
+
+            if method == 'mfp_exp':
+                report.append(
+                    f"  overall MAE vs {reference}: "
+                    f"avg={mae_avg:.3e}  "
+                    f"min_scale(={scales[min_scale_idx]:g})="
+                    f"{mae_min_scale:.3e}  "
+                    f"max_scale(={scales[max_scale_idx]:g})="
+                    f"{mae_max_scale:.3e}"
+                )
+
+            report.append("")
+
+        # Find fastest method
         totals = {
-            m: sum(sum(results[(m, lbl)]) for lbl in laplacians)
-            for m in methods
+            method: sum(
+                sum(results[(method, label)])
+                for label in laplacians
+            )
+            for method in methods
         }
+
         best = min(totals, key=totals.get)
-        logger.info(
-            "Recommended method: %s (%.4fs total, fastest of %d)",
-            best, totals[best], len(methods),
+
+        report.append(
+            f"Recommended method: {best} "
+            f"({totals[best]:.4f}s total, "
+            f"fastest of {len(methods)})"
         )
+
+        # Log the complete report at once
+        logger.info("\n%s", "\n".join(report))
+        return  "\n".join(report)
     def _merge_overlapping_events(self):
         """
         Merge temporally overlapping undir. event between each pair of nodes.
