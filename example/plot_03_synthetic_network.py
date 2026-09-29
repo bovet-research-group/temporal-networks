@@ -291,45 +291,51 @@ plt.show()
 # make paths asymmetric: even when the cumulative graph is connected, not all
 # nodes are equally reachable through time-respecting diffusion paths.
 
-fig, ax = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
-tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=True)
-times=tnet.times
+fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
-scales = [0.0001, 0.001, 0.01, 0.1,1, 10, 100]
+scales = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]
+
+tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=False)
+times = tnet.times
+
 for lamda in scales:
     tnet.compute_inter_transition_matrices(lamda=lamda, method='dense_expm')
 
-#Forward entrpy
-
+# Forward in time
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
     tnet.compute_conditional_entropy_curve(lamda=lamda, alpha_sampling=0.05)
-    ax[0].plot(times[tnet.S[lamda][:, 0].astype(int)], tnet.S[lamda][:, 1], label=rf"$\lambda$={lamda}")
+    S = tnet.S[lamda]
+    axes[0].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
 tnet.compute_entropy_upper_bound_curve(alpha_sampling=0.25)
-ax[0].plot(times[tnet.S_upper_bound[:, 0].astype(int)], tnet.S_upper_bound[:, 1], label="Upper bound", linestyle='--', color='black')
+bound = tnet.S_upper_bound
+axes[0].plot(times[bound[:, 0].astype(int)], bound[:, 1],
+             label="Upper bound", linestyle='--', color='black')
 
-del tnet.T
-del tnet.S
-del tnet.direction
-del tnet.S_upper_bound
+# Reset cached state before the backward pass, otherwise the backward panel silently reuses the forward bound.
+for attr in ('T', 'S', 'direction', 'S_upper_bound'):
+    if hasattr(tnet, attr):
+        delattr(tnet, attr)
 
-#backward entropy
+# Backward in time
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=True)
     tnet.compute_conditional_entropy_curve(lamda=lamda, alpha_sampling=0.05)
-    ax[1].plot(times[tnet.S[lamda][:, 0].astype(int)], tnet.S[lamda][:, 1], label=rf"$\lambda$={lamda}")
+    S = tnet.S[lamda]
+    axes[1].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
 tnet.compute_entropy_upper_bound_curve(alpha_sampling=0.25)
-ax[1].plot(times[tnet.S_upper_bound[:, 0].astype(int)], tnet.S_upper_bound[:, 1], label="Upper bound", linestyle='--', color='black')
+bound = tnet.S_upper_bound
+axes[1].plot(times[bound[:, 0].astype(int)], bound[:, 1],
+             label="Upper bound", linestyle='--', color='black')
 
+axes[0].set_title('Forward in time')
+axes[1].set_title('Backward in time')
+axes[1].set_xlabel("Time")
+axes[0].set_ylabel("Conditional Entropy (nats)")
+axes[1].set_ylabel("Conditional Entropy (nats)")
 
-ax[0].set_title('Forward in time')
-ax[1].set_title('Backward in time')
-ax[1].set_xlabel("Time")
-ax[1].set_ylabel("Conditional Entropy (nats)")
-ax[0].set_ylabel("Conditional Entropy (nats)")
-
-ax[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
+axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
+fig.tight_layout()
 plt.show()
-# %%

@@ -2105,7 +2105,8 @@ class ContTempNetwork:
 
         if self.direction=='reverse': 
             sampled_indices=-1-sampled_indices
-        # store the sampled indices and corresponding entropy values in a 2D array and save it in self.S[lamda]
+
+
         self.S[lamda] = np.column_stack((
             sampled_indices,
             entropy_values,
@@ -2121,7 +2122,7 @@ class ContTempNetwork:
 
             \sum_c \frac{|c|}{N} \log |c|,
 
-        the conditional entropy attained when the walk is uniform within each
+        the conditional entropy reached when the walk is uniform within each
         reachable component. This upper-bounds ``H(X_k | X_0)``.
 
         Parameters
