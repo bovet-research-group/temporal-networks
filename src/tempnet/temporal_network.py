@@ -2103,25 +2103,26 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing entropy in {time.time() - t0:.2f}s")
 
+        if self.direction=='reverse': 
+            sampled_indices=-1-sampled_indices
         # store the sampled indices and corresponding entropy values in a 2D array and save it in self.S[lamda]
         self.S[lamda] = np.column_stack((
             sampled_indices,
             entropy_values,
         ))
     def compute_entropy_upper_bound_curve(self, alpha_sampling=None):
-        r"""Component-size upper bound for the entropy curve.
+        """Component-size upper bound for the entropy curve.
 
-        For each sampled interval, the bound is computed from the connected
-        components of the graph whose structure is given by the corresponding
-        Laplacian:
+        For each sampled step ``k`` the bound is computed from the connected
+        components of the graph aggregated over the cumulative diffusion window
+        (``[t_0, t_{k+1}]`` forward, ``[t_k, t_{-1}]`` backward):
 
         .. math::
 
             \sum_c \frac{|c|}{N} \log |c|,
 
-        i.e. the conditional entropy attained when the walk is uniform within
-        each reachable component. This is an upper bound on the true
-        conditional entropy given the component structure.
+        the conditional entropy attained when the walk is uniform within each
+        reachable component. This upper-bounds ``H(X_k | X_0)``.
 
         Parameters
         ----------
@@ -2153,23 +2154,20 @@ class ContTempNetwork:
         t0 = time.time()
         values = np.empty(len(sampled_indices), dtype=np.float64)
 
-
-        acc = None
-        prev_k = -1
         for pos, k in enumerate(sampled_indices):
             if pos % 1000 == 0:
                 logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
 
-            for j in range(prev_k + 1, k + 1):
-                A = self.adjacencies[j]
-                acc = A.copy() if acc is None else acc + A
-            prev_k = k
+            if self.direction == 'forward':
+                start_time, end_time = self.times[0], self.times[k + 1]
+            else:
+                start_time, end_time = self.times[k], self.times[-1]
 
-            A_bin = (acc != 0)                 # union pattern up to time k
-            n_comp, labels = connected_components(A_bin, directed=False, return_labels=True)
+            A = self.compute_static_adjacency_matrix(start_time, end_time)
+            n_comp, labels = connected_components(A, directed=False, return_labels=True)
             sizes = np.bincount(labels).astype(np.float64)
             values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
-        
+
         logger.info(f"Finished computing entropy upper bound in {time.time() - t0:.2f}s")
 
         self.S_upper_bound = np.column_stack((sampled_indices, values))
