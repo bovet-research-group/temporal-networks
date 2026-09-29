@@ -254,12 +254,6 @@ plt.tight_layout()
 plt.show()
 
 # %%
-# Now we can compute the Laplacian matrices and transition matrices for the
-# synthetic network
-# ------------------------------------
-
-
-# %%
 # Conditional entropy curve
 # -------------------------
 # We now compute the entropy signal:
