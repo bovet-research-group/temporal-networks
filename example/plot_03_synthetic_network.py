@@ -256,34 +256,41 @@ plt.show()
 # %%
 # Conditional entropy curve
 # -------------------------
-# We now compute the entropy signal:
+# In this example the individuals are arranged into different blocks that
+# change over time. In such cases the key question is *when* a change occurs
+# (change-point detection). Following Koovely et al. (2026), we detect these
+# change points from the conditional entropy of the heat diffusion.
+#
+# The conditional entropy at scale :math:`\tau` is
 #
 # .. math::
-#   S(t) = - \sum_i p_i(0) \sum_j T_{ij}(0, t) \log T_{ij}(0, t)
+#   S(\tau) = - \sum_i p_i(0) \sum_j T_{ij}(0, \tau) \log T_{ij}(0, \tau),
 #
-# where we use the uniform initial distribution over nodes. From a network
-# science perspective, the entropy curve tracks how the temporal activation of
-# edges opens diffusion pathways through the network. When new edges appear,
-# heat can spread faster and reach a larger portion of the network, which is
-# reflected by increases in entropy production. Flat portions indicate time
-# intervals where the currently available temporal paths do not substantially
-# expand the set of nodes reached by the diffusion.
+# using the uniform initial distribution over nodes. The curve tracks how the
+# temporal activation of edges opens diffusion pathways through the network:
+# when new edges appear, heat spreads to a larger portion of the network, which
+# shows up as increases in entropy. Flat portions show intervals where the
+# available temporal paths do not substantially expand the set of nodes reached
+# by the diffusion, and sharp rises flag change points.
 #
-# The dashed curve is a component-size upper bound, not a second diffusion
-# process. For each time ``t``, it aggregates the static graph from the start
-# of the network up to ``t`` and finds its connected components. If a cumulative
-# component has size ``|C|``, heat starting inside it cannot spread to more than
-# ``|C|`` nodes, so its entropy contribution is bounded by ``log(|C|)``. The
-# plotted bound averages this over components:
+# The dashed curve is a component-size upper bound. For each time :math:`\tau` it
+# aggregates the static graph from the start of the network up to :math:`\tau` and
+# finds its connected components. Heat starting in a component of size
+# :math:`|C|` cannot reach more than :math:`|C|` nodes, so that component's
+# entropy is bounded by :math:`\log |C|`. Averaged over components,
 #
 # .. math::
-#   \sum_C \frac{|C|}{N} \log |C|
+#   \sum_C \frac{|C|}{N} \log |C|,
 #
-# Isolated nodes contribute zero, and the largest possible value is
-# ``log(N)``, reached only when all nodes are in one cumulative component. The
-# entropy curve can remain below this upper bound because temporal ordering can
-# make paths asymmetric: even when the cumulative graph is connected, not all
-# nodes are equally reachable through time-respecting diffusion paths.
+# isolated nodes contribute zero and the largest possible value is
+# :math:`\log N`, reached only when all nodes lie in a single cumulative
+# component.
+#
+# The backward-in-time panel repeats the analysis with the diffusion and the
+# aggregation window reversed: paths and cumulative components are built from
+# the end of the observation window back to the start. Comparing the two panels
+# shows temporal asymmetry, a change point in one direction is
+# not necessarily a change point in the other.
 
 fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
