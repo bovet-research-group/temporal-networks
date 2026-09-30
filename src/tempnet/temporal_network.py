@@ -1950,7 +1950,7 @@ class ContTempNetwork:
 
 
     @staticmethod
-    def _conditional_entropy_of_transition_matrix(T, p0):
+    def _conditional_entropy_of_transition_matrix(T, p0, tol=1e-12):
         r"""Conditional entropy of one Markov step under a given state distribution.
 
         Computes
@@ -1965,31 +1965,43 @@ class ContTempNetwork:
 
         Parameters
         ----------
-        T : scipy.sparse matrix, shape (n, n)
-            Row-stochastic transition matrix. Any sparse format is accepted and
-            converted to CSR internally. 
+        T : numpy.ndarray or scipy.sparse.csr_matrix, shape (n, n)
+            Row-stochastic transition matrix. Must be either a dense NumPy array
+            or a CSR sparse matrix.
 
         p0 : array_like, shape (n,)
-            Weights for each source state. Must
-            have length ``T.shape[0]``, and a probability vector summing to 1.
+            Weights for each source state. Must have length ``T.shape[0]``, and
+            be a probability vector summing to 1.
+
         Returns
         -------
         float
             The conditional entropy in nats (natural log); divide by ``log(2)`` for bits
 
         """
-        if not isspmatrix_csr(T):
-            T = T.tocsr()
-        n_rows=T.shape[0]
+        n_rows = T.shape[0]
         p0 = np.asarray(p0, dtype=np.float64)
 
         if p0.shape != (n_rows,):
             raise ValueError(
                 f"p0 must have shape ({n_rows},) to match T, got {p0.shape}."
             )
-        if np.any(p0 < 0):
-            raise ValueError("p0 must be non-negative.")
+        if np.any(p0 < 0) or np.any(p0 > 1):
+            raise ValueError("p0 values must be non-negative and equal or below 1.")
+        
+        if np.abs(sum(p0)-1)>tol:
+            raise ValueError("p0 must sum to 1.")
 
+        if not isinstance(T, np.ndarray) and not isspmatrix_csr(T):
+            raise TypeError(f"T must be a numpy.ndarray or scipy.sparse.csr_matrix, got {type(T).__name__}.")
+
+        if isinstance(T, np.ndarray):
+            return float(
+                np.dot(
+                    -p0,
+                    (T * np.log(T, out=np.zeros_like(T, dtype=np.float64), where=(T != 0))).sum(1)
+                )
+            )
 
         data = T.data
         indptr = T.indptr
@@ -2002,7 +2014,7 @@ class ContTempNetwork:
         xlogx[mask] = data[mask] * np.log(data[mask])
 
         row_lengths = np.diff(indptr)
-        row_sums = np.zeros(T.shape[0], dtype=np.float64)
+        row_sums = np.zeros(n_rows, dtype=np.float64)
         nonempty = row_lengths > 0
         if np.any(nonempty):
             starts = indptr[:-1][nonempty]
