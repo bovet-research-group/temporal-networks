@@ -6,7 +6,7 @@
 #
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """
-Synthetic temporal network with community structure
+Synthetic temporal network with evolving community structure and conditional entropy computation
 ====================================================
 
 This example uses :class:`~tempnet.synth_temp_network.SynthTempNetwork` to
