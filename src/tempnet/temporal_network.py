@@ -2011,14 +2011,14 @@ class ContTempNetwork:
         return float(-np.dot(p0, row_sums))
 
 
-    def compute_conditional_entropy_curve(self, lamda, p0=None, alpha_sampling=None):
+    def compute_conditional_entropy_curve(self, lamda, p0=None, time_downsampling_factor=None):
         r"""Global conditional entropy of cumulative transitions across time steps.
 
         For a given scale ``lamda``, evaluates the conditional entropy
         ``H(Y | X)`` of each stored (cumulative) transition matrix and returns
         it as a function of time-step index. The per-matrix entropy is computed
         by :meth:`_conditional_entropy_of_transition_matrix`. To limit cost, a
-        subset of the time steps can be evaluated via ``alpha_sampling``.
+        subset of the time steps can be evaluated via ``time_downsampling_factor``.
 
         Parameters
         ----------
@@ -2029,7 +2029,7 @@ class ContTempNetwork:
         p0 : array_like, shape (num_nodes,), optional
             Source-state distribution used to weight each row entropy. Defaults
             to the uniform distribution ``1 / num_nodes`` over all nodes.
-        alpha_sampling : float, optional
+        time_downsampling_factor : float, optional
             Fraction of time steps to evaluate, in ``(0, 1]``. The sampled
             indices are spread evenly over the available range with
             :func:`numpy.linspace`. Defaults to ``1.0`` (every time step).
@@ -2068,16 +2068,16 @@ class ContTempNetwork:
             logger.info(f"Entropy curve already computed for lamda={lamda}, returning it")
             return self.S[lamda]
         
-        if alpha_sampling is None:
-            alpha_sampling = 1.0
-        if alpha_sampling <= 0 or alpha_sampling > 1:
-            raise ValueError("alpha_sampling must be in (0, 1].")
+        if time_downsampling_factor is None:
+            time_downsampling_factor = 1.0
+        if time_downsampling_factor <= 0 or time_downsampling_factor > 1:
+            raise ValueError("time_downsampling_factor must be in (0, 1].")
 
 
         transition_matrices = self.T[lamda]
         num_points = len(transition_matrices)
 
-        num_samples = max(1, int(np.ceil(alpha_sampling * num_points)))
+        num_samples = max(1, int(np.ceil(time_downsampling_factor * num_points)))
         sampled_indices = np.unique(np.linspace(0, num_points - 1, num_samples, dtype=int))
 
         if p0 is None:
@@ -2086,7 +2086,7 @@ class ContTempNetwork:
 
         logger.info(
             f"Computing global conditional entropy for lamda={lamda} with "
-            f"direction={self.direction} with alpha_sampling={alpha_sampling} "
+            f"direction={self.direction} with time_downsampling_factor={time_downsampling_factor} "
             f"({len(sampled_indices)} sampled indices out of {num_points})"
         )
 
@@ -2111,7 +2111,7 @@ class ContTempNetwork:
             sampled_indices,
             entropy_values,
         ))
-    def compute_entropy_upper_bound_curve(self, alpha_sampling=None):
+    def compute_entropy_upper_bound_curve(self, time_downsampling_factor=None):
         """Component-size upper bound for the entropy curve.
 
         For each sampled step ``k`` the bound is computed from the connected
@@ -2127,7 +2127,7 @@ class ContTempNetwork:
 
         Parameters
         ----------
-        alpha_sampling : float, optional
+        time_downsampling_factor : float, optional
             Fraction of samples to evaluate, in ``(0, 1]``. Defaults to ``1.0``.
 
         Returns
@@ -2136,17 +2136,17 @@ class ContTempNetwork:
             Sample indices in the first column, upper-bound values (in nats) in
             the second.
         """
-        if alpha_sampling is None:
-            alpha_sampling = 1.0
-        if alpha_sampling <= 0 or alpha_sampling > 1:
-            raise ValueError("alpha_sampling must be in (0, 1].")
+        if time_downsampling_factor is None:
+            time_downsampling_factor = 1.0
+        if time_downsampling_factor <= 0 or time_downsampling_factor > 1:
+            raise ValueError("time_downsampling_factor must be in (0, 1].")
 
         if hasattr(self, 'S_upper_bound'):
             logger.info("Entropy upper bound curve already computed, returning it")
             return self.S_upper_bound
 
         num_points = len(self.laplacians)
-        num_samples = max(1, int(np.ceil(alpha_sampling * num_points)))
+        num_samples = max(1, int(np.ceil(time_downsampling_factor * num_points)))
         sampled_indices = np.unique(
             np.linspace(0, num_points - 1, num_samples, dtype=int)
         )
