@@ -58,6 +58,11 @@
   exported from `tempnet`.
 - `pytest --run-network` opt-in flag; Zenodo-dependent tests (marker
   `network`) are skipped by default.
+- Three functions have been added for understanding the change points
+  in a network: `_conditional_entropy_of_transition_matrix`, 
+  `compute_conditional_entropy_curve`, and `compute_entropy_upper_bound_curve`. 
+  An example now contains usecases of these functions (`plot_03_synthetic_network.py`). 
+  Tests have been added accordingly. 
 
 ### Fixed
 - Instantaneous-network static adjacency no longer interprets zero-duration

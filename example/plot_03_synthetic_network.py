@@ -6,7 +6,7 @@
 #
 # SPDX-License-Identifier: LGPL-3.0-or-later
 """
-Synthetic temporal network with community structure
+Synthetic temporal network with evolving community structure and conditional entropy computation
 ====================================================
 
 This example uses :class:`~tempnet.synth_temp_network.SynthTempNetwork` to
@@ -243,7 +243,7 @@ plt.show()
 # Plot 2: Event-duration distribution
 # ------------------------------------
 
-durations = et['durations'].values
+durations =tnet.events_table['durations'].values
 
 fig, ax = plt.subplots(figsize=(6, 4))
 ax.hist(durations, bins=30, edgecolor='white')
@@ -251,4 +251,93 @@ ax.set_xlabel('Contact duration')
 ax.set_ylabel('Count')
 ax.set_title('Distribution of contact durations')
 plt.tight_layout()
+plt.show()
+
+# %%
+# Conditional entropy curve
+# -------------------------
+# In this example the individuals are arranged into different blocks that
+# change over time. In such cases the key question is *when* a change occurs
+# (change-point detection). Following Koovely et al. (2026) [1], we detect these
+# change points from the conditional entropy of the heat diffusion.
+#
+# The conditional entropy at scale :math:`\tau` is
+#
+# .. math::
+#   S(\tau) = - \sum_i p_i(0) \sum_j T_{ij}(0, \tau) \log T_{ij}(0, \tau),
+#
+# using the uniform initial distribution over nodes. The curve tracks how the
+# temporal activation of edges opens diffusion pathways through the network:
+# when new edges appear, heat spreads to a larger portion of the network, which
+# shows up as increases in entropy. Flat portions show intervals where the
+# available temporal paths do not substantially expand the set of nodes reached
+# by the diffusion, and sharp rises flag change points.
+#
+# The dashed curve is a component-size upper bound. For each time :math:`\tau` it
+# aggregates the static graph from the start of the network up to :math:`\tau` and
+# finds its connected components. Heat starting in a component of size
+# :math:`|C|` cannot reach more than :math:`|C|` nodes, so that component's
+# entropy is bounded by :math:`\log |C|`. Averaged over components,
+#
+# .. math::
+#   \sum_C \frac{|C|}{N} \log |C|,
+#
+# isolated nodes contribute zero and the largest possible value is
+# :math:`\log N`, reached only when all nodes lie in a single cumulative
+# component.
+#
+# The backward-in-time panel repeats the analysis with the diffusion and the
+# aggregation window reversed: paths and cumulative components are built from
+# the end of the observation window back to the start. Comparing the two panels
+# shows temporal asymmetry, a change point in one direction is
+# not necessarily a change point in the other.
+# Koovely, Samuel, and Alexandre Bovet. "Conditional Entropy of Heat Diffusion on Temporal Networks." arXiv preprint arXiv:2605.21514 (2026).
+
+fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
+
+scales = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]
+
+tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=False)
+times = tnet.times
+
+for lamda in scales:
+    tnet.compute_inter_transition_matrices(lamda=lamda, method='dense_expm')
+
+# Forward in time
+for lamda in scales:
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
+    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.25)
+    S = tnet.S[lamda]
+    axes[0].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
+
+tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.25)
+bound = tnet.S_upper_bound
+axes[0].plot(times[bound[:, 0].astype(int)], bound[:, 1],
+             label="Upper bound", linestyle='--', color='black')
+
+# Reset cached state before the backward pass, otherwise the backward panel silently reuses the forward bound.
+for attr in ('T', 'S', 'direction', 'S_upper_bound'):
+    if hasattr(tnet, attr):
+        delattr(tnet, attr)
+
+# Backward in time
+for lamda in scales:
+    tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=True)
+    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.25)
+    S = tnet.S[lamda]
+    axes[1].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
+
+tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.25)
+bound = tnet.S_upper_bound
+axes[1].plot(times[bound[:, 0].astype(int)], bound[:, 1],
+             label="Upper bound", linestyle='--', color='black')
+
+axes[0].set_title('Forward in time')
+axes[1].set_title('Backward in time')
+axes[1].set_xlabel("Time")
+axes[0].set_ylabel("Conditional Entropy (nats)")
+axes[1].set_ylabel("Conditional Entropy (nats)")
+
+axes[1].legend(bbox_to_anchor=(1.05, 1), loc='upper left', frameon=False)
+fig.tight_layout()
 plt.show()
