@@ -1799,3 +1799,23 @@ class TestConditionalEntropy(TempNetworkTestBase):
         assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
         assert np.all(H1_5 >= 0), "Conditional entropy should be non-negative"
         assert np.all(H1[::2] == H1_5), "Conditional entropy should be the same for different downsampling factors"
+
+    def test_conditional_entropy_downsampling_values_backwards(self, simple_network):
+        """Test conditional entropy computation with various time_downsampling_factor values in reverse order."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0, reverse_time=True)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=1)
+        H1 = net.S[1.0][:,1]
+
+        del net.S
+
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=0.5)
+        H2 = net.S[1.0][:,1]
+        assert np.abs(H1[0] - H2[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling factors"
+        assert np.abs(H1[-1] - H2[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling factors"
+        assert len(H2) <= len(H1), "Length of conditional entropy should be the same for different downsampling factors"
+        assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
+        assert np.all(H2 >= 0), "Conditional entropy should be non-negative"
+
