@@ -2123,6 +2123,7 @@ class ContTempNetwork:
             sampled_indices,
             entropy_values,
         ))
+    
     def compute_entropy_upper_bound_curve(self, time_downsampling_factor=None):
         """Component-size upper bound for the entropy curve.
 
@@ -2167,16 +2168,27 @@ class ContTempNetwork:
         t0 = time.time()
         values = np.empty(len(sampled_indices), dtype=np.float64)
 
-        for pos, k in enumerate(sampled_indices):
-            if pos % 1000 == 0:
-                logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+        A = np.zeros((self.num_nodes, self.num_nodes))
+        if self.direction == 'forward':
+            order = range(len(sampled_indices))
+            prev = 0
+        else:
+            order = range(len(sampled_indices) - 1, -1, -1)
+            prev = len(self.times) - 1
+
+        for i, pos in enumerate(order):
+            k = sampled_indices[pos]
+            if i % 1000 == 0:
+                logger.info(f"{i} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
 
             if self.direction == 'forward':
-                start_time, end_time = self.times[0], self.times[k + 1]
+                start_time, end_time = self.times[prev], self.times[k + 1]
+                prev = k + 1
             else:
-                start_time, end_time = self.times[k], self.times[-1]
+                start_time, end_time = self.times[k], self.times[prev]
+                prev = k
 
-            A = self.compute_static_adjacency_matrix(start_time, end_time)
+            A += self.compute_static_adjacency_matrix(start_time, end_time)
             n_comp, labels = connected_components(A, directed=False, return_labels=True)
             sizes = np.bincount(labels).astype(np.float64)
             values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
@@ -2185,7 +2197,6 @@ class ContTempNetwork:
 
         self.S_upper_bound = np.column_stack((sampled_indices, values))
         return self.S_upper_bound
-
 
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
