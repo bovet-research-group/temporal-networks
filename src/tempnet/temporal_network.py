@@ -1950,7 +1950,7 @@ class ContTempNetwork:
 
 
     @staticmethod
-    def _conditional_entropy_of_transition_matrix(T, p0, tol=1e-12):
+    def _conditional_entropy_of_transition_matrix(T, p0=None, tol=1e-12):
         r"""Conditional entropy of one Markov step under a given state distribution.
 
         Computes
@@ -1971,7 +1971,7 @@ class ContTempNetwork:
 
         p0 : array_like, shape (n,)
             Weights for each source state. Must have length ``T.shape[0]``, and
-            be a probability vector summing to 1.
+            be a probability vector summing to 1. the default is the uniform distribution over all states.
 
         Returns
         -------
@@ -1980,6 +1980,10 @@ class ContTempNetwork:
 
         """
         n_rows = T.shape[0]
+
+        if p0 is None:
+            p0 = np.full(n_rows, 1 / n_rows, dtype=np.float64)
+            
         p0 = np.asarray(p0, dtype=np.float64)
 
         if p0.shape != (n_rows,):
