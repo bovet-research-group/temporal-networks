@@ -1983,7 +1983,7 @@ class ContTempNetwork:
 
         if p0 is None:
             p0 = np.full(n_rows, 1 / n_rows, dtype=np.float64)
-            
+
         p0 = np.asarray(p0, dtype=np.float64)
 
         if p0.shape != (n_rows,):
@@ -2134,7 +2134,7 @@ class ContTempNetwork:
         ))
     
     def compute_entropy_upper_bound_curve(self, time_downsampling_factor=None):
-        """Component-size upper bound for the entropy curve.
+        r"""Component-size upper bound for the entropy curve.
 
         For each sampled step ``k`` the bound is computed from the connected
         components of the graph aggregated over the cumulative diffusion window
