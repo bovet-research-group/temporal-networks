@@ -1819,3 +1819,23 @@ class TestConditionalEntropy(TempNetworkTestBase):
         assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
         assert np.all(H2 >= 0), "Conditional entropy should be non-negative"
 
+    def test_upper_bound_conditional_entropy(self, simple_network):
+        """Test that the computed conditional entropy does not exceed the upper bound"""
+        import networkx as nx
+        net = simple_network
+        N = net.num_nodes
+        A=net.compute_static_adjacency_matrix(weighted=False).toarray()
+        G=nx.from_numpy_array(A)
+        upper_bound = np.sum([len(c)/N * np.log(len(c)) for c in nx.connected_components(G)])
+        net.compute_laplacian_matrices(dynamics="heat")
+
+        for lamda in [0.1, 1.0, 10.0]:
+            net.compute_inter_transition_matrices(lamda=lamda)
+            net.compute_transition_matrices(lamda=lamda)
+            net.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=1)
+            H = net.S[lamda][:,1]
+            assert np.all(H <= upper_bound), "Conditional entropy should not exceed the upper bound"
+
+        net.compute_entropy_upper_bound_curve(time_downsampling_factor=1)
+        upper_bound_computed = net.S_upper_bound[:,1][-1]
+        assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
