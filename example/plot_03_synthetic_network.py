@@ -28,7 +28,8 @@ The model works as follows:
 
 In the simulation below, agents are organized into three communities of four.
 Within-community contacts are more frequent than cross-community ones (a block
-probability structure).
+probability structure). However, the community structure is not static: it evolves
+over time. 
 
 The simulation produces a stream of time-stamped contact events that are then
 loaded into a :class:`~tempnet.ContTempNetwork` for analysis.
@@ -144,8 +145,26 @@ def make_step_block_probs(
 # %%
 # Block-probability modulation
 # ----------------------------
-# ``make_step_block_probs`` returns a time-dependent function that cycles
-# through phases where different community pairs are highlighted.
+# ``make_step_block_probs`` returns a function ``block_mod_func(t)`` giving a
+# 3×3 matrix :math:`B(t)`. Entry :math:`B_{ij}(t)` is the probability that a
+# node of group :math:`i` that activates at time :math:`t` picks its partner in
+# group :math:`j`.
+#
+# Two kinds of phases alternate:
+#
+# * **Within-community phases** (duration :math:`\Delta t_1`): every group picks
+#   its own group with probability :math:`m_1` and each of the two other groups
+#   with probability :math:`m_2 = (1 - m_1)/2`.
+# * **Exchange phases** (duration :math:`\Delta t_2`): one pair of groups is
+#   active. Its nodes pick the other group of the pair with probability
+#   :math:`p_1` and their own group with probability :math:`p_2 = 1 - p_1`.
+#
+# The full sequence is::
+#
+#     within | 0–1 exchange | within | 1–2 exchange | within | 0–2 exchange
+#
+# so the simulation ends at :math:`t_\mathrm{end} = 3(\Delta t_1 + \Delta t_2)`,
+# after every pair of groups has been active once.
 
 m1 = 0.8   # within-community interaction probability
 p1 = 0.8   # cross-community interaction probability (for the active pair)
