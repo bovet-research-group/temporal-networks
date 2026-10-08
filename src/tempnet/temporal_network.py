@@ -2061,6 +2061,11 @@ class ContTempNetwork:
                 f"got {self.laplacian_dynamics}"
             )
 
+        if not hasattr(self, "T"):
+            raise ValueError(
+                "Transition matrices have not been computed. "
+                "Call compute_transition_matrices first."
+            )
         if self.T[lamda] is None:
             raise ValueError(
                 f"Transition matrices for lamda={lamda} have not been computed. "

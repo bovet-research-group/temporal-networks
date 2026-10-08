@@ -1702,3 +1702,81 @@ class TestEventsTableIndexNormalization(TempNetworkTestBase):
         # must not raise KeyError on the "index" column in the time grid
         net.compute_laplacian_matrices()
         assert len(net.laplacians) == 3
+
+class TestConditionalEntropy(TempNetworkTestBase):
+    """Tests for the conditional entropy computation of the temporal network.
+
+    These tests ensure that the conditional entropy is computed correctly
+    and that the method behaves as expected under various scenarios.
+    """
+    def test_conditional_entropy_on_rw(self, simple_network):
+        """Test conditional entropy computation on a simple random walk network."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="rw")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=1.0)
+
+    def test_conditional_entropy_no_transition_matrices(self, simple_network):
+        """Test conditional entropy computation without computing transition matrices."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=1.0)
+
+    def test_conditional_entropy_with_invalid_lamda(self, simple_network):
+        """Test conditional entropy computation with an invalid lambda value."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=2.0)
+
+    def test_conditional_entropy_with_invalid_lamda2(self, simple_network):
+        """Test conditional entropy computation with an invalid lambda value."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=None)
+
+    def test_conditional_entropy_basic(self, simple_network):
+        """Basic test for conditional entropy computation."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H=net.S[l][:,1]
+        assert all(H >= 0), "Conditional entropy should be non-negative"
+
+    def test_conditional_entropy_time_downsampling_factor(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_factor."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_factor=0)
+
+    def test_conditional_entropy_time_downsampling_factor_greater_than_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_factor greater than 1."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_factor=2)
+
+    def test_conditional_entropy_time_downsampling_factor_equal_to_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_factor equal to 1."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=1)
+        H = net.S[1.0][:,1]
+        assert len(H) == len(net.inter_T[1.0]), "Length of conditional entropy should match number of inter_T matrices"
+        
+
