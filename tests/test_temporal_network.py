@@ -1864,8 +1864,9 @@ class TestConditionalEntropy(TempNetworkTestBase):
         net.compute_conditional_entropy_curve(lamda=l)
         H1=net.S[l][:,1]
 
+        # remove the current values of conditional entropy
         del net.S
-        
+        # convert to np.array
         net.T[l]=[L.toarray() for L in net.T[l]]
 
         net.compute_conditional_entropy_curve(lamda=l)
