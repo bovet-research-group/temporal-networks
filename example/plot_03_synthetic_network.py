@@ -314,7 +314,7 @@ plt.show()
 
 fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
-scales = [0.0001, 0.001, 0.01, 0.1, 1, 10, 100]
+scales = [0.0001, 0.001, 0.01, 0.1, 1, 100]
 
 tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=False)
 times = tnet.times
@@ -325,11 +325,11 @@ for lamda in scales:
 # Forward in time
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
-    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.25)
+    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.05)
     S = tnet.S[lamda]
     axes[0].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
-tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.25)
+tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.05)
 bound = tnet.S_upper_bound
 axes[0].plot(times[bound[:, 0].astype(int)], bound[:, 1],
              label="Upper bound", linestyle='--', color='black')
@@ -342,11 +342,11 @@ for attr in ('T', 'S', 'direction', 'S_upper_bound'):
 # Backward in time
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=True)
-    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.25)
+    tnet.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=0.05)
     S = tnet.S[lamda]
     axes[1].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
-tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.25)
+tnet.compute_entropy_upper_bound_curve(time_downsampling_factor=0.05)
 bound = tnet.S_upper_bound
 axes[1].plot(times[bound[:, 0].astype(int)], bound[:, 1],
              label="Upper bound", linestyle='--', color='black')
