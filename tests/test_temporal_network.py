@@ -11,9 +11,11 @@ import tempfile
 from copy import copy
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
+from pandas import DataFrame
 import pytest
 
 from zenodo_get import download
@@ -157,7 +159,7 @@ class TempNetworkTestBase:
         )
 
     @pytest.fixture
-    def prepared_network(self, simple_network):
+    def prepared_network(self, simple_network: ContTempNetwork):
         """simple_network with laplacians computed, ready for T computation."""
         simple_network.compute_laplacian_matrices()
         return simple_network
@@ -177,7 +179,7 @@ class TempNetworkTestBase:
         return network
 
     @pytest.fixture
-    def minimal_instant(self, minimal):
+    def minimal_instant(self, minimal: SimpleNamespace):
         """Instantaneous variant of `minimal` (no ending_times)."""
         network = copy(minimal)
         del network.ending_times
@@ -202,7 +204,7 @@ class TempNetworkTestBase:
         return network
 
     @pytest.fixture
-    def simple_instant(self, simple_ns):
+    def simple_instant(self, simple_ns: SimpleNamespace):
         """Instantaneous variant of `simple_ns` (no ending_times)."""
         network = copy(simple_ns)
         del network.ending_times
@@ -212,7 +214,7 @@ class TempNetworkTestBase:
         return network
 
     @pytest.fixture
-    def networks(self, minimal, minimal_instant, simple_ns, simple_instant):
+    def networks(self, minimal: SimpleNamespace, minimal_instant: Any, simple_ns: SimpleNamespace, simple_instant: Any):
         """All namespace networks (interval and instantaneous)."""
         return [minimal, minimal_instant, simple_ns, simple_instant]
 
@@ -403,7 +405,7 @@ class TestBasicProperties(TempNetworkTestBase):
         assert np.allclose(A, expected)
 
     @pytest.mark.parametrize("dynamics", ["rw", "heat"])
-    def test_laplacians_count(self, simple_network, dynamics):
+    def test_laplacians_count(self, simple_network, dynamics: Literal['rw'] | Literal['heat']):
         """One Laplacian per inter-event step over the full grid.
 
         times = [0,1,2,3,4,5,6,7] -> 7 inter-event steps.
@@ -451,7 +453,7 @@ class TestBasicProperties(TempNetworkTestBase):
         assert L[2, 2] == 0  # self loop
 
     @pytest.mark.parametrize("dynamics", ["rw", "heat"])
-    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics):
+    def test_laplacian_empty_step_all_zero(self, simple_network, dynamics: Literal['rw'] | Literal['heat']):
         """Step [3,4]: no active events, so the Laplacian is all zeros."""
         simple_network.compute_laplacian_matrices(dynamics=dynamics)
         L = simple_network.laplacians[3].toarray()
@@ -459,7 +461,7 @@ class TestBasicProperties(TempNetworkTestBase):
 
     @pytest.mark.parametrize("dynamics", ["rw", "heat"])
     def test_laplacian_rows_sum_zero_connected_step(self, simple_network,
-                                                    dynamics):
+                                                    dynamics: Literal['rw'] | Literal['heat']):
         simple_network.compute_laplacian_matrices(dynamics=dynamics)
         n = simple_network.num_nodes
         for i in range(len(simple_network.laplacians)):
@@ -523,14 +525,14 @@ class TestConstructorValidation(TempNetworkTestBase):
         with pytest.raises(ValueError):
             ContTempNetwork(events_table="not_a_file.csv")
 
-    def test_empty_dataframe(self, tmp_path):
+    def test_empty_dataframe(self, tmp_path: Path):
         csv_path = tmp_path / "empty.csv"
         with open(csv_path, "w") as f:
             f.write("\n\n")
         with pytest.raises(ValueError):
             ContTempNetwork(events_table=csv_path)
 
-    def test_missing_required_columns(self, tmp_path):
+    def test_missing_required_columns(self, tmp_path: Path):
         df = pd.DataFrame({
             "source_nodes": [0, 1],
             "target_nodes": [1, 0],
@@ -617,7 +619,7 @@ class TestConstructorValidation(TempNetworkTestBase):
         )
 
     @pytest.mark.network
-    def test_import_data(self, mice_events_table):
+    def test_import_data(self, mice_events_table: DataFrame):
         """Make sure we can work with data with incomplete node lists"""
         network = ContTempNetwork(
             events_table=mice_events_table,
@@ -812,7 +814,7 @@ class TestRelabelNodes(TempNetworkTestBase):
         # caller's df should be unchanged
         pd.testing.assert_frame_equal(df, df_before)
 
-    def test_events_table_from_csv_path_relabels(self, tmp_path):
+    def test_events_table_from_csv_path_relabels(self, tmp_path: Path):
         csv_path = tmp_path / "events.csv"
         make_df(sources=[10, 20, 30], targets=[20, 30, 10],
                 starts=[0, 1, 2], ends=[1, 2, 3]).to_csv(csv_path,
@@ -836,9 +838,9 @@ class TestRelabelNodes(TempNetworkTestBase):
     )
     def test_bad_node_labels_are_safe_after_relabel(
         self,
-        input_mode,
-        sources,
-        targets,
+        input_mode: Literal['lists'] | Literal['events_table'],
+        sources: list[int] | list[str],
+        targets: list[int] | list[str],
     ):
         starts = [0.0, 1.0, 2.0]
         ends = [1.0, 2.0, 3.0]
@@ -912,7 +914,7 @@ class TestRelabelNodes(TempNetworkTestBase):
         assert network.events_table is events_table
         pd.testing.assert_frame_equal(network.events_table, events_table)
 
-    def test_sanitize_false_csv_fast_path(self, tmp_path):
+    def test_sanitize_false_csv_fast_path(self, tmp_path: Path):
         """`sanitize_data=False` does not reset CSV-loaded event tables."""
         events_table = pd.DataFrame({
             "source_nodes": [0, 1, 2],
@@ -966,7 +968,7 @@ class TestRelabelNodes(TempNetworkTestBase):
                     label_to_node_dict={"x": 0, "y": 0},
                 )
 
-    def test_sanitize_true_does_not_warn(self, recwarn):
+    def test_sanitize_true_does_not_warn(self, recwarn: pytest.WarningsRecorder):
         df = make_df([10, 20], [20, 10], starts=[1.0, 0.0], ends=[2.0, 1.0])
         ContTempNetwork(events_table=df)  # default sanitize_data=True
         assert not [w for w in recwarn if issubclass(w.category, UserWarning)]
@@ -1000,7 +1002,7 @@ class TestContTempInstNetwork(TempNetworkTestBase):
         assert "ending_times" in net.events_table.columns
         assert net.events_table.ending_times.tolist() == [0.0, 1.0, 2.0]
 
-    def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path):
+    def test_init_from_csv_path_synthesizes_ending_times(self, tmp_path: Path):
         csv_path = tmp_path / "inst_events.csv"
         make_df(sources=[10, 20, 30], targets=[20, 30, 10],
                 starts=[0.0, 1.0, 2.0]).to_csv(csv_path, index=False)
@@ -1102,12 +1104,12 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R1: the last pulse must not be dropped --------------------------- #
 
-    def test_one_laplacian_per_pulse(self, pulse_network):
+    def test_one_laplacian_per_pulse(self, pulse_network: ContTempInstNetwork):
         """3 pulses -> 3 Laplacian steps (currently only 2 are computed)."""
         pulse_network.compute_laplacian_matrices()
         assert len(pulse_network.laplacians) == 3
 
-    def test_last_pulse_laplacian_reflects_its_event(self, pulse_network):
+    def test_last_pulse_laplacian_reflects_its_event(self, pulse_network: ContTempInstNetwork):
         """The step for t=5 must couple A and B (pulse (A,B) at t=5)."""
         pulse_network.compute_laplacian_matrices()
         L_last = to_dense(pulse_network.laplacians[-1])
@@ -1119,7 +1121,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         ])
         np.testing.assert_allclose(L_last, expected)
 
-    def test_terminal_bound_does_not_change_public_time_grid(self, pulse_network):
+    def test_terminal_bound_does_not_change_public_time_grid(self, pulse_network: ContTempInstNetwork):
         """The final pulse uses a private bound, not a synthetic timestamp."""
         pulse_network.compute_laplacian_matrices()
 
@@ -1131,7 +1133,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R2: static adjacency counts pulses when weighted ----------------- #
 
-    def test_static_adjacency_counts_events(self, pulse_network):
+    def test_static_adjacency_counts_events(self, pulse_network: ContTempInstNetwork):
         """Full-range aggregation: (A,B) twice, (B,C) once.
 
         With zero-duration events the parent's duration-sum aggregation
@@ -1150,7 +1152,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     def test_static_adjacency_is_binary_by_default(
         self,
-        pulse_network,
+        pulse_network: ContTempInstNetwork,
     ):
         """Pulse default adjacency records presence rather than event counts."""
         adjacency = pulse_network.compute_static_adjacency_matrix().toarray()
@@ -1163,7 +1165,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
                 weight="duration",
             )
 
-    def test_static_adjacency_uses_half_open_pulse_windows(self, pulse_network):
+    def test_static_adjacency_uses_half_open_pulse_windows(self, pulse_network: ContTempInstNetwork):
         """Explicit pulse windows include their start and exclude their end.
 
         For pulses at times 0, 1, and 5, the window ``[1, 5)`` contains only
@@ -1184,7 +1186,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     def test_static_adjacency_includes_pulse_at_window_start(
         self,
-        pulse_network,
+        pulse_network: ContTempInstNetwork,
     ):
         """A pulse at ``t_start`` contributes to its half-open window."""
         adjacency = pulse_network.compute_static_adjacency_matrix(
@@ -1201,7 +1203,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 
     # --- R3: boundary pulses must count as active -------------------------- #
 
-    def test_default_window_counts_all_pulses(self, pulse_network):
+    def test_default_window_counts_all_pulses(self, pulse_network: ContTempInstNetwork):
         """The full default window must cover all 3 events and 3 nodes.
 
         The first pulse lies exactly at t_start = start_time = 0; the
@@ -1210,7 +1212,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         assert pulse_network.num_active_edges() == 3
         assert pulse_network.num_active_nodes() == 3
 
-    def test_pulse_at_window_start_is_active(self, pulse_network):
+    def test_pulse_at_window_start_is_active(self, pulse_network: ContTempInstNetwork):
         """A pulse exactly at t_start must be included in the window.
 
         Window [1, 2] contains only the (B,C) pulse at t = 1.
@@ -1219,12 +1221,12 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
         nodes = pulse_network.active_nodes(t_start=1, t_end=2)
         assert sorted(nodes) == [1, 2]  # B and C
 
-    def test_pulse_at_window_end_is_not_active(self, pulse_network):
+    def test_pulse_at_window_end_is_not_active(self, pulse_network: ContTempInstNetwork):
         """A pulse at the exclusive window end is not selected."""
         assert pulse_network.active_nodes(t_start=0, t_end=1).tolist() == [0, 1]
         assert pulse_network.num_active_nodes(t_start=0, t_end=1) == 2
 
-    def test_empty_pulse_window_has_no_active_nodes(self, pulse_network):
+    def test_empty_pulse_window_has_no_active_nodes(self, pulse_network: ContTempInstNetwork):
         """A pulse-free half-open window returns no active nodes."""
         assert pulse_network.active_nodes(t_start=2, t_end=5).tolist() == []
         assert pulse_network.num_active_nodes(t_start=2, t_end=5) == 0
@@ -1262,7 +1264,7 @@ class TestInstNetworkPulseSemantics(TempNetworkTestBase):
 # --------------------------------------------------------------------------- #
 class TestSaveLoad(TempNetworkTestBase):
 
-    def test_save_load(self, simple_network, tmp_path):
+    def test_save_load(self, simple_network, tmp_path: Path):
         simple_network.compute_laplacian_matrices()
         simple_network.compute_inter_transition_matrices(lamda=1)
         simple_network.compute_transition_matrices(
@@ -1285,7 +1287,7 @@ class TestSaveLoad(TempNetworkTestBase):
     EXPM_METHODS = ["sparse_expm", "parallel_expm", "mfp_exp"]
 
     @pytest.mark.parametrize("method", EXPM_METHODS)
-    def test_save_load_T(self, simple_network, tmp_path, method):
+    def test_save_load_T(self, simple_network, tmp_path: Path, method: str):
         simple_network.compute_laplacian_matrices()
         for lam in [1, 10, 0.1]:
             simple_network.compute_inter_transition_matrices(lamda=lam,
@@ -1302,7 +1304,7 @@ class TestSaveLoad(TempNetworkTestBase):
 
         assert type(T) == dict  # it might be really weak...
 
-    def test_pickle_roundtrip_all_networks(self, networks, tmp_path):
+    def test_pickle_roundtrip_all_networks(self, networks, tmp_path: Path):
         for i, network in enumerate(networks):
             temp_network = self._get_instance(network, use_df=True)
             assert isinstance(temp_network, ContTempNetwork)
@@ -1326,7 +1328,7 @@ class TestSaveLoad(TempNetworkTestBase):
                                            ln_et.ending_times)
 
     def test_save_and_load_preserves_laplacian_dynamics(self, simple_ns,
-                                                        tmp_path):
+                                                        tmp_path: Path):
         network = self._get_instance(simple_ns, use_df=True)
         network.compute_laplacian_matrices(dynamics="heat")
 
@@ -1346,7 +1348,7 @@ class TestTransitionMatrices(TempNetworkTestBase):
 
     @pytest.mark.parametrize("method", EXPM_METHODS)
     @pytest.mark.parametrize("lamda", [0.1, 1.0, 5.0])
-    def test_method_matches_dense_exact(self, simple_network, method, lamda):
+    def test_method_matches_dense_exact(self, simple_network, method: str, lamda: float):
         """Every method should match dense_expm to near machine precision."""
         net = simple_network
         net.compute_laplacian_matrices()
@@ -1363,7 +1365,7 @@ class TestTransitionMatrices(TempNetworkTestBase):
 
     @pytest.mark.parametrize("method", EXPM_METHODS)
     @pytest.mark.parametrize("lamda", [0.1, 1.0, 5.0])
-    def test_method_matches_dense_exact_inst(self, method, lamda):
+    def test_method_matches_dense_exact_inst(self, method: str, lamda: float):
         """Same contract on an instantaneous network."""
         net = ContTempInstNetwork(
             events_table=make_df(sources=[0, 1, 2], targets=[1, 2, 0],
@@ -1397,7 +1399,7 @@ class TestTransitionMatrices(TempNetworkTestBase):
                 net._compute_single_T(L, tau, lamda, net.num_nodes, "method")
 
     @pytest.mark.parametrize("method", EXPM_METHODS)
-    def test_transition_matrix_is_stochastic(self, simple_network, method):
+    def test_transition_matrix_is_stochastic(self, simple_network, method: str):
         """expm of a (negative) Laplacian gives row-stochastic matrices."""
         net = simple_network
         lamda = 1.0
@@ -1474,7 +1476,7 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
             ends=[2, 11, 26],
         )
 
-    def test_windowed_inter_T_uses_window_taus(self, uneven_events):
+    def test_windowed_inter_T_uses_window_taus(self, uneven_events: DataFrame):
         full = ContTempNetwork(events_table=uneven_events)
         full.compute_laplacian_matrices()
         full.compute_inter_transition_matrices(lamda=self.LAMDA)
@@ -1494,7 +1496,7 @@ class TestWindowedTransitionMatrices(TempNetworkTestBase):
                 err_msg=f"window step {j} != full step {k0 + j}",
             )
 
-    def test_windowed_tau_matches_expm_directly(self, uneven_events):
+    def test_windowed_tau_matches_expm_directly(self, uneven_events: DataFrame):
         from scipy.linalg import expm as dense_expm
 
         net = ContTempNetwork(events_table=uneven_events)
@@ -1566,7 +1568,7 @@ class TestInterTNotMutated(TempNetworkTestBase):
         return net
 
     def test_inter_T_unchanged_by_compute_transition_matrices(
-        self, net_with_inter_T,
+        self, net_with_inter_T: ContTempNetwork,
     ):
         """Byte-for-byte: inter_T must be identical before and after."""
         net = net_with_inter_T
@@ -1586,7 +1588,7 @@ class TestInterTNotMutated(TempNetworkTestBase):
             )
 
     def test_transition_matrices_idempotent_wrt_previous_runs(
-        self, net_with_inter_T,
+        self, net_with_inter_T: ContTempNetwork,
     ):
         """T computed after a coarse-tol run must equal a fresh computation.
 
@@ -1702,3 +1704,209 @@ class TestEventsTableIndexNormalization(TempNetworkTestBase):
         # must not raise KeyError on the "index" column in the time grid
         net.compute_laplacian_matrices()
         assert len(net.laplacians) == 3
+
+class TestConditionalEntropy(TempNetworkTestBase):
+    """Tests for the conditional entropy computation of the temporal network.
+
+    These tests ensure that the conditional entropy is computed correctly
+    and that the method behaves as expected under various scenarios.
+    """
+    def test_conditional_entropy_on_rw(self, simple_network):
+        """Test conditional entropy computation on a simple random walk network."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="rw")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=1.0)
+
+    def test_conditional_entropy_no_transition_matrices(self, simple_network):
+        """Test conditional entropy computation without computing transition matrices."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=1.0)
+
+    def test_conditional_entropy_with_invalid_lamda(self, simple_network):
+        """Test conditional entropy computation with an invalid lambda value."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=2.0)
+
+    def test_conditional_entropy_with_invalid_lamda2(self, simple_network):
+        """Test conditional entropy computation with an invalid lambda value."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            H = net.compute_conditional_entropy_curve(lamda=None)
+
+    def test_conditional_entropy_basic(self, simple_network):
+        """Basic test for conditional entropy computation."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H=net.S[l][:,1]
+        assert all(H >= 0), "Conditional entropy should be non-negative"
+
+    def test_conditional_entropy_time_downsampling_ratio(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_ratio=0)
+
+    def test_conditional_entropy_time_downsampling_ratio_greater_than_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio greater than 1."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        with pytest.raises(ValueError):
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_ratio=2)
+
+    def test_conditional_entropy_time_downsampling_ratio_equal_to_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio equal to 1."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
+        H = net.S[1.0][:,1]
+        assert len(H) == len(net.inter_T[1.0]), "Length of conditional entropy should match number of inter_T matrices"
+        
+
+    def test_conditional_entropy_downsamplig_values(self, simple_network):
+        """Test conditional entropy computation with various time_downsampling_ratio values."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
+        H1 = net.S[1.0][:,1]
+
+        del net.S
+
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=0.5)
+        H1_5 = net.S[1.0][:,1]
+        assert np.abs(H1[0] - H1_5[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling ratios"
+        assert np.abs(H1[-1] - H1_5[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling ratios"
+        assert len(H1) >= len(H1_5), "Length of conditional entropy should be the same for different downsampling ratios"
+        assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
+        assert np.all(H1_5 >= 0), "Conditional entropy should be non-negative"
+        assert np.all(H1[::2] == H1_5), "Conditional entropy should be the same for different downsampling ratios"
+
+    def test_conditional_entropy_downsampling_values_backwards(self, simple_network):
+        """Test conditional entropy computation with various time_downsampling_ratio values in reverse order."""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        net.compute_inter_transition_matrices(lamda=1.0)
+        net.compute_transition_matrices(lamda=1.0, reverse_time=True)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
+        H1 = net.S[1.0][:,1]
+
+        del net.S
+
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=0.5)
+        H2 = net.S[1.0][:,1]
+        assert np.abs(H1[0] - H2[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling ratios"
+        assert np.abs(H1[-1] - H2[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling ratios"
+        assert len(H2) <= len(H1), "Length of conditional entropy should be the same for different downsampling ratios"
+        assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
+        assert np.all(H2 >= 0), "Conditional entropy should be non-negative"
+
+    def test_upper_bound_conditional_entropy(self, simple_network):
+        """Test that the computed conditional entropy does not exceed the upper bound"""
+        import networkx as nx
+        net = simple_network
+        N = net.num_nodes
+        A=net.compute_static_adjacency_matrix(weighted=False).toarray()
+        G=nx.from_numpy_array(A)
+        upper_bound = np.sum([len(c)/N * np.log(len(c)) for c in nx.connected_components(G)])
+        net.compute_laplacian_matrices(dynamics="heat")
+
+        for lamda in [0.1, 1.0, 10.0]:
+            net.compute_inter_transition_matrices(lamda=lamda)
+            net.compute_transition_matrices(lamda=lamda)
+            net.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_ratio=1)
+            H = net.S[lamda][:,1]
+            assert np.all(H <= upper_bound), "Conditional entropy should not exceed the upper bound"
+
+        net.compute_entropy_upper_bound_curve(time_downsampling_ratio=1)
+        upper_bound_computed = net.S_upper_bound[:,1][-1]
+        assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
+
+    def test_conditional_entropy_with_csr(self, simple_network):
+        """Basic test for conditional entropy computation with CSR"""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l, force_csr=True)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H=net.S[l][:,1]
+        assert all(H >= 0), "Conditional entropy should be non-negative"
+
+    def test_equality_entropy_with_csr_and_array(self, simple_network):
+        """Equality test for conditional entropy computation with CSR and Array"""
+
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l, force_csr=True)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H1=net.S[l][:,1]
+
+        # remove the current values of conditional entropy
+        del net.S
+        # convert to np.array
+        net.T[l]=[L.toarray() for L in net.T[l]]
+
+        net.compute_conditional_entropy_curve(lamda=l)
+        H2=net.S[l][:,1]
+       
+        assert np.allclose(H1, H2), "Conditional entropy should equal with csr or array"
+
+    def test_conditional_entropy_monotonicity(self, simple_network):
+        """Conditional entropy curve should be non-decreasing over time for a heat process."""
+
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        for l in [0.1, 1, 100]:
+            net.compute_inter_transition_matrices(lamda=l)
+            net.compute_transition_matrices(lamda=l)
+            net.compute_conditional_entropy_curve(lamda=l)
+
+            H = net.S[l][:, 1]
+
+            diffs = np.diff(H)
+            assert np.all(diffs >= -1e-10), (f"Conditional entropy should be non-decreasing")
+
+    def test_accuracy_of_conditional_entropy(self, simple_network):
+        """conditional entropy matches precomputed reference values."""
+
+        entropy_results = {
+            0.1: [0.2026691, 0.50530438, 0.6024876, 0.6024876, 0.74558956, 0.74558956, 0.795995],
+            1: [0.45597413, 1.0457817, 1.06059942, 1.06059942, 1.09195341, 1.09195341, 1.09812409],
+            100: [0.46209812, 1.09861229, 1.09861229, 1.09861229, 1.09861229, 1.09861229, 1.09861229],
+        }
+
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        for l in [0.1, 1, 100]:
+            net.compute_inter_transition_matrices(lamda=l)
+            net.compute_transition_matrices(lamda=l)
+            net.compute_conditional_entropy_curve(lamda=l)
+
+            H = net.S[l][:, 1]
+
+            assert np.allclose(H, entropy_results[l]), (
+                f"Conditional entropy mismatch for lamda={l}"
+            )

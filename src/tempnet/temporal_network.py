@@ -36,6 +36,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from scipy.sparse.linalg import expm
+from scipy.sparse.csgraph import connected_components
 
 from .expm_with_tol import mfp_exp
 from .faster_expm import compute_subspace_expm, sparse_lapl_expm
@@ -1946,7 +1947,267 @@ class ContTempNetwork:
             Number of active events overlapping the window. Zero if none.
         """
         return int(self._active_mask(t_start, t_end).sum())
+
+
+    @staticmethod
+    def _conditional_entropy_of_transition_matrix(T, p0=None, tol=1e-12):
+        r"""Conditional entropy of one Markov step under a given state distribution.
+
+        Computes
+
+        .. math::
+
+            H(Y \mid X) = -\sum_i p_0(i) \sum_j T_{ij} \log T_{ij},
+
+        the entropy (in nats) of the destination state ``Y`` given the source
+        state ``X``, where ``X`` is distributed according to ``p0`` and each row
+        ``T[i, :]`` is the conditional distribution ``P(Y = j \mid X = i)``.
+
+        Parameters
+        ----------
+        T : numpy.ndarray or scipy.sparse.csr_matrix, shape (n, n)
+            Row-stochastic transition matrix. Must be either a dense NumPy array
+            or a CSR sparse matrix.
+
+        p0 : array_like, shape (n,)
+            Weights for each source state. Must have length ``T.shape[0]``, and
+            be a probability vector summing to 1. the default is the uniform distribution over all states.
+
+        Returns
+        -------
+        float
+            The conditional entropy in nats (natural log); divide by ``log(2)`` for bits
+
+        """
+        n_rows = T.shape[0]
+
+        if p0 is None:
+            p0 = np.full(n_rows, 1 / n_rows, dtype=np.float64)
+
+        p0 = np.asarray(p0, dtype=np.float64)
+
+        if p0.shape != (n_rows,):
+            raise ValueError(
+                f"p0 must have shape ({n_rows},) to match T, got {p0.shape}."
+            )
+        if np.any(p0 < 0) or np.any(p0 > 1):
+            raise ValueError("p0 values must be non-negative and equal or below 1.")
+        
+        if np.abs(sum(p0)-1)>tol:
+            raise ValueError("p0 must sum to 1.")
+
+        if not isinstance(T, np.ndarray) and not isspmatrix_csr(T):
+            raise TypeError(f"T must be a numpy.ndarray or scipy.sparse.csr_matrix, got {type(T).__name__}.")
+
+        if isinstance(T, np.ndarray):
+            return float(
+                np.dot(
+                    -p0,
+                    (T * np.log(T, out=np.zeros_like(T, dtype=np.float64), where=(T != 0))).sum(1)
+                )
+            )
+
+        data = T.data
+        indptr = T.indptr
+
+        if data.size == 0:
+            return 0.0
+
+        xlogx = np.zeros_like(data, dtype=np.float64)
+        mask = data > 0
+        xlogx[mask] = data[mask] * np.log(data[mask])
+
+        row_lengths = np.diff(indptr)
+        row_sums = np.zeros(n_rows, dtype=np.float64)
+        nonempty = row_lengths > 0
+        if np.any(nonempty):
+            starts = indptr[:-1][nonempty]
+            row_sums[nonempty] = np.add.reduceat(xlogx, starts)
+
+        return float(-np.dot(p0, row_sums))
+
+
+    def compute_conditional_entropy_curve(self, lamda, p0=None, time_downsampling_ratio=None):
+        r"""Global conditional entropy of cumulative transitions across time steps.
+
+        For a given scale ``lamda``, evaluates the conditional entropy
+        ``H(Y | X)`` of each stored (cumulative) transition matrix and returns
+        it as a function of time-step index. The per-matrix entropy is computed
+        by :meth:`_conditional_entropy_of_transition_matrix`. To limit cost, a
+        subset of the time steps can be evaluated via ``time_downsampling_ratio``.
+
+        Parameters
+        ----------
+        lamda : float
+            Scale key selecting the sequence of transition matrices in
+            ``self.T[lamda]``. The matrices must have been computed with
+            ``save_intermediate=True`` so that more than one time step is stored.
+        p0 : array_like, shape (num_nodes,), optional
+            Source-state distribution used to weight each row entropy. Defaults
+            to the uniform distribution ``1 / num_nodes`` over all nodes.
+        
+        time_downsampling_ratio : float, optional
+            Fraction of time steps to evaluate, in ``(0, 1]``. The sampled
+            indices are spread evenly over the available range with
+            :func:`numpy.linspace`. Defaults to ``1.0`` (every time step).
+
+        Returns
+        -------
+        numpy.ndarray, shape (num_samples, 2)
+            Column 0 holds the sampled time-step indices (as floats), column 1
+            the corresponding conditional entropies in nats.
+        """
+        if lamda is None:
+            raise ValueError("lamda (scale) must be specified for entropy computation.")
+
+        if self.laplacian_dynamics != 'heat':
+            raise ValueError(
+                f"Entropy computation is only implemented for heat diffusion dynamics, "
+                f"got {self.laplacian_dynamics}"
+            )
+
+        if not hasattr(self, "T"):
+            raise ValueError(
+                "Transition matrices have not been computed. "
+                "Call compute_transition_matrices first."
+            )
+        if self.T[lamda] is None:
+            raise ValueError(
+                f"Transition matrices for lamda={lamda} have not been computed. "
+                f"Call compute_transition_matrices first."
+            )
+
+        if len(self.T[lamda]) == 1:
+            raise ValueError(
+                f"Compute the transition matrices for lamda={lamda} with "
+                f"save_intermediate=True to compute entropy over multiple time steps."
+            )
+
+        if not hasattr(self, "S"):
+            self.S = {}
+
+        if lamda in self.S:
+            logger.info(f"Entropy curve already computed for lamda={lamda}, returning it")
+            return self.S[lamda]
+        
+        if time_downsampling_ratio is None:
+            time_downsampling_ratio = 1.0
+        if time_downsampling_ratio <= 0 or time_downsampling_ratio > 1:
+            raise ValueError("time_downsampling_ratio must be in (0, 1].")
+
+
+        transition_matrices = self.T[lamda]
+        num_points = len(transition_matrices)
+
+        num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
+        sampled_indices = np.unique(np.linspace(0, num_points - 1, num_samples, dtype=int))
+
+        if p0 is None:
+            # starting uniform distribution over all nodes
+            p0 = np.full(self.num_nodes, 1 / self.num_nodes, dtype=np.float64)
+
+        logger.info(
+            f"Computing global conditional entropy for lamda={lamda} with "
+            f"direction={self.direction} with time_downsampling_ratio={time_downsampling_ratio} "
+            f"({len(sampled_indices)} sampled indices out of {num_points})"
+        )
+
+        t0 = time.time()
+        entropy_values = np.empty(len(sampled_indices), dtype=np.float64)
+        for pos, k in enumerate(sampled_indices):
+            if pos % 1000 == 0:
+                logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+
+            entropy_values[pos] = self._conditional_entropy_of_transition_matrix(
+                transition_matrices[k],
+                p0,
+            )
+
+        logger.info(f"Finished computing entropy in {time.time() - t0:.2f}s")
+
+        if self.direction=='reverse': 
+            sampled_indices=-1-sampled_indices
+
+
+        self.S[lamda] = np.column_stack((
+            sampled_indices,
+            entropy_values,
+        ))
     
+    def compute_entropy_upper_bound_curve(self, time_downsampling_ratio=None):
+        r"""Component-size upper bound for the entropy curve.
+
+        For each sampled step ``k`` the bound is computed from the connected
+        components of the graph aggregated over the cumulative diffusion window
+        (``[t_0, t_{k+1}]`` forward, ``[t_k, t_{-1}]`` backward):
+
+        .. math::
+
+            \sum_c \frac{|c|}{N} \log |c|,
+
+        the conditional entropy reached when the walk is uniform within each
+        reachable component. This upper-bounds ``H(X_k | X_0)``.
+
+        Parameters
+        ----------
+        time_downsampling_ratio : float, optional
+            Fraction of samples to evaluate, in ``(0, 1]``. Defaults to ``1.0``.
+
+        Returns
+        -------
+        numpy.ndarray, shape (num_samples, 2)
+            Sample indices in the first column, upper-bound values (in nats) in
+            the second.
+        """
+        if time_downsampling_ratio is None:
+            time_downsampling_ratio = 1.0
+        if time_downsampling_ratio <= 0 or time_downsampling_ratio > 1:
+            raise ValueError("time_downsampling_ratio must be in (0, 1].")
+
+        if hasattr(self, 'S_upper_bound'):
+            logger.info("Entropy upper bound curve already computed, returning it")
+            return self.S_upper_bound
+
+        num_points = len(self.laplacians)
+        num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
+        sampled_indices = np.unique(
+            np.linspace(0, num_points - 1, num_samples, dtype=int)
+        )
+
+        logger.info("Computing entropy upper bound")
+        t0 = time.time()
+        values = np.empty(len(sampled_indices), dtype=np.float64)
+
+        A = np.zeros((self.num_nodes, self.num_nodes))
+        if self.direction == 'forward':
+            order = range(len(sampled_indices))
+            prev = 0
+        else:
+            order = range(len(sampled_indices) - 1, -1, -1)
+            prev = len(self.times) - 1
+
+        for i, pos in enumerate(order):
+            k = sampled_indices[pos]
+            if i % 1000 == 0:
+                logger.info(f"{i} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+
+            if self.direction == 'forward':
+                start_time, end_time = self.times[prev], self.times[k + 1]
+                prev = k + 1
+            else:
+                start_time, end_time = self.times[k], self.times[prev]
+                prev = k
+
+            A += self.compute_static_adjacency_matrix(start_time, end_time)
+            n_comp, labels = connected_components(A, directed=False, return_labels=True)
+            sizes = np.bincount(labels).astype(np.float64)
+            values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
+
+        logger.info(f"Finished computing entropy upper bound in {time.time() - t0:.2f}s")
+
+        self.S_upper_bound = np.column_stack((sampled_indices, values))
+        return self.S_upper_bound
+
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
