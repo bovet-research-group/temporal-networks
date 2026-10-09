@@ -276,9 +276,10 @@ plt.show()
 # Conditional entropy curve
 # -------------------------
 # In this example the individuals are arranged into different blocks that
-# change over time. In such cases the key question is *when* a change occurs
-# (change-point detection). Following Koovely et al. (2026)[[1]](#1), we detect these
-# change points from the conditional entropy of the heat diffusion.
+# change over time. In such cases, a key question is *when* a change occurs
+# (change-point detection). The conditional entropy of the heat 
+# diffusion can be used to detect such changes in the structure 
+# (see Koovely & Bovet (`2026 <https://arxiv.org/abs/2605.21514>`_)).
 #
 # The conditional entropy at scale :math:`\tau` is
 #
@@ -310,8 +311,6 @@ plt.show()
 # the end of the observation window back to the start. Comparing the two panels
 # shows temporal asymmetry, a change point in one direction is
 # not necessarily a change point in the other.
-#
-# <a id="1">[1]</a> : Koovely, Samuel, and Alexandre Bovet. Conditional Entropy of Heat Diffusion on Temporal Networks. [arXiv:2605.21514](https://arxiv.org/abs/2605.21514) (2026).
 
 fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
