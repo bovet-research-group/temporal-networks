@@ -279,7 +279,7 @@ plt.show()
 # change over time. In such cases, a key question is *when* a change occurs
 # (change-point detection). The conditional entropy of the heat 
 # diffusion can be used to detect such changes in the structure 
-# (see Koovely & Bovet (`2026 <https://arxiv.org/abs/2605.21514>`_).
+# (see Koovely & Bovet (`2026 <https://arxiv.org/abs/2605.21514>`_)).
 #
 # The conditional entropy at scale :math:`\tau` is
 #
