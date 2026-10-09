@@ -1753,71 +1753,71 @@ class TestConditionalEntropy(TempNetworkTestBase):
         H=net.S[l][:,1]
         assert all(H >= 0), "Conditional entropy should be non-negative"
 
-    def test_conditional_entropy_time_downsampling_factor(self, simple_network):
-        """Test conditional entropy computation with time_downsampling_factor."""
+    def test_conditional_entropy_time_downsampling_ratio(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio."""
         net = simple_network
         net.compute_laplacian_matrices(dynamics="heat")
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0)
         with pytest.raises(ValueError):
-            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_factor=0)
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_ratio=0)
 
-    def test_conditional_entropy_time_downsampling_factor_greater_than_one(self, simple_network):
-        """Test conditional entropy computation with time_downsampling_factor greater than 1."""
+    def test_conditional_entropy_time_downsampling_ratio_greater_than_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio greater than 1."""
         net = simple_network
         net.compute_laplacian_matrices(dynamics="heat")
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0)
         with pytest.raises(ValueError):
-            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_factor=2)
+            simple_network.compute_conditional_entropy_curve(lamda=1, time_downsampling_ratio=2)
 
-    def test_conditional_entropy_time_downsampling_factor_equal_to_one(self, simple_network):
-        """Test conditional entropy computation with time_downsampling_factor equal to 1."""
+    def test_conditional_entropy_time_downsampling_ratio_equal_to_one(self, simple_network):
+        """Test conditional entropy computation with time_downsampling_ratio equal to 1."""
         net = simple_network
         net.compute_laplacian_matrices(dynamics="heat")
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0)
-        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=1)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
         H = net.S[1.0][:,1]
         assert len(H) == len(net.inter_T[1.0]), "Length of conditional entropy should match number of inter_T matrices"
         
 
     def test_conditional_entropy_downsamplig_values(self, simple_network):
-        """Test conditional entropy computation with various time_downsampling_factor values."""
+        """Test conditional entropy computation with various time_downsampling_ratio values."""
         net = simple_network
         net.compute_laplacian_matrices(dynamics="heat")
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0)
-        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=1)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
         H1 = net.S[1.0][:,1]
 
         del net.S
 
-        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=0.5)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=0.5)
         H1_5 = net.S[1.0][:,1]
-        assert np.abs(H1[0] - H1_5[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling factors"
-        assert np.abs(H1[-1] - H1_5[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling factors"
-        assert len(H1) >= len(H1_5), "Length of conditional entropy should be the same for different downsampling factors"
+        assert np.abs(H1[0] - H1_5[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling ratios"
+        assert np.abs(H1[-1] - H1_5[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling ratios"
+        assert len(H1) >= len(H1_5), "Length of conditional entropy should be the same for different downsampling ratios"
         assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
         assert np.all(H1_5 >= 0), "Conditional entropy should be non-negative"
-        assert np.all(H1[::2] == H1_5), "Conditional entropy should be the same for different downsampling factors"
+        assert np.all(H1[::2] == H1_5), "Conditional entropy should be the same for different downsampling ratios"
 
     def test_conditional_entropy_downsampling_values_backwards(self, simple_network):
-        """Test conditional entropy computation with various time_downsampling_factor values in reverse order."""
+        """Test conditional entropy computation with various time_downsampling_ratio values in reverse order."""
         net = simple_network
         net.compute_laplacian_matrices(dynamics="heat")
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0, reverse_time=True)
-        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=1)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=1)
         H1 = net.S[1.0][:,1]
 
         del net.S
 
-        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_factor=0.5)
+        net.compute_conditional_entropy_curve(lamda=1.0, time_downsampling_ratio=0.5)
         H2 = net.S[1.0][:,1]
-        assert np.abs(H1[0] - H2[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling factors"
-        assert np.abs(H1[-1] - H2[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling factors"
-        assert len(H2) <= len(H1), "Length of conditional entropy should be the same for different downsampling factors"
+        assert np.abs(H1[0] - H2[0]) < 1e-10, "Conditional entropy at first time step should be the same for different downsampling ratios"
+        assert np.abs(H1[-1] - H2[-1]) < 1e-10, "Conditional entropy at last time step should be the same for different downsampling ratios"
+        assert len(H2) <= len(H1), "Length of conditional entropy should be the same for different downsampling ratios"
         assert np.all(H1 >= 0), "Conditional entropy should be non-negative"
         assert np.all(H2 >= 0), "Conditional entropy should be non-negative"
 
@@ -1834,11 +1834,11 @@ class TestConditionalEntropy(TempNetworkTestBase):
         for lamda in [0.1, 1.0, 10.0]:
             net.compute_inter_transition_matrices(lamda=lamda)
             net.compute_transition_matrices(lamda=lamda)
-            net.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_factor=1)
+            net.compute_conditional_entropy_curve(lamda=lamda, time_downsampling_ratio=1)
             H = net.S[lamda][:,1]
             assert np.all(H <= upper_bound), "Conditional entropy should not exceed the upper bound"
 
-        net.compute_entropy_upper_bound_curve(time_downsampling_factor=1)
+        net.compute_entropy_upper_bound_curve(time_downsampling_ratio=1)
         upper_bound_computed = net.S_upper_bound[:,1][-1]
         assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
 
