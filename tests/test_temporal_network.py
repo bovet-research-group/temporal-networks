@@ -1864,8 +1864,10 @@ class TestConditionalEntropy(TempNetworkTestBase):
         net.compute_conditional_entropy_curve(lamda=l)
         H1=net.S[l][:,1]
 
-        del net.S,net.T,net.direction
-        net.compute_transition_matrices(lamda=l, force_csr=False)
+        del net.S
+        
+        net.T[l]=[L.toarray() for L in net.T[l]]
+
         net.compute_conditional_entropy_curve(lamda=l)
         H2=net.S[l][:,1]
        
