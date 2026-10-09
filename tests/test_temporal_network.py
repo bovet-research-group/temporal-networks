@@ -1889,3 +1889,24 @@ class TestConditionalEntropy(TempNetworkTestBase):
             diffs = np.diff(H)
             assert np.all(diffs >= -1e-10), (f"Conditional entropy should be non-decreasing")
 
+    def test_accuracy_of_conditional_entropy(self, simple_network):
+        """conditional entropy matches precomputed reference values."""
+
+        entropy_results = {
+            0.1: [0.2026691, 0.50530438, 0.6024876, 0.6024876, 0.74558956, 0.74558956, 0.795995],
+            1: [0.45597413, 1.0457817, 1.06059942, 1.06059942, 1.09195341, 1.09195341, 1.09812409],
+            100: [0.46209812, 1.09861229, 1.09861229, 1.09861229, 1.09861229, 1.09861229, 1.09861229],
+        }
+
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        for l in [0.1, 1, 100]:
+            net.compute_inter_transition_matrices(lamda=l)
+            net.compute_transition_matrices(lamda=l)
+            net.compute_conditional_entropy_curve(lamda=l)
+
+            H = net.S[l][:, 1]
+
+            assert np.allclose(H, entropy_results[l]), (
+                f"Conditional entropy mismatch for lamda={l}"
+            )
