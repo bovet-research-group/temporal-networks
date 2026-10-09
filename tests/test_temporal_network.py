@@ -1839,3 +1839,15 @@ class TestConditionalEntropy(TempNetworkTestBase):
         net.compute_entropy_upper_bound_curve(time_downsampling_factor=1)
         upper_bound_computed = net.S_upper_bound[:,1][-1]
         assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
+
+    def test_conditional_entropy_with_csr(self, simple_network):
+        """Basic test for conditional entropy computation with CSR"""
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l, force_csr=True)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H=net.S[l][:,1]
+        assert all(H >= 0), "Conditional entropy should be non-negative"
+
