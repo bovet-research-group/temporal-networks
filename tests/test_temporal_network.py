@@ -1851,3 +1851,20 @@ class TestConditionalEntropy(TempNetworkTestBase):
         H=net.S[l][:,1]
         assert all(H >= 0), "Conditional entropy should be non-negative"
 
+    def test_equality_entropy_with_csr_and_array(self, simple_network):
+        """Equality test for conditional entropy computation with CSR and Array"""
+
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        l=1.0
+        net.compute_inter_transition_matrices(lamda=l)
+        net.compute_transition_matrices(lamda=l, force_csr=True)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H1=net.S[l][:,1]
+
+        del net.S,net.T,net.direction
+        net.compute_transition_matrices(lamda=l, force_csr=False)
+        net.compute_conditional_entropy_curve(lamda=l)
+        H2=net.S[l][:,1]
+       
+        assert np.allclose(H1, H2), "Conditional entropy should equal with csr or array"
