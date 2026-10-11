@@ -2125,9 +2125,13 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global conditional entropy in {time.time() - t0:.2f}s")
 
-        if self.direction=='reverse': 
-            sampled_indices=-1-sampled_indices
-
+        
+        if self.direction == 'reverse':
+            # T[lamda][k] is the kernel up to t_{k+1} (product of inter[0..k]).
+            # Reverse: flip to count from the end, then shift one step back.
+            sampled_indices = -1 - sampled_indices - 1
+        else:
+            sampled_indices = sampled_indices + 1
 
         self.S[lamda] = np.column_stack((
             sampled_indices,
@@ -2208,6 +2212,7 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global entropy upper bound in {time.time() - t0:.2f}s")
 
+        
         self.S_upper_bound = np.column_stack((sampled_indices, values))
         return self.S_upper_bound
 
