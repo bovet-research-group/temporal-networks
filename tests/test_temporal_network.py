@@ -1821,7 +1821,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         assert np.all(H1 >= 0), "Global conditional entropy should be non-negative"
         assert np.all(H2 >= 0), "Global conditional entropy should be non-negative"
 
-    def test_upper_bound_conditional_entropy(self, simple_network):
+    def test_upper_bound_global_conditional_entropy(self, simple_network):
         """Test that the computed conditional entropy does not exceed the upper bound"""
         import networkx as nx
         net = simple_network
@@ -1838,7 +1838,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             H = net.S[lamda][:,1]
             assert np.all(H <= upper_bound), "Global conditional entropy should not exceed the upper bound"
 
-        net.compute_entropy_upper_bound_curve(time_downsampling_ratio=1)
+        net.global_conditional_entropy_upper_bound(time_downsampling_ratio=1)
         upper_bound_computed = net.S_upper_bound[:,1][-1]
         assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
 

@@ -329,7 +329,7 @@ for lamda in scales:
     S = tnet.S[lamda]
     axes[0].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
-tnet.compute_entropy_upper_bound_curve(time_downsampling_ratio=0.05)
+tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
 bound = tnet.S_upper_bound
 axes[0].plot(times[bound[:, 0].astype(int)], bound[:, 1],
              label="Upper bound", linestyle='--', color='black')
@@ -346,7 +346,7 @@ for lamda in scales:
     S = tnet.S[lamda]
     axes[1].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
 
-tnet.compute_entropy_upper_bound_curve(time_downsampling_ratio=0.05)
+tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
 bound = tnet.S_upper_bound
 axes[1].plot(times[bound[:, 0].astype(int)], bound[:, 1],
              label="Upper bound", linestyle='--', color='black')

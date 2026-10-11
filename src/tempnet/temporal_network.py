@@ -2087,7 +2087,7 @@ class ContTempNetwork:
             self.S = {}
 
         if lamda in self.S:
-            logger.info(f"Entropy curve already computed for lamda={lamda}, returning it")
+            logger.info(f"Global conditional entropy already computed for lamda={lamda}, returning it")
             return self.S[lamda]
         
         if time_downsampling_ratio is None:
@@ -2123,7 +2123,7 @@ class ContTempNetwork:
                 p0,
             )
 
-        logger.info(f"Finished computing entropy in {time.time() - t0:.2f}s")
+        logger.info(f"Finished computing global conditional entropy in {time.time() - t0:.2f}s")
 
         if self.direction=='reverse': 
             sampled_indices=-1-sampled_indices
@@ -2134,8 +2134,8 @@ class ContTempNetwork:
             entropy_values,
         ))
     
-    def compute_entropy_upper_bound_curve(self, time_downsampling_ratio=None):
-        r"""Component-size upper bound for the entropy curve.
+    def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
+        r"""Component-size upper bound for the global conditional entropy.
 
         For each sampled step ``k`` the bound is computed from the connected
         components of the graph aggregated over the cumulative diffusion window
@@ -2165,7 +2165,7 @@ class ContTempNetwork:
             raise ValueError("time_downsampling_ratio must be in (0, 1].")
 
         if hasattr(self, 'S_upper_bound'):
-            logger.info("Entropy upper bound curve already computed, returning it")
+            logger.info("Global conditional entropy upper bound curve already computed, returning it")
             return self.S_upper_bound
 
         num_points = len(self.laplacians)
@@ -2174,7 +2174,7 @@ class ContTempNetwork:
             np.linspace(0, num_points - 1, num_samples, dtype=int)
         )
 
-        logger.info("Computing entropy upper bound")
+        logger.info("Computing global entropy upper bound")
         t0 = time.time()
         values = np.empty(len(sampled_indices), dtype=np.float64)
 
@@ -2203,7 +2203,7 @@ class ContTempNetwork:
             sizes = np.bincount(labels).astype(np.float64)
             values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
 
-        logger.info(f"Finished computing entropy upper bound in {time.time() - t0:.2f}s")
+        logger.info(f"Finished computing global entropy upper bound in {time.time() - t0:.2f}s")
 
         self.S_upper_bound = np.column_stack((sampled_indices, values))
         return self.S_upper_bound
