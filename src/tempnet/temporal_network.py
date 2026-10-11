@@ -2133,6 +2133,8 @@ class ContTempNetwork:
             sampled_indices,
             entropy_values,
         ))
+
+        return self.S[lamda]
     
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
         r"""Component-size upper bound for the global conditional entropy.
