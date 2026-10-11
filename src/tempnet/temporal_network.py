@@ -2137,7 +2137,8 @@ class ContTempNetwork:
         return self.S[lamda]
     
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
-        r"""Component-size upper bound for the global conditional entropy.
+        r"""Component-size upper bound for the global conditional entropy
+          in case `p(0)' is uniform.
 
         For each sampled step ``k`` the bound is computed from the connected
         components of the graph aggregated over the cumulative diffusion window
