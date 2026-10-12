@@ -1794,7 +1794,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         del net.S
 
         net.global_conditional_entropy(lamda=1.0, time_downsampling_ratio=0.5)
-        H1_5 = net.S[1.0][:,1]
+        H1_5 = net.S[1.0]['entropy_vals']
         assert np.abs(H1[0] - H1_5[0]) < 1e-10, "Global conditional entropy at first time step should be the same for different downsampling ratios"
         assert np.abs(H1[-1] - H1_5[-1]) < 1e-10, "Global conditional entropy at last time step should be the same for different downsampling ratios"
         assert len(H1) >= len(H1_5), "Length of global conditional entropy should be the same for different downsampling ratios"
