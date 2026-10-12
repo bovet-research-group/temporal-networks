@@ -2131,21 +2131,14 @@ class ContTempNetwork:
 
         # T[lamda][k] is the kernel up to t_{k+1} (product of inter[0..k]).
         # Reverse: flip to count from the end, then shift one step back.
-        if self.direction == 'reverse':
-            self.S[lamda] = np.column_stack((
-                self.times[-1 - sampled_indices - 1][::-1],
-                entropy_values[::-1],
-            ))
-        else: 
-            self.S[lamda] = np.column_stack((
-                self.times[sampled_indices + 1],
-                entropy_values,
-            ))            
+        idx=self._k_start_laplacians + sampled_indices + 1
 
+        if self.direction == 'reverse':
+            entropy_values=entropy_values[::-1]
+        
+        self.S[lamda] = {'idx':idx , 'times':self.times[idx], 'entropy_vals': entropy_values }
         return self.S[lamda]
 
-    
-    
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
         r"""Component-size upper bound for the global conditional entropy
           in case `p(0)' is uniform.
