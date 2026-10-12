@@ -1750,7 +1750,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=l)
         net.compute_transition_matrices(lamda=l)
         net.global_conditional_entropy(lamda=l)
-        H=net.S[l]['entropy_vals']
+        H=net.S[l]['entropy']
         assert all(H >= 0), "Conditional entropy should be non-negative"
 
     def test_global_conditional_entropy_time_downsampling_ratio(self, simple_network):
@@ -1778,7 +1778,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0)
         net.global_conditional_entropy(lamda=1.0, time_downsampling_ratio=1)
-        H = net.S[1.0]['entropy_vals']
+        H = net.S[1.0]['entropy']
         assert len(H) == len(net.inter_T[1.0]), "Length of conditional entropy should match number of inter_T matrices"
         
 
@@ -1796,11 +1796,11 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         H1_5 = net.S[1.0]
 
         assert np.all(H1['times'][::2]==H1_5['times']), "times should be the same for different downsampling ratios"
-        assert np.all(H1['entropy_vals'][::2]==H1_5['entropy_vals']), "global conditional entropy  should be the same for different downsampling ratios"
+        assert np.all(H1['entropy'][::2]==H1_5['entropy']), "global conditional entropy  should be the same for different downsampling ratios"
 
-        assert len(H1['entropy_vals']) >= len(H1_5['entropy_vals']), "Length of global conditional entropy should be the same for different downsampling ratios"
-        assert np.all(H1['entropy_vals'] >= 0), "Global conditional entropy should be non-negative"
-        assert np.all(H1_5['entropy_vals'] >= 0), "Global conditional entropy should be non-negative"
+        assert len(H1['entropy']) >= len(H1_5['entropy']), "Length of global conditional entropy should be the same for different downsampling ratios"
+        assert np.all(H1['entropy'] >= 0), "Global conditional entropy should be non-negative"
+        assert np.all(H1_5['entropy'] >= 0), "Global conditional entropy should be non-negative"
 
     def test_conditional_entropy_downsampling_values_backwards(self, simple_network):
         """Test global conditional entropy computation with various time_downsampling_ratio values in reverse order."""
@@ -1809,11 +1809,11 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=1.0)
         net.compute_transition_matrices(lamda=1.0, reverse_time=True)
         net.global_conditional_entropy(lamda=1.0, time_downsampling_ratio=1)
-        H1 = net.S[1.0]['entropy_vals']
+        H1 = net.S[1.0]['entropy']
         del net.S
 
         net.global_conditional_entropy(lamda=1.0, time_downsampling_ratio=0.5)
-        H2 = net.S[1.0]['entropy_vals']
+        H2 = net.S[1.0]['entropy']
         assert np.abs(H1[0] - H2[0]) < 1e-10, "Global conditional entropy at first time step should be the same for different downsampling ratios"
         assert np.abs(H1[-1] - H2[-1]) < 1e-10, "Global conditional entropy at last time step should be the same for different downsampling ratios"
         assert len(H2) <= len(H1), "Length of global conditional entropy should be the same for different downsampling ratios"
@@ -1834,11 +1834,11 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             net.compute_inter_transition_matrices(lamda=lamda)
             net.compute_transition_matrices(lamda=lamda)
             net.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=1)
-            H = net.S[lamda]['entropy_vals']
+            H = net.S[lamda]['entropy']
             assert np.all(H <= upper_bound), "Global conditional entropy should not exceed the upper bound"
 
         net.global_conditional_entropy_upper_bound(time_downsampling_ratio=1)
-        upper_bound_computed = net.S_upper_bound['entropy_vals'][-1]
+        upper_bound_computed = net.S_upper_bound['entropy'][-1]
         assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
 
 
@@ -1857,11 +1857,11 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             net.compute_inter_transition_matrices(lamda=lamda)
             net.compute_transition_matrices(lamda=lamda)
             net.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=1)
-            H = net.S[lamda]['entropy_vals']
+            H = net.S[lamda]['entropy']
             assert np.all(H <= upper_bound), "Global conditional entropy should not exceed the upper bound"
 
         net.global_conditional_entropy_upper_bound(time_downsampling_ratio=1)
-        upper_bound_computed = net.S_upper_bound['entropy_vals'][-1]
+        upper_bound_computed = net.S_upper_bound['entropy'][-1]
         assert np.isclose(upper_bound, upper_bound_computed), "Computed upper bound should match the theoretical upper bound"
 
 
@@ -1873,7 +1873,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=l)
         net.compute_transition_matrices(lamda=l, force_csr=True)
         net.global_conditional_entropy(lamda=l)
-        H=net.S[l]['entropy_vals']
+        H=net.S[l]['entropy']
         assert all(H >= 0), "Global conditional entropy should be non-negative"
 
     def test_equality_entropy_with_csr_and_array(self, simple_network):
@@ -1885,7 +1885,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.compute_inter_transition_matrices(lamda=l)
         net.compute_transition_matrices(lamda=l, force_csr=True)
         net.global_conditional_entropy(lamda=l)
-        H1=net.S[l]['entropy_vals']
+        H1=net.S[l]['entropy']
 
         # remove the current values of conditional entropy
         del net.S
@@ -1893,7 +1893,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         net.T[l]=[L.toarray() for L in net.T[l]]
 
         net.global_conditional_entropy(lamda=l)
-        H2=net.S[l]['entropy_vals']
+        H2=net.S[l]['entropy']
        
         assert np.allclose(H1, H2), "Global conditional entropy should equal with csr or array"
 
@@ -1907,7 +1907,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             net.compute_transition_matrices(lamda=l)
             net.global_conditional_entropy(lamda=l)
 
-            H = net.S[l]['entropy_vals']
+            H = net.S[l]['entropy']
 
             diffs = np.diff(H)
             assert np.all(diffs >= -1e-10), (f"Global conditional entropy should be non-decreasing")
@@ -1928,7 +1928,7 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             net.compute_transition_matrices(lamda=l)
             net.global_conditional_entropy(lamda=l)
 
-            H = net.S[l]['entropy_vals']
+            H = net.S[l]['entropy']
 
             assert np.allclose(H, entropy_results[l]), (
                 f"Global conditional entropy mismatch for lamda={l}"

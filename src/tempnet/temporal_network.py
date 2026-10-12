@@ -2107,9 +2107,9 @@ class ContTempNetwork:
         num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
         
         if self.direction=='forward':
-            idx = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
+            indices = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
         else: 
-            idx = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))
+            indices = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))
 
         if p0 is None:
             # starting uniform distribution over all nodes
@@ -2118,21 +2118,21 @@ class ContTempNetwork:
         logger.info(
             f"Computing global conditional entropy for lamda={lamda} with "
             f"direction={self.direction} with time_downsampling_ratio={time_downsampling_ratio} "
-            f"({len(idx)} sampled times out of {num_points})"
+            f"({len(indices)} sampled times out of {num_points})"
         )
 
         t0 = time.time()
-        entropy_values = np.zeros(len(idx), dtype=np.float64)
-        for pos, id in enumerate(idx):
+        entropy_values = np.zeros(len(indices), dtype=np.float64)
+        for pos, id in enumerate(indices):
 
             if self.direction == 'forward':
                 k = id - ks - 1      # T[k] covers [t_ks, t_{ks+k+1}]
             else:
-                k = ke - 1 - id      # T[k] covers [t_{ke-1-k}, t_ke]; T[0] is ke-1
+                k = ke - 1 - id      # T[k] covers [t_{ke-1-k}, t_ke]
 
 
             if pos % 1000 == 0:
-                logger.info(f"{pos} over {len(idx)} ({time.time() - t0:.2f}s)")
+                logger.info(f"{pos} over {len(indices)} ({time.time() - t0:.2f}s)")
             entropy_values[pos] = self._conditional_entropy_of_transition_matrix(
                 transition_matrices[k],
                 p0,
@@ -2140,7 +2140,7 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global conditional entropy in {time.time() - t0:.2f}s")
 
-        self.S[lamda] = {'idx': idx, 'times': self.times[idx], 'entropy_vals': entropy_values}
+        self.S[lamda] = {'indices': indices, 'times': self.times[indices], 'entropy': entropy_values}
         return self.S[lamda]
 
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
@@ -2185,20 +2185,20 @@ class ContTempNetwork:
         num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
 
         if self.direction=='forward':
-            idx = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
+            indices = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
         else: 
-            idx = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))[::-1]
+            indices = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))[::-1]
 
         prev = ks if self.direction == 'forward' else ke
 
         logger.info("Computing global entropy upper bound")
         t0 = time.time()
-        entropy_values = np.zeros(len(idx), dtype=np.float64)
+        entropy_values = np.zeros(len(indices), dtype=np.float64)
         A = np.zeros((self.num_nodes, self.num_nodes))
 
-        for pos, id in enumerate(idx):
+        for pos, id in enumerate(indices):
             if pos % 1000 == 0:
-                logger.info(f"{pos} over {len(idx)} ({time.time() - t0:.2f}s)")
+                logger.info(f"{pos} over {len(indices)} ({time.time() - t0:.2f}s)")
 
             if self.direction == 'forward':
                 start_time, end_time = self.times[prev], self.times[id]
@@ -2213,9 +2213,9 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global entropy upper bound in {time.time() - t0:.2f}s")
         if self.direction=='reverse':
-               idx=idx[::-1]
+               indices=indices[::-1]
                entropy_values=entropy_values[::-1]
-        self.S_upper_bound = {'idx': idx, 'times': self.times[idx], 'entropy_vals': entropy_values}
+        self.S_upper_bound = {'indices': indices, 'times': self.times[indices], 'entropy': entropy_values}
         return self.S_upper_bound
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.

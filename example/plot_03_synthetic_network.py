@@ -325,10 +325,10 @@ for lamda in scales:
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
     S=tnet.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=0.05)
-    axes[0].plot(S['times'], S['entropy_vals'], label=rf"$\lambda$={lamda}")
+    axes[0].plot(S['times'], S['entropy'], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[0].plot(upper_bound['times'], upper_bound['entropy_vals'],
+axes[0].plot(upper_bound['times'], upper_bound['entropy'],
              label="Upper bound", linestyle='--', color='black')
 
 # Reset cached state before the backward pass, otherwise the backward panel silently reuses the forward bound.
@@ -340,10 +340,10 @@ for attr in ('T', 'S', 'direction', 'S_upper_bound'):
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=True)
     S=tnet.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=0.05)
-    axes[1].plot(S['times'], S['entropy_vals'], label=rf"$\lambda$={lamda}")
+    axes[1].plot(S['times'], S['entropy'], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[1].plot(upper_bound['times'], upper_bound['entropy_vals'],
+axes[1].plot(upper_bound['times'], upper_bound['entropy'],
              label="Upper bound", linestyle='--', color='black')
 
 axes[0].set_title('Forward in time')
