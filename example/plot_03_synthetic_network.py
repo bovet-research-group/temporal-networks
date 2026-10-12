@@ -310,14 +310,13 @@ plt.show()
 # aggregation window reversed: paths and cumulative components are built from
 # the end of the observation window back to the start. Comparing the two panels
 # shows temporal asymmetry, a change point in one direction is
-# not necessarily a change point in the other.
+# not necessarily a change point in the other.nb
 
 fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
-scales = [0.0001, 0.001, 0.01, 0.1, 1, 100]
+scales = [0.0001, 0.001, 0.01, 0.1, 1]
 
 tnet.compute_laplacian_matrices(dynamics='heat', save_adjacencies=False)
-times = tnet.times
 
 for lamda in scales:
     tnet.compute_inter_transition_matrices(lamda=lamda, method='dense_expm')
@@ -326,10 +325,10 @@ for lamda in scales:
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=False)
     S=tnet.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=0.05)
-    axes[0].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
+    axes[0].plot(S[:, 0], S[:, 1], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[0].plot(times[upper_bound[:, 0].astype(int)], upper_bound[:, 1],
+axes[0].plot(upper_bound[:, 0], upper_bound[:, 1],
              label="Upper bound", linestyle='--', color='black')
 
 # Reset cached state before the backward pass, otherwise the backward panel silently reuses the forward bound.
@@ -341,10 +340,10 @@ for attr in ('T', 'S', 'direction', 'S_upper_bound'):
 for lamda in scales:
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=True, reverse_time=True)
     S=tnet.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=0.05)
-    axes[1].plot(times[S[:, 0].astype(int)], S[:, 1], label=rf"$\lambda$={lamda}")
+    axes[1].plot(S[:, 0], S[:, 1], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[1].plot(times[upper_bound[:, 0].astype(int)], upper_bound[:, 1],
+axes[1].plot(upper_bound[:, 0], upper_bound[:, 1],
              label="Upper bound", linestyle='--', color='black')
 
 axes[0].set_title('Forward in time')

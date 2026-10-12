@@ -2036,6 +2036,10 @@ class ContTempNetwork:
         by :meth:`_conditional_entropy_of_transition_matrix`. To limit cost, a
         subset of the time steps can be evaluated via ``time_downsampling_ratio``.
 
+        
+        Note: Since the transition matrix at time step k is computed between time 
+        steps k and k+1, the upper bound entropy at time step k corresponds to time step k+1. 
+        The correct times are also returned. 
         Parameters
         ----------
         lamda : float
@@ -2054,7 +2058,7 @@ class ContTempNetwork:
         Returns
         -------
         numpy.ndarray, shape (num_samples, 2)
-            Column 0 holds the sampled time-step indices (as floats), column 1
+            Column 0 holds the sampled times (as floats), column 1
             the corresponding conditional entropies in nats.
         """
         if lamda is None:
@@ -2125,20 +2129,22 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global conditional entropy in {time.time() - t0:.2f}s")
 
-        
+        # T[lamda][k] is the kernel up to t_{k+1} (product of inter[0..k]).
+        # Reverse: flip to count from the end, then shift one step back.
         if self.direction == 'reverse':
-            # T[lamda][k] is the kernel up to t_{k+1} (product of inter[0..k]).
-            # Reverse: flip to count from the end, then shift one step back.
-            sampled_indices = -1 - sampled_indices - 1
-        else:
-            sampled_indices = sampled_indices + 1
-
-        self.S[lamda] = np.column_stack((
-            sampled_indices,
-            entropy_values,
-        ))
+            self.S[lamda] = np.column_stack((
+                self.times[-1 - sampled_indices - 1][::-1],
+                entropy_values[::-1],
+            ))
+        else: 
+            self.S[lamda] = np.column_stack((
+                self.times[sampled_indices + 1],
+                entropy_values,
+            ))            
 
         return self.S[lamda]
+
+    
     
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
         r"""Component-size upper bound for the global conditional entropy
@@ -2163,7 +2169,7 @@ class ContTempNetwork:
         Returns
         -------
         numpy.ndarray, shape (num_samples, 2)
-            Sample indices in the first column, upper-bound values (in nats) in
+            Sampled times in the first column, upper-bound values (in nats) in
             the second.
         """
         if time_downsampling_ratio is None:
@@ -2180,6 +2186,8 @@ class ContTempNetwork:
         sampled_indices = np.unique(
             np.linspace(0, num_points - 1, num_samples, dtype=int)
         )
+        if self.direction == 'reverse':
+            sampled_indices = np.sort(num_points - 1 - sampled_indices)
 
         logger.info("Computing global entropy upper bound")
         t0 = time.time()
@@ -2212,8 +2220,11 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global entropy upper bound in {time.time() - t0:.2f}s")
 
-        
-        self.S_upper_bound = np.column_stack((sampled_indices, values))
+        if self.direction == 'forward':
+            correct_times = self.times[sampled_indices + 1]   
+        else:
+            correct_times = self.times[sampled_indices]       
+        self.S_upper_bound = np.column_stack((correct_times, values))
         return self.S_upper_bound
 
 class ContTempInstNetwork(ContTempNetwork):

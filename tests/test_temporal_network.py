@@ -1910,3 +1910,17 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
             assert np.allclose(H, entropy_results[l]), (
                 f"Global conditional entropy mismatch for lamda={l}"
             )
+
+    @pytest.mark.parametrize("reverse_time", [False, True])
+    @pytest.mark.parametrize("ratio", [None, 0.5])
+    def test_upper_bound_and_entropy_share_times(self, simple_network, reverse_time, ratio):
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        lamda = 1.0
+        net.compute_inter_transition_matrices(lamda=lamda)
+        net.compute_transition_matrices(lamda=lamda, reverse_time=reverse_time)
+
+        H = net.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=ratio)
+        U = net.global_conditional_entropy_upper_bound(time_downsampling_ratio=ratio)
+
+        np.testing.assert_array_equal(U[:, 0], H[:, 0])
