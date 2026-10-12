@@ -2057,9 +2057,10 @@ class ContTempNetwork:
 
         Returns
         -------
-        numpy.ndarray, shape (num_samples, 2)
-            Column 0 holds the sampled times (as floats), column 1
-            the corresponding conditional entropies in nats.
+        dict
+            ``'idx'``: sampled time indices, ascending;
+            ``'times'``: ``self.times[idx]``;
+            ``'entropy_vals'``: conditional entropies in nats.
         """
         if lamda is None:
             raise ValueError("lamda (scale) must be specified for entropy computation.")
@@ -2099,12 +2100,16 @@ class ContTempNetwork:
         if time_downsampling_ratio <= 0 or time_downsampling_ratio > 1:
             raise ValueError("time_downsampling_ratio must be in (0, 1].")
 
-
         transition_matrices = self.T[lamda]
-        num_points = len(transition_matrices)
+        ks, ke = self._k_start_laplacians, self._k_stop_laplacians
 
+        num_points = ke - ks
         num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
-        sampled_indices = np.unique(np.linspace(0, num_points - 1, num_samples, dtype=int))
+        
+        if self.direction=='forward':
+            idx = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
+        else: 
+            idx = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))
 
         if p0 is None:
             # starting uniform distribution over all nodes
@@ -2113,15 +2118,21 @@ class ContTempNetwork:
         logger.info(
             f"Computing global conditional entropy for lamda={lamda} with "
             f"direction={self.direction} with time_downsampling_ratio={time_downsampling_ratio} "
-            f"({len(sampled_indices)} sampled indices out of {num_points})"
+            f"({len(idx)} sampled times out of {num_points})"
         )
 
         t0 = time.time()
-        entropy_values = np.empty(len(sampled_indices), dtype=np.float64)
-        for pos, k in enumerate(sampled_indices):
-            if pos % 1000 == 0:
-                logger.info(f"{pos} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+        entropy_values = np.zeros(len(idx), dtype=np.float64)
+        for pos, id in enumerate(idx):
 
+            if self.direction == 'forward':
+                k = id - ks - 1      # T[k] covers [t_ks, t_{ks+k+1}]
+            else:
+                k = ke - 1 - id      # T[k] covers [t_{ke-1-k}, t_ke]; T[0] is ke-1
+
+
+            if pos % 1000 == 0:
+                logger.info(f"{pos} over {len(idx)} ({time.time() - t0:.2f}s)")
             entropy_values[pos] = self._conditional_entropy_of_transition_matrix(
                 transition_matrices[k],
                 p0,
@@ -2129,14 +2140,7 @@ class ContTempNetwork:
 
         logger.info(f"Finished computing global conditional entropy in {time.time() - t0:.2f}s")
 
-        # T[lamda][k] is the kernel up to t_{k+1} (product of inter[0..k]).
-        # Reverse: flip to count from the end, then shift one step back.
-        idx=self._k_start_laplacians + sampled_indices + 1
-
-        if self.direction == 'reverse':
-            entropy_values=entropy_values[::-1]
-        
-        self.S[lamda] = {'idx':idx , 'times':self.times[idx], 'entropy_vals': entropy_values }
+        self.S[lamda] = {'idx': idx, 'times': self.times[idx], 'entropy_vals': entropy_values}
         return self.S[lamda]
 
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
@@ -2157,13 +2161,15 @@ class ContTempNetwork:
         Parameters
         ----------
         time_downsampling_ratio : float, optional
-            Fraction of samples to evaluate, in ``(0, 1]``. Defaults to ``1.0``.
+            Fraction of time points to evaluate, in ``(0, 1]``. Defaults to ``1.0``.
 
         Returns
         -------
-        numpy.ndarray, shape (num_samples, 2)
-            Sampled times in the first column, upper-bound values (in nats) in
-            the second.
+        dict
+            ``'idx'``: sampled time indices, ascending (identical to
+            :meth:`global_conditional_entropy` for the same ratio);
+            ``'times'``: ``self.times[idx]``;
+            ``'entropy_vals'``: upper-bound values in nats.
         """
         if time_downsampling_ratio is None:
             time_downsampling_ratio = 1.0
@@ -2174,52 +2180,43 @@ class ContTempNetwork:
             logger.info("Global conditional entropy upper bound curve already computed, returning it")
             return self.S_upper_bound
 
-        num_points = len(self.laplacians)
+        ks, ke = self._k_start_laplacians, self._k_stop_laplacians
+        num_points = ke - ks
         num_samples = max(1, int(np.ceil(time_downsampling_ratio * num_points)))
-        sampled_indices = np.unique(
-            np.linspace(0, num_points - 1, num_samples, dtype=int)
-        )
-        if self.direction == 'reverse':
-            sampled_indices = np.sort(num_points - 1 - sampled_indices)
+
+        if self.direction=='forward':
+            idx = np.unique(np.linspace(ks+1, ke, num_samples, dtype=int))
+        else: 
+            idx = np.unique(np.linspace(ks, ke-1, num_samples, dtype=int))[::-1]
+
+        prev = ks if self.direction == 'forward' else ke
 
         logger.info("Computing global entropy upper bound")
         t0 = time.time()
-        values = np.empty(len(sampled_indices), dtype=np.float64)
-
+        entropy_values = np.zeros(len(idx), dtype=np.float64)
         A = np.zeros((self.num_nodes, self.num_nodes))
-        if self.direction == 'forward':
-            order = range(len(sampled_indices))
-            prev = 0
-        else:
-            order = range(len(sampled_indices) - 1, -1, -1)
-            prev = len(self.times) - 1
 
-        for i, pos in enumerate(order):
-            k = sampled_indices[pos]
-            if i % 1000 == 0:
-                logger.info(f"{i} over {len(sampled_indices)} ({time.time() - t0:.2f}s)")
+        for pos, id in enumerate(idx):
+            if pos % 1000 == 0:
+                logger.info(f"{pos} over {len(idx)} ({time.time() - t0:.2f}s)")
 
             if self.direction == 'forward':
-                start_time, end_time = self.times[prev], self.times[k + 1]
-                prev = k + 1
+                start_time, end_time = self.times[prev], self.times[id]
             else:
-                start_time, end_time = self.times[k], self.times[prev]
-                prev = k
+                start_time, end_time = self.times[id], self.times[prev]
+            prev = id
 
             A += self.compute_static_adjacency_matrix(start_time, end_time)
-            n_comp, labels = connected_components(A, directed=False, return_labels=True)
+            _, labels = connected_components(A, directed=False, return_labels=True)
             sizes = np.bincount(labels).astype(np.float64)
-            values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
+            entropy_values[pos] = float(np.sum((sizes / self.num_nodes) * np.log(sizes)))
 
         logger.info(f"Finished computing global entropy upper bound in {time.time() - t0:.2f}s")
-
-        if self.direction == 'forward':
-            correct_times = self.times[sampled_indices + 1]   
-        else:
-            correct_times = self.times[sampled_indices]       
-        self.S_upper_bound = np.column_stack((correct_times, values))
+        if self.direction=='reverse':
+               idx=idx[::-1]
+               entropy_values=entropy_values[::-1]
+        self.S_upper_bound = {'idx': idx, 'times': self.times[idx], 'entropy_vals': entropy_values}
         return self.S_upper_bound
-
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 

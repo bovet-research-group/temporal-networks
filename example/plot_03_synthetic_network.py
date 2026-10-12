@@ -328,7 +328,7 @@ for lamda in scales:
     axes[0].plot(S['times'], S['entropy_vals'], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[0].plot(upper_bound[:, 0], upper_bound[:, 1],
+axes[0].plot(upper_bound['times'], upper_bound['entropy_vals'],
              label="Upper bound", linestyle='--', color='black')
 
 # Reset cached state before the backward pass, otherwise the backward panel silently reuses the forward bound.
@@ -343,7 +343,7 @@ for lamda in scales:
     axes[1].plot(S['times'], S['entropy_vals'], label=rf"$\lambda$={lamda}")
 
 upper_bound=tnet.global_conditional_entropy_upper_bound(time_downsampling_ratio=0.05)
-axes[1].plot(upper_bound[:, 0], upper_bound[:, 1],
+axes[1].plot(upper_bound['times'], upper_bound['entropy_vals'],
              label="Upper bound", linestyle='--', color='black')
 
 axes[0].set_title('Forward in time')
