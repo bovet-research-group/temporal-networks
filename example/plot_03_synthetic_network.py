@@ -309,8 +309,8 @@ plt.show()
 # The backward-in-time panel repeats the analysis with the diffusion and the
 # aggregation window reversed: paths and cumulative components are built from
 # the end of the observation window back to the start. Comparing the two panels
-# shows temporal asymmetry, a change point in one direction is
-# not necessarily a change point in the other.nb
+# shows temporal asymmetry; a change point detected in one direction is
+# not necessarily detected in the other.
 
 fig, axes = plt.subplots(nrows=2, ncols=1, figsize=(8, 8), sharey=True)
 
