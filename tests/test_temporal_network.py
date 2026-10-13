@@ -1947,3 +1947,26 @@ class TestGlobalConditionalEntropy(TempNetworkTestBase):
         U = net.global_conditional_entropy_upper_bound(time_downsampling_ratio=ratio)
 
         np.testing.assert_array_equal(U['times'], H['times'])
+
+
+    @pytest.mark.parametrize("reverse_time", [False, True])
+    @pytest.mark.parametrize("ratio", [None, 0.5])
+    def test_global_conditional_entropy_same_output_size(self, simple_network, reverse_time, ratio):
+        net = simple_network
+        net.compute_laplacian_matrices(dynamics="heat")
+        lamda = 1.0
+        net.compute_inter_transition_matrices(lamda=lamda)
+        net.compute_transition_matrices(lamda=lamda, reverse_time=reverse_time)
+
+        H = net.global_conditional_entropy(lamda=lamda, time_downsampling_ratio=ratio)
+        case = f"(reverse_time={reverse_time}, ratio={ratio})"
+
+        assert set(H) == {'indices', 'times', 'entropy'}, (
+            f"Unexpected keys {sorted(H)}; expected ['entropy', 'indices', 'times'] {case}"
+        )
+        assert len(H['indices']) > 0, f"Entropy output is empty {case}"
+        assert len(H['times']) == len(H['entropy']) == len(H['indices']), (
+            f"Output lengths differ: times={len(H['times'])}, entropy={len(H['entropy'])}, "
+            f"indices={len(H['indices'])} {case}"
+        )
+        
