@@ -150,7 +150,7 @@ print("End:", tnet.end_time)
 # (:math:`A_{ii} = 1`, :math:`d_i = 1`). This yields one Laplacian per interval
 # :math:`[t_i, t_{i+1})`.
 
-tnet.compute_laplacian_matrices(dynamics='heat')
+tnet.compute_laplacian_matrices(dynamics='rw')
 
 # %%
 # We can directly access the delta Laplacian matrices for inspection.
@@ -237,9 +237,9 @@ plt.show()
 # - **High rate** (:math:`\lambda_{\mathrm{RW}} \gg 1`): the walker mixes
 #   rapidly, washing out temporal structure.
 
-
+scales = [1e-2, 0.1, 10]
 fig, ax = plt.subplots(nrows=1, ncols=3, figsize=(12, 4))
-for i, lamda in enumerate([1e-2, 0.1, 10]):
+for i, lamda in enumerate(scales):
     tnet.compute_inter_transition_matrices(lamda=lamda)
     tnet.compute_transition_matrices(lamda=lamda, save_intermediate=False, reverse_time=False, force_csr=False)
     sns.heatmap(
