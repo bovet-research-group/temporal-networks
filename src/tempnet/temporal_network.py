@@ -1010,7 +1010,7 @@ class ContTempNetwork:
             Laplacians are computed from `self.times[self._k_start_laplacians]`
             until `self.times[self._k_stop_laplacians-1]`.
 
-            The laplacian at step k, is the random walk laplacian
+            The laplacian at step k, is the laplacian
             between `times[k]`. and `times[k+1]`.
 
         Parameters
@@ -2033,8 +2033,12 @@ class ContTempNetwork:
         For a given scale ``lamda``, evaluates the conditional entropy
         ``H(Y | X)`` of the stored cumulative transition matrices
         ``self.T[lamda]``. 
-        The per-matrix entropy is computed by :meth:`_conditional_entropy_of_transition_matrix`. 
+        The per-matrix entropy is computed with :meth:`_conditional_entropy_of_transition_matrix`. 
         To limit cost, a subset of the matrices can be evaluated via ``time_downsampling_ratio``.
+
+        Note: Since the transition matrix at step k takes into account the evolution of the 
+        network until time step k+1, the entropy computed at step k corresponds to time step k+1. 
+        The correct times are returned. 
 
         Parameters
         ----------
@@ -2052,9 +2056,12 @@ class ContTempNetwork:
         Returns
         -------
         dict
-            ``'indices'``: sampled transition-matrix indices ``k``;
+            ``'indices'``: indices of the sampled transition matrices;
             ``'times'``: time of each sample;
             ``'entropy'``: conditional entropies in nats.
+
+        The dict is also saved as ``self.S[lambda]``.
+            
         """
         if lamda is None:
             raise ValueError("lamda (scale) must be specified for entropy computation.")
@@ -2134,6 +2141,7 @@ class ContTempNetwork:
             time_idx = ke - 1 - indices      # T[k] covers [t_{ke-1-k}, t_ke]
 
         self.S[lamda] = {'indices': indices, 'times': self.times[time_idx], 'entropy': entropy_values}
+        
         return self.S[lamda]
 
     def global_conditional_entropy_upper_bound(self, time_downsampling_ratio=None):
@@ -2151,6 +2159,10 @@ class ContTempNetwork:
         reachable component. To limit cost, a subset of the indices can be
         evaluated via ``time_downsampling_ratio``.
 
+        Note: Since the transition matrix at step k takes into account the evolution of the 
+        network until time step k+1, the upper bound computed at step k corresponds to time step k+1. 
+        The correct times are returned. 
+
         Parameters
         ----------
         time_downsampling_ratio : float, optional
@@ -2160,9 +2172,12 @@ class ContTempNetwork:
         Returns
         -------
         dict
-            ``'indices'``: sampled transition-matrix indices ``k``;
+            ``'indices'``: indices of the sampled transition matrices ``k``;
             ``'times'``: time of each sample;
             ``'entropy'``: upper-bound values in nats.
+
+        The dict is also saved as ``self.S_upper_bound[lambda]``.
+        
         """
         if hasattr(self, "S_upper_bound"):
             logger.info("Global conditional entropy upper bound already computed, returning it")
@@ -2220,7 +2235,9 @@ class ContTempNetwork:
             time_idx = ke - 1 - indices     
 
         self.S_upper_bound = {'indices': indices, 'times': self.times[time_idx], 'entropy': entropy_values}
+        
         return self.S_upper_bound
+        
 class ContTempInstNetwork(ContTempNetwork):
     """Continuous time temporal network with instantaneous events.
 
